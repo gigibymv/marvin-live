@@ -13,10 +13,10 @@ For an independent coding agent running a full mission test against this commit.
 ## 2. Exact commit and branch
 
 - **Branch**: `main`
-- **Commit**: `cfc050b678e459357f3c7d208c50565f7a67a7b3`
+- **Commit**: `95b2d3ad62a47fd1c418a2b2e6e6a4c9524b2398`
 - **Repo root** (on the original machine): `/Users/mv/Desktop/AI/PROJECTS/marvin`
 
-If working from a fresh clone elsewhere, `git checkout cfc050b`.
+If working from a fresh clone elsewhere, `git checkout 95b2d3a`.
 
 ---
 
@@ -109,7 +109,7 @@ rm -f ~/.marvin/marvin.db
 
 ## 7. Smoke validation performed at this commit
 
-Performed against `cfc050b`:
+Performed against `95b2d3a`:
 
 | Check | Result |
 |---|---|
@@ -143,7 +143,7 @@ Performed against `cfc050b`:
 ```bash
 # 0. Fresh shell
 cd <repo-root>
-git checkout cfc050b
+git checkout 95b2d3a
 
 # 1. Backend
 python3.11 -m venv .venv
@@ -225,7 +225,7 @@ Newly tracked (previously untracked, not a code change but a packaging fix):
 
 ## 12. Why the product is now fresh and reproducible
 
-- **One fixed commit holds everything required to run.** Before this commit only 13 files were tracked; a fresh clone could not have run. Now `git clone` + `git checkout cfc050b` + the §10 commands give a working system.
+- **One fixed commit holds everything required to run.** Before this commit only 13 files were tracked; a fresh clone could not have run. Now `git clone` + `git checkout 95b2d3a` + the §10 commands give a working system.
 - **No build artifacts in the tree.** `.next/`, `__pycache__/`, `output/`, `*.db`, `node_modules/`, `.venv/`, `.claude/` are all in `.gitignore` and not committed. The handoff state is independent of any prior local build.
 - **Dependencies are declarative.** `pyproject.toml` and `package-lock.json` pin/declare every runtime dependency; `pip install -e ".[dev]"` and `npm install` are sufficient.
 - **DB is reproducible from schema.** No DB file is committed; first `MissionStore()` call rebuilds the schema from `marvin/mission/001_init.sql` plus idempotent additive migrations. Deleting `~/.marvin/marvin.db` before running guarantees a clean test bed.
