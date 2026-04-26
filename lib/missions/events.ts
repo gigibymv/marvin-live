@@ -1,0 +1,274 @@
+import type { BackendConnectionState, MissionGateModalState } from "@/lib/missions/types";
+import { sendChatMessage, type SSEEvent, isBackendOfflineError } from "@/lib/missions/api";
+
+export type MissionStreamEvent =
+  | { type: "text"; text: string }
+  | { type: "tool_call"; text: string; agent?: string }
+  | { type: "tool_result"; text: string; agent?: string }
+  | { type: "finding_added"; text: string; badge?: string }
+  | { type: "milestone_done"; milestoneId?: string; label?: string }
+  | { type: "gate_pending"; gateId: string; title: string; summary?: string }
+  | { type: "deliverable_ready"; deliverableId?: string; label?: string }
+  | { type: "agent_done"; agentId?: string; label?: string }
+  | { type: "agent_active"; agent: string }
+  | { type: "run_end" };
+
+export interface MissionEventStreamSubscription {
+  close(): void;
+}
+
+export interface MissionEventStream {
+  kind: "local" | "eventsource" | "fetch";
+  connect(options: {
+    missionId: string;
+    onEvent: (event: MissionStreamEvent) => void;
+    onStatusChange?: (state: BackendConnectionState) => void;
+    onError?: (error: unknown) => void;
+  }): MissionEventStreamSubscription;
+  /** Send a chat message and stream the response */
+  sendMessage?(text: string, reset?: boolean): Promise<void>;
+}
+
+export function createLocalMissionEventStream(): MissionEventStream {
+  return {
+    kind: "local",
+    connect({ onStatusChange }) {
+      onStatusChange?.("local");
+      return { close() {} };
+    },
+  };
+}
+
+export function createEventSourceMissionEventStream(basePath = "/api/v1"): MissionEventStream {
+  return {
+    kind: "eventsource",
+    connect({ missionId, onEvent, onStatusChange, onError }) {
+      if (typeof window === "undefined" || typeof EventSource === "undefined") {
+        onStatusChange?.("offline");
+        return { close() {} };
+      }
+
+      onStatusChange?.("connecting");
+      const source = new EventSource(`${basePath}/missions/${missionId}/chat`);
+
+      source.onopen = () => onStatusChange?.("ready");
+      source.onerror = (error) => {
+        onStatusChange?.("offline");
+        onError?.(error);
+      };
+
+      addListener(source, "text", onEvent, (payload) => ({
+        type: "text",
+        text: payload.text ?? payload.message ?? payload.content ?? "",
+      }));
+      addListener(source, "tool_call", onEvent, (payload) => ({
+        type: "tool_call",
+        text: payload.text ?? payload.name ?? "Tool call",
+        agent: payload.agent,
+      }));
+      addListener(source, "tool_result", onEvent, (payload) => ({
+        type: "tool_result",
+        text: payload.text ?? payload.result ?? "Tool result",
+        agent: payload.agent,
+      }));
+      addListener(source, "finding_added", onEvent, (payload) => ({
+        type: "finding_added",
+        text: payload.text ?? payload.finding ?? "Finding added",
+        badge: payload.badge,
+      }));
+      addListener(source, "milestone_done", onEvent, (payload) => ({
+        type: "milestone_done",
+        milestoneId: payload.milestoneId ?? payload.id,
+        label: payload.label,
+      }));
+      addListener(source, "gate_pending", onEvent, (payload) => ({
+        type: "gate_pending",
+        gateId: payload.gateId ?? payload.id ?? payload.gate_id ?? "gate",
+        title: payload.title ?? "Gate review required",
+        summary: payload.summary,
+      }));
+      addListener(source, "deliverable_ready", onEvent, (payload) => ({
+        type: "deliverable_ready",
+        deliverableId: payload.deliverableId ?? payload.id,
+        label: payload.label,
+      }));
+      addListener(source, "agent_done", onEvent, (payload) => ({
+        type: "agent_done",
+        agentId: payload.agentId ?? payload.id,
+        label: payload.label,
+      }));
+      addListener(source, "agent_active", onEvent, (payload) => ({
+        type: "agent_active",
+        agent: String(payload.agent ?? ""),
+      }));
+      addListener(source, "run_end", onEvent, () => ({ type: "run_end" }));
+
+      return {
+        close() {
+          source.close();
+        },
+      };
+    },
+  };
+}
+
+/**
+ * Fetch-based SSE stream that POSTs messages and consumes SSE response.
+ * This is the preferred method for real backend integration.
+ */
+export function createFetchMissionEventStream(): MissionEventStream & { sendMessage: (text: string, reset?: boolean) => Promise<void> } {
+  let abortController: AbortController | null = null;
+  let currentMissionId: string | null = null;
+  let currentOnEvent: ((event: MissionStreamEvent) => void) | null = null;
+  let currentOnStatusChange: ((state: BackendConnectionState) => void) | null = null;
+  let currentOnError: ((error: unknown) => void) | null = null;
+  let isStreaming = false;
+
+  async function handleStream(text: string, reset = false) {
+    if (!currentMissionId || !currentOnEvent) return;
+
+    if (isStreaming && abortController) {
+      abortController.abort();
+    }
+
+    abortController = new AbortController();
+    isStreaming = true;
+
+    try {
+      currentOnStatusChange?.("connecting");
+
+      for await (const event of sendChatMessage(currentMissionId, text, reset, abortController.signal)) {
+        // Map SSE event to frontend event
+        const mappedEvent = mapSSEToStreamEvent(event);
+        if (mappedEvent) {
+          currentOnEvent(mappedEvent);
+        }
+      }
+
+      currentOnStatusChange?.("ready");
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        // Aborted, don't report as error
+        return;
+      }
+      if (isBackendOfflineError(error)) {
+        currentOnStatusChange?.("offline");
+        currentOnError?.(error);
+      } else {
+        currentOnError?.(error);
+      }
+    } finally {
+      isStreaming = false;
+      currentOnStatusChange?.("ready");
+    }
+  }
+
+  return {
+    kind: "fetch",
+    connect({ missionId, onEvent, onStatusChange, onError }) {
+      currentMissionId = missionId;
+      currentOnEvent = onEvent;
+      currentOnStatusChange = onStatusChange ?? null;
+      currentOnError = onError ?? null;
+      
+      onStatusChange?.("ready");
+
+      return {
+        close() {
+          if (abortController) {
+            abortController.abort();
+          }
+          currentMissionId = null;
+          currentOnEvent = null;
+          currentOnStatusChange = null;
+          currentOnError = null;
+        },
+      };
+    },
+    async sendMessage(text: string, reset = false) {
+      await handleStream(text, reset);
+    },
+  };
+}
+
+/**
+ * Map SSE events from backend to frontend stream events
+ */
+function mapSSEToStreamEvent(event: SSEEvent): MissionStreamEvent | null {
+  const eventType = event.type as string;
+  
+  switch (eventType) {
+    case "text":
+      return { type: "text", text: String(event.text ?? "") };
+    case "tool_call":
+      return { type: "tool_call", text: String(event.tool ?? ""), agent: event.agent ? String(event.agent) : undefined };
+    case "tool_result":
+      return { type: "tool_result", text: String(event.text ?? ""), agent: event.agent ? String(event.agent) : undefined };
+    case "gate_pending":
+      return {
+        type: "gate_pending",
+        gateId: String(event.gate_id ?? event.gateId ?? "gate"),
+        title: String(event.gate_type ?? event.title ?? "Gate review required"),
+        summary: event.arbiter_flags && Array.isArray(event.arbiter_flags)
+          ? event.arbiter_flags.map(String).join(", ")
+          : event.summary ? String(event.summary) : undefined,
+      };
+    case "finding_added":
+      return {
+        type: "finding_added",
+        text: String(event.text ?? ""),
+        badge: event.badge ? String(event.badge) : undefined,
+      };
+    case "milestone_done":
+      return {
+        type: "milestone_done",
+        milestoneId: event.milestoneId ? String(event.milestoneId) : undefined,
+        label: event.label ? String(event.label) : undefined,
+      };
+    case "deliverable_ready":
+      return {
+        type: "deliverable_ready",
+        deliverableId: event.deliverableId ? String(event.deliverableId) : undefined,
+        label: event.label ? String(event.label) : undefined,
+      };
+    case "agent_done":
+      return { type: "agent_done", label: event.agent ? String(event.agent) : undefined };
+    case "agent_active":
+      return { type: "agent_active", agent: String(event.agent ?? "") };
+    case "run_end":
+      return { type: "run_end" };
+    case "run_start":
+    case "error":
+      // These are handled internally
+      return null;
+    default:
+      return null;
+  }
+}
+
+export const localMissionEventStream = createLocalMissionEventStream();
+export const fetchMissionEventStream = createFetchMissionEventStream();
+
+function addListener(
+  source: EventSource,
+  eventName: string,
+  onEvent: (event: MissionStreamEvent) => void,
+  mapPayload: (payload: Record<string, string>) => MissionStreamEvent,
+) {
+  source.addEventListener(eventName, (event) => {
+    const payload = parsePayload((event as MessageEvent<string>).data);
+    onEvent(mapPayload(payload));
+  });
+}
+
+function parsePayload(data: string): Record<string, string> {
+  try {
+    return JSON.parse(data) as Record<string, string>;
+  } catch {
+    return { text: data };
+  }
+}
+
+export function createGateModalState(payload: MissionGateModalState): MissionGateModalState {
+  return payload;
+}

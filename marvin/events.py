@@ -19,10 +19,12 @@ from typing import Any, Callable
 
 FindingListener = Callable[[dict[str, Any]], None]
 DeliverableListener = Callable[[dict[str, Any]], None]
+MilestoneListener = Callable[[dict[str, Any]], None]
 
 _lock = threading.Lock()
 _listeners: dict[str, list[FindingListener]] = {}
 _deliverable_listeners: dict[str, list[DeliverableListener]] = {}
+_milestone_listeners: dict[str, list[MilestoneListener]] = {}
 
 
 def register_finding_listener(mission_id: str, listener: FindingListener) -> None:
@@ -76,6 +78,37 @@ def unregister_deliverable_listener(mission_id: str, listener: DeliverableListen
 def emit_deliverable_persisted(mission_id: str, payload: dict[str, Any]) -> None:
     with _lock:
         bucket = list(_deliverable_listeners.get(mission_id, ()))
+    for listener in bucket:
+        try:
+            listener(payload)
+        except Exception:  # noqa: BLE001 — defensive boundary
+            pass
+
+
+def register_milestone_listener(mission_id: str, listener: MilestoneListener) -> None:
+    with _lock:
+        _milestone_listeners.setdefault(mission_id, []).append(listener)
+
+
+def unregister_milestone_listener(mission_id: str, listener: MilestoneListener) -> None:
+    with _lock:
+        bucket = _milestone_listeners.get(mission_id)
+        if not bucket:
+            return
+        try:
+            bucket.remove(listener)
+        except ValueError:
+            return
+        if not bucket:
+            _milestone_listeners.pop(mission_id, None)
+
+
+def emit_milestone_persisted(mission_id: str, payload: dict[str, Any]) -> None:
+    """Fired by the store chokepoint after a milestone row is marked delivered.
+    Listener exceptions are swallowed so a buggy listener cannot break the
+    persistence path."""
+    with _lock:
+        bucket = list(_milestone_listeners.get(mission_id, ()))
     for listener in bucket:
         try:
             listener(payload)

@@ -11,6 +11,7 @@ from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools.common import (
     InjectedStateArg,
     get_store,
+    normalize_hypothesis_id,
     require_mission_id,
     serialize_models,
     short_id,
@@ -107,8 +108,10 @@ def update_hypothesis(
 ) -> dict[str, Any]:
     """Update hypothesis status."""
     require_mission_id(state)
-    # Placeholder - not implemented in store yet
-    return {"hypothesis_id": hypothesis_id, "status": status}
+    store = get_store(_STORE_FACTORY)
+    hypothesis_id = normalize_hypothesis_id(hypothesis_id)
+    updated = store.update_hypothesis(hypothesis_id, status, abandon_reason)
+    return {"hypothesis_id": updated.id, "status": updated.status}
 
 
 def mark_milestone_delivered(
@@ -147,6 +150,7 @@ def add_finding_to_mission(
     store = get_store(_STORE_FACTORY)
 
     if hypothesis_id is not None:
+        hypothesis_id = normalize_hypothesis_id(hypothesis_id)
         allowed = {h.id for h in store.list_hypotheses(mission_id)}
         if hypothesis_id not in allowed:
             raise ValueError(
@@ -203,7 +207,7 @@ def persist_source_for_mission(
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
     source = Source(
-        id=short_id("src"),
+        id=short_id("s"),
         mission_id=mission_id,
         url_or_ref=url_or_ref,
         quote=quote,
@@ -216,7 +220,7 @@ def persist_source_for_mission(
 def ask_question(text: str, blocking: bool, state: InjectedStateArg = None) -> dict[str, Any]:
     """Ask a question to the user."""
     mission_id = require_mission_id(state)
-    return {"question": text, "blocking": blocking, "mission_id": mission_id}
+    return {"question": text, "blocking": blocking, "mission_id": mission_id, "status": "pending"}
 
 
 def set_merlin_verdict(
@@ -261,11 +265,13 @@ def generate_interview_guides(
     guides = []
     for hypothesis_id in hypothesis_ids:
         hypothesis = by_id[hypothesis_id]
-        # Placeholder - would generate actual interview guide
+        excerpt = hypothesis.text[:80]
         guides.append({
             "hypothesis_id": hypothesis_id,
             "questions": [
-                f"How does {hypothesis.text[:50]}... affect the business?",
+                f"What evidence would confirm or refute that {excerpt}?",
+                f"Where have you seen counter-examples to {excerpt}?",
+                f"Which leading indicator best tracks {excerpt} over the next 12 months?",
             ],
         })
     return {"guides": guides}

@@ -1,0 +1,25 @@
+[project]
+name = "marvin"
+version = "0.1.0"
+description = "MARVIN — Commercial Due Diligence automation platform (FastAPI + LangGraph + Next.js)"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2,<3",
+    "fastapi>=0.109,<1",
+    "uvicorn[standard]>=0.27,<1",
+    "python-dotenv>=1,<2",
+    "langgraph>=1,<2",
+    "langchain-core>=1,<2",
+    "langchain-openai>=1,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<10",
+]
+
+[project.scripts]
+marvin-server = "marvin_ui.server:run_server"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

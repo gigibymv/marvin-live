@@ -22,16 +22,14 @@ def test_add_finding_tool_no_longer_mapped_here():
     assert map_tool_to_sse_event("add_finding_to_mission", content) is None
 
 
-def test_milestone_done_full_payload():
+def test_mark_milestone_delivered_no_longer_mapped_here():
+    """milestone_done emission moved to the marvin.events listener registered by
+    _stream_chat. The mapper must NOT emit for mark_milestone_delivered, otherwise
+    the event would fire twice when the LLM picks the tool directly while the
+    persistence chokepoint also emits. See tests/test_milestone_event_emission.py
+    for the listener-based contract."""
     content = json.dumps({"milestone_id": "W1.1", "status": "delivered", "label": "Market sizing"})
-    result = map_tool_to_sse_event("mark_milestone_delivered", content)
-    assert result == ("milestone_done", {"milestoneId": "W1.1", "label": "Market sizing"})
-
-
-def test_milestone_done_omits_label_when_missing():
-    content = json.dumps({"milestone_id": "W1.1", "status": "delivered"})
-    result = map_tool_to_sse_event("mark_milestone_delivered", content)
-    assert result == ("milestone_done", {"milestoneId": "W1.1"})
+    assert map_tool_to_sse_event("mark_milestone_delivered", content) is None
 
 
 def test_papyrus_tools_no_longer_mapped_here():
@@ -57,12 +55,14 @@ def test_papyrus_tools_no_longer_mapped_here():
 
 
 def test_dict_content_accepted_directly():
-    """LangGraph may pass through a dict instead of a JSON string."""
+    """LangGraph may pass through a dict instead of a JSON string. Even with a
+    well-formed dict, mapper returns None for tools whose events are owned by
+    listeners — proving no double-fire path exists."""
     result = map_tool_to_sse_event(
         "mark_milestone_delivered",
         {"milestone_id": "W1.1", "label": "Market sizing"},
     )
-    assert result == ("milestone_done", {"milestoneId": "W1.1", "label": "Market sizing"})
+    assert result is None
 
 
 # --- defensive / malformed cases ----------------------------------------------
@@ -108,8 +108,5 @@ def test_finding_added_missing_claim_returns_none():
     assert map_tool_to_sse_event("add_finding_to_mission", content) is None
 
 
-def test_milestone_done_missing_milestone_id_returns_none():
-    content = json.dumps({"status": "delivered", "label": "x"})
-    assert map_tool_to_sse_event("mark_milestone_delivered", content) is None
 
 

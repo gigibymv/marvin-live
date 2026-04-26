@@ -35,8 +35,10 @@ from pydantic import BaseModel
 from marvin.events import (
     register_deliverable_listener,
     register_finding_listener,
+    register_milestone_listener,
     unregister_deliverable_listener,
     unregister_finding_listener,
+    unregister_milestone_listener,
 )
 from marvin.graph.runner import build_graph
 from marvin.graph.state import MarvinState
@@ -327,13 +329,21 @@ def _build_deliverable_ready_from_emit(payload: dict) -> dict:
     return out
 
 
+def _build_milestone_done_from_emit(payload: dict) -> dict:
+    out: dict = {"milestoneId": str(payload.get("milestone_id", ""))}
+    label = payload.get("label")
+    if label:
+        out["label"] = str(label)
+    return out
+
+
 _TOOL_EVENT_BUILDERS: dict[str, tuple[str, callable]] = {
-    # `add_finding_to_mission` and the papyrus generate_* tools are intentionally
-    # NOT mapped here. Their events (finding_added, deliverable_ready) are owned
-    # by listeners in marvin.events registered by _stream_chat — events fire
-    # whether the LLM calls the tool directly or a wrapper persists as a side
-    # effect (e.g. runner._generate_*_impl, dora_tools.moat_analysis).
-    "mark_milestone_delivered": ("milestone_done", _build_milestone_done),
+    # All three live events (finding_added, deliverable_ready, milestone_done)
+    # are owned by listeners in marvin.events registered by _stream_chat — they
+    # fire on the persistence chokepoint regardless of whether the LLM picked
+    # the tool directly or a deterministic graph node (e.g. runner.research_join,
+    # runner._generate_*_impl, dora_tools.moat_analysis) drove the write.
+    # Keeping the mapper empty avoids double-fire on the LLM-driven path.
 }
 
 
@@ -533,6 +543,7 @@ async def _stream_chat(
         # it from the async loop between graph events.
         finding_q: "queue.Queue[dict]" = queue.Queue()
         deliverable_q: "queue.Queue[dict]" = queue.Queue()
+        milestone_q: "queue.Queue[dict]" = queue.Queue()
 
         def _on_finding(payload: dict) -> None:
             finding_q.put_nowait(payload)
@@ -540,8 +551,12 @@ async def _stream_chat(
         def _on_deliverable(payload: dict) -> None:
             deliverable_q.put_nowait(payload)
 
+        def _on_milestone(payload: dict) -> None:
+            milestone_q.put_nowait(payload)
+
         register_finding_listener(mission_id, _on_finding)
         register_deliverable_listener(mission_id, _on_deliverable)
+        register_milestone_listener(mission_id, _on_milestone)
 
         def _drain_events() -> list[str]:
             out: list[str] = []
@@ -557,6 +572,12 @@ async def _stream_chat(
                 except queue.Empty:
                     break
                 out.append(_sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload)))
+            while True:
+                try:
+                    payload = milestone_q.get_nowait()
+                except queue.Empty:
+                    break
+                out.append(_sse_event("milestone_done", _build_milestone_done_from_emit(payload)))
             return out
 
         # Drive the graph; on each __interrupt__ frame, park on a per-mission
@@ -617,6 +638,10 @@ async def _stream_chat(
             pass
         try:
             unregister_deliverable_listener(mission_id, _on_deliverable)
+        except (NameError, UnboundLocalError):
+            pass
+        try:
+            unregister_milestone_listener(mission_id, _on_milestone)
         except (NameError, UnboundLocalError):
             pass
         mission_lock.release()

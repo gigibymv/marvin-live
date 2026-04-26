@@ -4,7 +4,7 @@ from collections import Counter
 from typing import Any
 
 from marvin.mission.store import MissionStore
-from marvin.tools.common import InjectedStateArg, get_store, require_mission_id
+from marvin.tools.common import InjectedStateArg, get_store, normalize_hypothesis_id, require_mission_id
 from marvin.tools.mission_tools import add_finding_to_mission
 
 _STORE_FACTORY = MissionStore
@@ -24,7 +24,15 @@ def attack_hypothesis(
     """
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
-    hypothesis = next(h for h in store.list_hypotheses(mission_id) if h.id == hypothesis_id)
+    hypothesis_id = normalize_hypothesis_id(hypothesis_id)
+    allowed = {h.id: h for h in store.list_hypotheses(mission_id)}
+    if hypothesis_id not in allowed:
+        raise ValueError(
+            f"hypothesis_id {hypothesis_id!r} is not a valid hypothesis for "
+            f"mission {mission_id}. Allowed: {sorted(allowed)}. "
+            "Pass one of these IDs verbatim."
+        )
+    hypothesis = allowed[hypothesis_id]
     claim = f"{angle.title()} attack on hypothesis: {hypothesis.text}"
     finding = add_finding_to_mission(
         claim_text=claim,

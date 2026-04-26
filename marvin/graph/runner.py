@@ -92,6 +92,14 @@ def phase_router(state: MarvinState) -> str | list[Send]:
     if phase == "redteam_done":
         return "merlin"
 
+    if phase == "synthesis_retry":
+        # Merlin asked for another red-team pass before re-evaluating.
+        # Bounce through adversus first; adversus will return redteam_done,
+        # which routes back to merlin for a fresh verdict. Returning "merlin"
+        # here would map to merlin's own conditional-edge path map, which
+        # intentionally does not include a "merlin" key (no self-loop).
+        return "adversus"
+
     if phase == "synthesis_done":
         return "gate_entry"
 
@@ -105,15 +113,33 @@ def phase_router(state: MarvinState) -> str | list[Send]:
 
 
 def research_join(state: MarvinState) -> dict:
-    """Join node that waits for dora and calculus to complete."""
+    """Deterministic join after the dora/calculus parallel branches.
+
+    Reaching this node means both branches have already returned (LangGraph
+    waits on every Send fan-out edge). The graph's contract is "these two
+    parallel branches collectively constitute the W1+W2 research milestone",
+    so we mark the gating milestones idempotently and advance the phase
+    unconditionally. Previously this node gated phase advancement on whether
+    each agent had called mark_milestone_delivered for W1.1/W2.1; an asymmetric
+    prompt (only dora was told to mark) left W2.1 perpetually pending, the
+    join returned `{}`, and phase_router re-fanned the parallel branches into
+    an infinite loop. Coupling graph progression to LLM tool selection is the
+    same anti-pattern we removed for event ownership in marvin.events — the
+    fix is to own the business fact in graph control flow.
+    """
     mission_id = state.get("mission_id", "")
     store = MissionStore()
-    milestones = store.list_milestones(mission_id)
-    w1_done = any(milestone.status == "delivered" and milestone.id == "W1.1" for milestone in milestones)
-    w2_done = any(milestone.status == "delivered" and milestone.id == "W2.1" for milestone in milestones)
-    
-    if not (w1_done and w2_done):
-        return {}
+
+    for milestone_id in ("W1.1", "W2.1"):
+        try:
+            store.mark_milestone_delivered(
+                milestone_id,
+                "research branch complete",
+                mission_id=mission_id,
+            )
+        except KeyError:
+            # Milestone not seeded for this mission — defensive boundary only.
+            pass
 
     from marvin.tools.papyrus_tools import _generate_workstream_report_impl
 
@@ -217,7 +243,11 @@ async def merlin_node(state: MarvinState) -> dict:
     count = state.get("synthesis_retry_count", 0) + 1
     if count >= 3:
         return {**result, "phase": "synthesis_done", "synthesis_retry_count": 0}
-    return {**result, "phase": "redteam_done", "synthesis_retry_count": count}
+    # synthesis_retry, NOT redteam_done: routes back through adversus for
+    # another red-team pass before merlin re-evaluates. redteam_done would
+    # route directly to merlin and crash with KeyError when merlin's outgoing
+    # path map is consulted (no self-loop entry).
+    return {**result, "phase": "synthesis_retry", "synthesis_retry_count": count}
 
 
 async def papyrus_delivery_node(state: MarvinState) -> dict:
