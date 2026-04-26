@@ -12,6 +12,7 @@
 # Node
 node_modules/
 .next/
+tsconfig.tsbuildinfo
 
 # Python
 __pycache__/
