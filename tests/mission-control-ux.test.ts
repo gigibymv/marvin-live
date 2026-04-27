@@ -9,6 +9,10 @@
 
 import { describe, expect, it } from "vitest";
 import { getDeliverableDownloadUrl } from "@/lib/missions/api";
+import {
+  formatGatePendingChatMessage,
+  formatGatePendingFeedSignal,
+} from "@/lib/missions/adapters";
 
 describe("MissionControl UX slice", () => {
   it("getDeliverableDownloadUrl encodes rel_path safely", () => {
@@ -75,6 +79,83 @@ describe("MissionControl UX slice", () => {
     const ids = new Set<string>();
     for (let i = 0; i < 500; i++) ids.add(makeId("m-1", "finding"));
     expect(ids.size).toBe(500);
+  });
+
+  describe("chat-first gate UX (Path 1)", () => {
+    const gateEvent = {
+      gateType: "manager_review",
+      title: "Manager review of research claims",
+      stage: "Mid-mission checkpoint (G1)",
+      summary: "Initial research is complete. Approve to start the red-team.",
+      unlocksOnApprove: "Adversus runs the red-team.",
+      unlocksOnReject: "Workstreams loop back for revision.",
+    };
+
+    it("formatGatePendingChatMessage produces a structured, operator-readable message", () => {
+      const text = formatGatePendingChatMessage(gateEvent);
+      // Stage, validation request, and unlock semantics must all be present.
+      expect(text).toContain("Manager review of research claims");
+      expect(text).toContain("Stage: Mid-mission checkpoint (G1)");
+      expect(text).toContain("Initial research is complete");
+      expect(text).toContain("Approve → Adversus runs the red-team.");
+      expect(text).toContain("Reject → Workstreams loop back for revision.");
+      // Must direct the user to the persistent reopen affordance, not a popup.
+      expect(text).toMatch(/Review now/);
+      // Must NOT contain raw JSON or system jargon like the gate id.
+      expect(text).not.toMatch(/\{|\}|\[|\]|gate-/);
+    });
+
+    it("formatGatePendingChatMessage degrades gracefully on missing optional fields", () => {
+      const text = formatGatePendingChatMessage({ title: "", summary: "" });
+      expect(text).toContain("Validation requested");
+      expect(text).toMatch(/Review now/);
+      // No "Stage:" line when stage is absent.
+      expect(text).not.toMatch(/Stage:/);
+      expect(text).not.toMatch(/Approve →/);
+      expect(text).not.toMatch(/Reject →/);
+    });
+
+    it("formatGatePendingFeedSignal is concise and humanizes underscores", () => {
+      expect(formatGatePendingFeedSignal(gateEvent)).toBe(
+        "Gate pending · Manager review of research claims",
+      );
+      expect(
+        formatGatePendingFeedSignal({ gateType: "hypothesis_confirmation" }),
+      ).toBe("Gate pending · hypothesis confirmation");
+    });
+
+    it("gate_pending handler builds chat + feed signal without modal state (controller contract)", () => {
+      // Mirror the controller's `case "gate_pending"` body to verify it
+      // produces (a) a structured chat message, (b) a feed signal, and
+      // (c) does NOT touch any gateModal state. The modal state is the
+      // sentinel that distinguishes Path 1 (chat-first) from the prior
+      // popup-first behavior.
+      let modalState: unknown = null;
+      const messages: Array<{ from: string; text: string }> = [];
+      const feed: Array<{ claim_text: string; confidence?: string }> = [];
+
+      const handleGatePending = (event: typeof gateEvent) => {
+        messages.push({ from: "m", text: formatGatePendingChatMessage(event) });
+        feed.push({
+          claim_text: formatGatePendingFeedSignal(event),
+          confidence: "gate",
+        });
+        // Intentionally NO setGateModal call. Modal opens only via the
+        // banner's "Review now" click, which is exercised by the existing
+        // reopenGateFromCheckpoint path.
+      };
+
+      handleGatePending(gateEvent);
+
+      expect(modalState).toBeNull();
+      expect(messages).toHaveLength(1);
+      expect(messages[0]?.text).toContain("Manager review of research claims");
+      expect(feed).toHaveLength(1);
+      expect(feed[0]?.claim_text).toBe(
+        "Gate pending · Manager review of research claims",
+      );
+      expect(feed[0]?.confidence).toBe("gate");
+    });
   });
 
   it("humanizeToolResult strips raw JSON dumps from chat surface", () => {

@@ -7,6 +7,8 @@ import RawMissionControlView from "../../UI Marvin/MissionControl.jsx";
 import {
   buildInitialMessages,
   DEFAULT_WORKSPACE_TAB,
+  formatGatePendingChatMessage,
+  formatGatePendingFeedSignal,
 } from "@/lib/missions/adapters";
 import {
   type MissionEventStream,
@@ -276,22 +278,29 @@ export default function MissionControl({
               }),
             );
             break;
-          case "gate_pending":
-            setGateModal({
-              gateId: event.gateId,
-              gateType: event.gateType,
-              title: event.title,
-              stage: event.stage,
-              summary: event.summary,
-              unlocksOnApprove: event.unlocksOnApprove,
-              unlocksOnReject: event.unlocksOnReject,
-              hypotheses: event.hypotheses,
-              researchFindings: event.researchFindings,
-              redteamFindings: event.redteamFindings,
-              arbiterFlags: event.arbiterFlags,
-              findingsTotal: event.findingsTotal,
-            });
+          case "gate_pending": {
+            // Chat-first gate UX. The modal no longer auto-opens; instead the
+            // gate is announced in chat and signalled in the live feed. The
+            // persistent banner (derived from progress.gates) is the entry
+            // point that opens the detailed review surface on user action.
+            // Source of truth for gate state remains the backend gate row.
+            setMessages((current) =>
+              current.concat({
+                id: makeMessageId(missionId, "gate-pending"),
+                from: "m",
+                text: formatGatePendingChatMessage(event),
+              }),
+            );
+            setLiveFindings((current) =>
+              current.concat({
+                id: makeMessageId(missionId, "gate-signal"),
+                claim_text: formatGatePendingFeedSignal(event),
+                confidence: "gate",
+              }),
+            );
+            void refreshProgress();
             break;
+          }
           case "agent_active":
             setActiveAgent(event.agent ?? null);
             setAgentStatuses((current) => ({
