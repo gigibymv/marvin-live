@@ -132,9 +132,9 @@ def test_add_finding_to_mission_requires_state():
 
 
 def test_add_finding_to_mission_persists_row(store: MissionStore, state: dict[str, str]):
-    result = mission_tools.add_finding_to_mission("Market is large", "REASONED", "dora", workstream_id="W1", state=state)
+    result = mission_tools.add_finding_to_mission("Market is large and growing in priority segments.", "REASONED", "dora", workstream_id="W1", state=state)
     assert result["finding_id"].startswith("f-")
-    assert store.list_findings("m-test")[0].claim_text == "Market is large"
+    assert store.list_findings("m-test")[0].claim_text == "Market is large and growing in priority segments."
 
 
 def test_add_finding_to_mission_return_includes_claim_and_confidence_for_sse(
@@ -142,9 +142,9 @@ def test_add_finding_to_mission_return_includes_claim_and_confidence_for_sse(
 ):
     """Phase 1A: streamer reads claim + confidence from tool return to build finding_added event."""
     result = mission_tools.add_finding_to_mission(
-        "Penetration is 34%", "LOW_CONFIDENCE", "dora", workstream_id="W1", state=state
+        "Penetration is 34% across the priority segments.", "LOW_CONFIDENCE", "dora", workstream_id="W1", state=state
     )
-    assert result["claim"] == "Penetration is 34%"
+    assert result["claim"] == "Penetration is 34% across the priority segments."
     assert result["confidence"] == "LOW_CONFIDENCE"
 
 
@@ -369,7 +369,7 @@ def test_generate_stress_scenarios_returns_three_items(state: dict[str, str]):
 
 
 def test_identify_weakest_link_uses_lowest_evidence_count(store: MissionStore, state: dict[str, str]):
-    mission_tools.add_finding_to_mission("Supports h1", "REASONED", "dora", hypothesis_id="h-1", state=state)
+    mission_tools.add_finding_to_mission("Supports h1 with sustained evidence base.", "REASONED", "dora", hypothesis_id="h-1", state=state)
     result = adversus_tools.identify_weakest_link(state)
     assert result["weakest_link"] == "h-2"
 
@@ -391,7 +391,7 @@ def test_update_action_title_returns_updated_payload(state: dict[str, str]):
 
 
 def test_get_storyline_findings_groups_by_workstream(store: MissionStore, state: dict[str, str]):
-    mission_tools.add_finding_to_mission("W1 claim", "REASONED", "dora", workstream_id="W1", state=state)
+    mission_tools.add_finding_to_mission("W1 market claim about competitive moat.", "REASONED", "dora", workstream_id="W1", state=state)
     result = merlin_tools.get_storyline_findings(state)
     assert "W1" in result["findings_by_workstream"]
 
@@ -406,7 +406,7 @@ def test_generate_engagement_brief_is_idempotent(store: MissionStore, state: dic
 
 
 def test_generate_workstream_report_writes_markdown(store: MissionStore, state: dict[str, str]):
-    mission_tools.add_finding_to_mission("Market is growing", "REASONED", "dora", workstream_id="W1", state=state)
+    mission_tools.add_finding_to_mission("Market is growing with healthy retention metrics.", "REASONED", "dora", workstream_id="W1", state=state)
     result = papyrus_tools.generate_workstream_report("W1", state)
     assert Path(result["file_path"]).read_text(encoding="utf-8").startswith("# W1 Report")
 
@@ -422,7 +422,7 @@ def test_generate_report_pdf_requires_ship_or_g3(store: MissionStore, state: dic
 
 
 def test_generate_exec_summary_and_data_book_write_non_empty_files(store: MissionStore, state: dict[str, str]):
-    mission_tools.add_finding_to_mission("Claim 1", "REASONED", "dora", workstream_id="W1", state=state)
+    mission_tools.add_finding_to_mission("Claim 1 about market with sourced evidence.", "REASONED", "dora", workstream_id="W1", state=state)
     summary = papyrus_tools.generate_exec_summary(state)
     data_book = papyrus_tools.generate_data_book(state)
     assert Path(summary["file_path"]).stat().st_size > 0

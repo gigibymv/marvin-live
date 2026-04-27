@@ -86,7 +86,7 @@ def _state() -> dict:
 
 def test_add_finding_accepts_bracketed_id_with_trailing_text(store: MissionStore):
     result = mission_tools.add_finding_to_mission(
-        claim_text="x", confidence="REASONED",
+        claim_text="Generic market claim under evidence test.", confidence="REASONED",
         hypothesis_id="[hyp-79a14102] AcmeH2 has a durable competitive advantage",
         state=_state(),
     )
@@ -97,7 +97,7 @@ def test_add_finding_accepts_bracketed_id_with_trailing_text(store: MissionStore
 
 def test_add_finding_accepts_quoted_id(store: MissionStore):
     result = mission_tools.add_finding_to_mission(
-        claim_text="x", confidence="REASONED",
+        claim_text="Generic market claim under evidence test.", confidence="REASONED",
         hypothesis_id='"hyp-79a14102"',
         state=_state(),
     )
@@ -107,7 +107,7 @@ def test_add_finding_accepts_quoted_id(store: MissionStore):
 def test_add_finding_rejects_truly_invalid_id(store: MissionStore):
     with pytest.raises(ValueError, match="not a valid hypothesis"):
         mission_tools.add_finding_to_mission(
-            claim_text="x", confidence="REASONED",
+            claim_text="Generic market claim under evidence test.", confidence="REASONED",
             hypothesis_id="hyp-99999999",
             state=_state(),
         )
@@ -116,7 +116,7 @@ def test_add_finding_rejects_truly_invalid_id(store: MissionStore):
 def test_add_finding_rejects_ambiguous_string(store: MissionStore):
     with pytest.raises(ValueError, match="not a valid hypothesis"):
         mission_tools.add_finding_to_mission(
-            claim_text="x", confidence="REASONED",
+            claim_text="Generic market claim under evidence test.", confidence="REASONED",
             hypothesis_id="the first hypothesis hyp-79a14102",
             state=_state(),
         )

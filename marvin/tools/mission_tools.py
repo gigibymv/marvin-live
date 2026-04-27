@@ -291,6 +291,61 @@ def _normalize_milestone_id(raw_milestone_id: str) -> str:
     return candidate
 
 
+# Bug 1 (chantier 2.6): patterns that indicate empty / missing data
+# masquerading as findings. Quality gate at write time, not display time.
+_ABSURD_FINDING_PATTERNS: list[tuple[str, str]] = [
+    (r"\$0[^\d.]", "all-zero dollar values"),
+    (r"\$0\.00\b", "zero-dollar value"),
+    (r"\b0\.0+x\b", "zero ratio"),
+    (r"\b0\.00\b", "zero numeric value"),
+    (r"\[missing inputs:", "explicit missing inputs"),
+    (r"\bmissing inputs:", "missing inputs declaration"),
+    (r"cannot be verified", "verification failure"),
+    (r"unable to extract", "extraction failure"),
+    (r"data not available", "data unavailability"),
+    (r"no usable .* found", "no usable data"),
+    (r"placeholder", "placeholder data"),
+    (r"non-extractable", "non-extractable data"),
+]
+
+
+def validate_finding_quality(
+    claim_text: str,
+    confidence: str,
+) -> tuple[bool, str | None, str | None]:
+    """Quality gate on (claim_text, confidence) before persistence.
+
+    Returns (is_valid, suggested_confidence, reason).
+    - (False, None, reason): reject; agent should not persist
+    - (True, "LOW_CONFIDENCE", reason): persist but downgrade
+    - (True, None, None): accept as-is
+    """
+    if not claim_text or len(claim_text.strip()) < 20:
+        return False, None, "Claim text too short (<20 chars)"
+
+    detected: list[str] = []
+    for pattern, label in _ABSURD_FINDING_PATTERNS:
+        if re.search(pattern, claim_text, re.IGNORECASE):
+            detected.append(label)
+
+    if not detected:
+        return True, None, None
+
+    if confidence in ("KNOWN", "REASONED"):
+        if len(detected) >= 2:
+            return False, None, (
+                f"Finding rejected: claim contains {', '.join(detected)} "
+                f"but is marked {confidence}. Findings on missing/zero data "
+                "must be LOW_CONFIDENCE or not persisted at all."
+            )
+        return True, "LOW_CONFIDENCE", (
+            f"Confidence downgraded to LOW_CONFIDENCE because claim "
+            f"contains {detected[0]}."
+        )
+
+    return True, None, None
+
+
 def add_finding_to_mission(
     claim_text: str,
     confidence: str,
@@ -309,6 +364,26 @@ def add_finding_to_mission(
     """
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
+
+    # Bug 1 (chantier 2.6): quality gate at write time. Reject absurd findings
+    # outright; downgrade soft cases to LOW_CONFIDENCE before persist.
+    is_valid, suggested_conf, quality_reason = validate_finding_quality(
+        claim_text, confidence
+    )
+    if not is_valid:
+        return {
+            "status": "rejected",
+            "reason": quality_reason,
+            "guidance": (
+                "If you don't have data to make a claim, don't fabricate one. "
+                "Either skip this hypothesis, or write a finding explicitly "
+                "stating what data is missing using LOW_CONFIDENCE. Do not "
+                "pad with zero values."
+            ),
+        }
+    if suggested_conf and suggested_conf != confidence:
+        confidence = suggested_conf
+        claim_text = f"{claim_text} [confidence auto-adjusted: {quality_reason}]"
 
     if hypothesis_id is not None:
         hypothesis_id = normalize_hypothesis_id(hypothesis_id)

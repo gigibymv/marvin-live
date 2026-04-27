@@ -77,14 +77,27 @@ def quality_of_earnings(financials_json: Any, state: InjectedStateArg = None) ->
         "missing_inputs": missing_inputs,
     }
     if state is not None:
-        missing_note = f" [missing inputs: {', '.join(missing_inputs)}]" if missing_inputs else ""
-        add_finding_to_mission(
-            claim_text=f"Adjusted EBITDA is {adjusted_ebitda:.2f} (revenue {revenue}, cogs {cogs}, opex {opex}, add-backs {add_backs}){missing_note}",
-            confidence="REASONED",
-            agent_id="calculus",
-            workstream_id="W2",
-            state=state,
-        )
+        if missing_inputs:
+            # Bug 1 (chantier 2.6): missing inputs → honest LOW_CONFIDENCE,
+            # not fabricated zeros marked REASONED.
+            add_finding_to_mission(
+                claim_text=(
+                    f"Adjusted EBITDA cannot be computed from primary data; "
+                    f"missing inputs: {', '.join(missing_inputs)}."
+                ),
+                confidence="LOW_CONFIDENCE",
+                agent_id="calculus",
+                workstream_id="W2",
+                state=state,
+            )
+        else:
+            add_finding_to_mission(
+                claim_text=f"Adjusted EBITDA is {adjusted_ebitda:.2f} (revenue {revenue}, cogs {cogs}, opex {opex}, add-backs {add_backs})",
+                confidence="REASONED",
+                agent_id="calculus",
+                workstream_id="W2",
+                state=state,
+            )
     return result
 
 
@@ -146,13 +159,29 @@ def compute_cac_ltv(sales_data_json: Any, state: InjectedStateArg = None) -> dic
         "ltv_cac_ratio": ratio,
     }
     if state is not None:
-        add_finding_to_mission(
-            claim_text=f"LTV/CAC ratio is {ratio:.2f}x (CAC ${cac:.0f}, LTV ${ltv:.0f})",
-            confidence="REASONED",
-            agent_id="calculus",
-            workstream_id="W2",
-            state=state,
-        )
+        if not new_customers or not monthly_churn:
+            # Bug 1 (chantier 2.6): zero denominators → honest LOW_CONFIDENCE.
+            missing = []
+            if not new_customers: missing.append("new_customers")
+            if not monthly_churn: missing.append("monthly_churn")
+            add_finding_to_mission(
+                claim_text=(
+                    f"LTV/CAC cannot be computed from primary data; "
+                    f"missing inputs: {', '.join(missing)}."
+                ),
+                confidence="LOW_CONFIDENCE",
+                agent_id="calculus",
+                workstream_id="W2",
+                state=state,
+            )
+        else:
+            add_finding_to_mission(
+                claim_text=f"LTV/CAC ratio is {ratio:.2f}x (CAC ${cac:.0f}, LTV ${ltv:.0f})",
+                confidence="REASONED",
+                agent_id="calculus",
+                workstream_id="W2",
+                state=state,
+            )
     return result
 
 

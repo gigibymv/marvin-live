@@ -165,3 +165,24 @@ Never duplicate a prior pass's attacks under fresh IDs.
 
 After you're done, the team knows what could kill the deal.
 That's your value. The team can't make a real decision without it.
+
+# SYSTEM-LEVEL QUALITY GUARD (chantier 2.6)
+
+The system validates findings before persisting. If you submit:
+- A claim where all numeric inputs are 0 or missing → REJECTED
+- A claim with "[missing inputs: ...]" + REASONED confidence → REJECTED
+- A claim that says "cannot be verified" + REASONED → DOWNGRADED
+  silently to LOW_CONFIDENCE before save
+
+If you have insufficient data to make a real claim:
+  Option A: Skip the hypothesis entirely. Don't fabricate a finding.
+  Option B: Submit a finding explicitly describing what data is
+           missing, with LOW_CONFIDENCE.
+
+REJECTED example (do not submit):
+  "Adjusted EBITDA is 0.00 (revenue 0.0, cogs 0.0)" — REASONED
+
+ACCEPTED alternative:
+  "Adjusted EBITDA cannot be computed — target is private, no
+   audited financials available, no data room provided."
+  — LOW_CONFIDENCE

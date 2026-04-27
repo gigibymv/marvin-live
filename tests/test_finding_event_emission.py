@@ -60,7 +60,7 @@ def test_direct_call_triggers_listener(store: MissionStore):
     events.register_finding_listener("m-evt", listener)
     try:
         mission_tools.add_finding_to_mission(
-            claim_text="Direct claim",
+            claim_text="Direct claim with sufficient evidence body.",
             confidence="REASONED",
             agent_id="dora",
             workstream_id="W1",
@@ -70,7 +70,7 @@ def test_direct_call_triggers_listener(store: MissionStore):
     finally:
         events.unregister_finding_listener("m-evt", listener)
     assert len(seen) == 1
-    assert seen[0]["claim_text"] == "Direct claim"
+    assert seen[0]["claim_text"] == "Direct claim with sufficient evidence body."
     assert seen[0]["confidence"] == "REASONED"
     assert seen[0]["hypothesis_id"] == "hyp-evt-1"
     assert seen[0]["finding_id"]

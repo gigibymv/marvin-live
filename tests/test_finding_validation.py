@@ -57,7 +57,7 @@ def _state() -> dict:
 
 def test_valid_hypothesis_and_workstream_persists(store: MissionStore):
     result = mission_tools.add_finding_to_mission(
-        claim_text="Real claim",
+        claim_text="Real claim with sustained sourced evidence.",
         confidence="REASONED",
         agent_id="dora",
         workstream_id="W1",
@@ -90,7 +90,7 @@ def test_milestone_shaped_workstream_id_is_normalized(store: MissionStore):
 def test_invalid_hypothesis_id_rejected_before_insert(store: MissionStore):
     with pytest.raises(ValueError, match="hypothesis_id 'hyp-fake' is not a valid"):
         mission_tools.add_finding_to_mission(
-            claim_text="Bad claim",
+            claim_text="Bad claim with realistic length for validator.",
             confidence="REASONED",
             agent_id="dora",
             workstream_id="W1",
@@ -104,7 +104,7 @@ def test_invalid_hypothesis_id_rejected_before_insert(store: MissionStore):
 def test_invalid_workstream_id_rejected_before_insert(store: MissionStore):
     with pytest.raises(ValueError, match="workstream_id 'W99' is not a valid"):
         mission_tools.add_finding_to_mission(
-            claim_text="Bad claim",
+            claim_text="Bad claim with realistic length for validator.",
             confidence="REASONED",
             agent_id="dora",
             workstream_id="W99",
@@ -116,7 +116,7 @@ def test_invalid_workstream_id_rejected_before_insert(store: MissionStore):
 
 def test_no_hypothesis_id_is_allowed(store: MissionStore):
     result = mission_tools.add_finding_to_mission(
-        claim_text="Standalone claim",
+        claim_text="Standalone claim with sustained content.",
         confidence="REASONED",
         agent_id="dora",
         workstream_id="W1",
@@ -236,7 +236,7 @@ def test_w3_workstream_maps_to_merlin_and_hits_zero_cap(store: MissionStore):
     """Merlin synthesizes, never persists findings — its cap is 0. A W3 save
     attempt must resolve agent_id to 'merlin' and hit the cap immediately."""
     result = mission_tools.add_finding_to_mission(
-        claim_text="W3 synthesis claim",
+        claim_text="W3 synthesis claim with sufficient body length.",
         confidence="REASONED",
         agent_id=None,
         workstream_id="W3",
@@ -264,7 +264,7 @@ def test_finding_cap_blocks_overage_per_agent(store: MissionStore):
     ) == cap
 
     overflow = mission_tools.add_finding_to_mission(
-        claim_text="One attack too many",
+        claim_text="One attack too many — overflow check beyond cap.",
         confidence="REASONED",
         agent_id="adversus",
         workstream_id="W4",
