@@ -213,6 +213,7 @@ export default function MissionControl(props) {
   var gateModal = props.gateModal || null;
   var onGateClose = props.onGateClose || function () { };
   var backendState = props.backendState || "local";
+  var pendingGateBanner = props.pendingGateBanner || null;
   var feedRef = useRef(null);
   var chatRef = useRef(null);
 
@@ -297,9 +298,28 @@ export default function MissionControl(props) {
             React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Deliverables")
           ),
           (props.deliverables || DELIVERABLES).map(function (d) {
-            return React.createElement("div", { key: d.id, className: "dl", style: { opacity: d.status === "pending" ? 0.4 : 1 } },
-              React.createElement("span", { style: { fontSize: "11.5px", fontWeight: d.status === "ready" ? 500 : 400 } }, d.label),
-              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: d.status === "ready" ? "var(--green)" : "var(--muted)" } }, d.status === "ready" ? "\u2193" : "\u2014")
+            var isReady = d.status === "ready";
+            var canOpen = isReady && d.href;
+            return React.createElement(canOpen ? "a" : "div", {
+              key: d.id,
+              className: "dl",
+              href: canOpen ? d.href : undefined,
+              target: canOpen ? "_blank" : undefined,
+              rel: canOpen ? "noopener noreferrer" : undefined,
+              style: {
+                opacity: isReady ? 1 : 0.4,
+                textDecoration: "none",
+                color: "inherit",
+                cursor: canOpen ? "pointer" : "default",
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                borderBottom: "1px solid var(--rule)",
+              }
+            },
+              React.createElement("span", { style: { fontSize: "11.5px", fontWeight: isReady ? 500 : 400 } }, d.label),
+              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: isReady ? "var(--green)" : "var(--muted)" } }, canOpen ? "Open \u2193" : isReady ? "\u2193" : "\u2014")
             );
           })
         )
@@ -321,6 +341,31 @@ export default function MissionControl(props) {
             })
           )
         ),
+        pendingGateBanner ? React.createElement("div", {
+          style: {
+            padding: "10px 24px",
+            background: "rgba(139,98,0,.10)",
+            borderBottom: "1px solid rgba(139,98,0,.3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            flexShrink: 0,
+          }
+        },
+          React.createElement("span", { style: { fontSize: "12px", color: "var(--ink2)" } },
+            "A gate is pending review. Mission is paused until you decide."
+          ),
+          React.createElement("button", {
+            onClick: pendingGateBanner.onResume,
+            style: {
+              fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600,
+              letterSpacing: ".12em", textTransform: "uppercase",
+              padding: "6px 12px", background: "var(--ink)", color: "var(--paper)",
+              border: "none", cursor: "pointer", borderRadius: "4px",
+            }
+          }, "Review now")
+        ) : null,
         React.createElement(Feed, { feedRef: feedRef, findings: props.findings })
       ),
 
