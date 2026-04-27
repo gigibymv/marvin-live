@@ -76,6 +76,77 @@ def test_direct_call_triggers_listener(store: MissionStore):
     assert seen[0]["finding_id"]
 
 
+def test_duplicate_call_returns_existing_finding_without_second_event(store: MissionStore):
+    seen: list[dict] = []
+    listener = seen.append
+    events.register_finding_listener("m-evt", listener)
+    try:
+        first = mission_tools.add_finding_to_mission(
+            claim_text="Pricing power is durable.",
+            confidence="REASONED",
+            agent_id="dora",
+            workstream_id="W1",
+            hypothesis_id="hyp-evt-1",
+            state=_state(),
+        )
+        second = mission_tools.add_finding_to_mission(
+            claim_text="pricing   power is durable",
+            confidence="LOW_CONFIDENCE",
+            agent_id="dora",
+            workstream_id="W1",
+            hypothesis_id="hyp-evt-1",
+            state=_state(),
+        )
+    finally:
+        events.unregister_finding_listener("m-evt", listener)
+
+    assert len(seen) == 1
+    assert len(store.list_findings("m-evt")) == 1
+    assert second["status"] == "duplicate"
+    assert second["finding_id"] == first["finding_id"]
+
+
+def test_duplicate_claims_are_scoped_to_mission(store: MissionStore):
+    store.save_mission(
+        Mission(
+            id="m-evt-other",
+            client="C",
+            target="T2",
+            ic_question="Q?",
+            status="active",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    _seed_standard_workplan("m-evt-other", store)
+    seen_evt: list[dict] = []
+    seen_other: list[dict] = []
+    listener_evt = seen_evt.append
+    listener_other = seen_other.append
+    events.register_finding_listener("m-evt", listener_evt)
+    events.register_finding_listener("m-evt-other", listener_other)
+    try:
+        mission_tools.add_finding_to_mission(
+            claim_text="Same claim is valid in each mission",
+            confidence="REASONED",
+            workstream_id="W1",
+            state={"mission_id": "m-evt"},
+        )
+        mission_tools.add_finding_to_mission(
+            claim_text="Same claim is valid in each mission",
+            confidence="REASONED",
+            workstream_id="W1",
+            state={"mission_id": "m-evt-other"},
+        )
+    finally:
+        events.unregister_finding_listener("m-evt", listener_evt)
+        events.unregister_finding_listener("m-evt-other", listener_other)
+
+    assert len(seen_evt) == 1
+    assert len(seen_other) == 1
+    assert len(store.list_findings("m-evt")) == 1
+    assert len(store.list_findings("m-evt-other")) == 1
+
+
 def test_wrapper_tool_triggers_listener(store: MissionStore):
     """moat_analysis calls add_finding_to_mission internally as Python.
     The listener must still fire — that is the whole point of moving event
@@ -96,9 +167,32 @@ def test_wrapper_tool_triggers_listener(store: MissionStore):
     assert seen[0]["hypothesis_id"] == "hyp-evt-1"
 
 
+def test_duplicate_wrapper_tool_call_does_not_emit_second_event(store: MissionStore):
+    seen: list[dict] = []
+    listener = seen.append
+    events.register_finding_listener("m-evt", listener)
+    try:
+        dora_tools.moat_analysis(
+            company_name="Acme",
+            hypothesis_id="hyp-evt-1",
+            state=_state(),
+        )
+        dora_tools.moat_analysis(
+            company_name="Acme",
+            hypothesis_id="hyp-evt-1",
+            state=_state(),
+        )
+    finally:
+        events.unregister_finding_listener("m-evt", listener)
+
+    assert len(seen) == 1
+    assert len(store.list_findings("m-evt")) == 1
+
+
 def test_listener_scoped_to_mission_id(store: MissionStore):
     seen_other: list[dict] = []
-    events.register_finding_listener("m-different", seen_other.append)
+    listener = seen_other.append
+    events.register_finding_listener("m-different", listener)
     try:
         mission_tools.add_finding_to_mission(
             claim_text="Should not reach m-different listener",
@@ -107,7 +201,7 @@ def test_listener_scoped_to_mission_id(store: MissionStore):
             state=_state(),
         )
     finally:
-        events.unregister_finding_listener("m-different", seen_other.append)
+        events.unregister_finding_listener("m-different", listener)
     assert seen_other == []
 
 

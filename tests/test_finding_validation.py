@@ -69,6 +69,22 @@ def test_valid_hypothesis_and_workstream_persists(store: MissionStore):
     assert len(findings) == 1
     assert findings[0].hypothesis_id == "hyp-real-1"
     assert findings[0].workstream_id == "W1"
+    assert result["status"] == "saved"
+
+
+def test_milestone_shaped_workstream_id_is_normalized(store: MissionStore):
+    result = mission_tools.add_finding_to_mission(
+        claim_text="Milestone-shaped workstream ref is recoverable",
+        confidence="REASONED",
+        agent_id="dora",
+        workstream_id="W1.1",
+        hypothesis_id="hyp-real-1",
+        state=_state(),
+    )
+
+    findings = store.list_findings("m-fv")
+    assert result["status"] == "saved"
+    assert findings[0].workstream_id == "W1"
 
 
 def test_invalid_hypothesis_id_rejected_before_insert(store: MissionStore):
@@ -111,3 +127,90 @@ def test_no_hypothesis_id_is_allowed(store: MissionStore):
     findings = store.list_findings("m-fv")
     assert len(findings) == 1
     assert findings[0].hypothesis_id is None
+
+
+def test_duplicate_finding_returns_existing_id_without_second_insert(store: MissionStore):
+    first = mission_tools.add_finding_to_mission(
+        claim_text="Retention is durable.",
+        confidence="REASONED",
+        agent_id="dora",
+        workstream_id="W1",
+        hypothesis_id="hyp-real-1",
+        state=_state(),
+    )
+    second = mission_tools.add_finding_to_mission(
+        claim_text="retention   is durable",
+        confidence="LOW_CONFIDENCE",
+        agent_id="dora",
+        workstream_id="W1",
+        hypothesis_id="hyp-real-1",
+        state=_state(),
+    )
+
+    findings = store.list_findings("m-fv")
+    assert len(findings) == 1
+    assert second["status"] == "duplicate"
+    assert second["finding_id"] == first["finding_id"]
+
+
+def test_duplicate_finding_is_suppressed_across_hypotheses_in_same_workstream(store: MissionStore):
+    first = mission_tools.add_finding_to_mission(
+        claim_text="Premium pricing rests on regulated workflow lock-in",
+        confidence="REASONED",
+        agent_id="dora",
+        workstream_id="W1",
+        hypothesis_id="hyp-real-1",
+        state=_state(),
+    )
+    second = mission_tools.add_finding_to_mission(
+        claim_text="Premium pricing rests on regulated workflow lock-in",
+        confidence="REASONED",
+        agent_id="dora",
+        workstream_id="W1",
+        hypothesis_id=None,
+        state=_state(),
+    )
+
+    assert len(store.list_findings("m-fv")) == 1
+    assert second["status"] == "duplicate"
+    assert second["finding_id"] == first["finding_id"]
+
+
+def test_duplicate_finding_is_suppressed_without_workstream(store: MissionStore):
+    first = mission_tools.add_finding_to_mission(
+        claim_text="Source evidence remains incomplete!",
+        confidence="LOW_CONFIDENCE",
+        agent_id="dora",
+        workstream_id=None,
+        state=_state(),
+    )
+    second = mission_tools.add_finding_to_mission(
+        claim_text="source evidence remains incomplete",
+        confidence="LOW_CONFIDENCE",
+        agent_id="dora",
+        workstream_id=None,
+        state=_state(),
+    )
+
+    assert len(store.list_findings("m-fv")) == 1
+    assert second["status"] == "duplicate"
+    assert second["finding_id"] == first["finding_id"]
+
+
+def test_same_claim_can_exist_in_different_workstreams(store: MissionStore):
+    mission_tools.add_finding_to_mission(
+        claim_text="Evidence quality is mixed",
+        confidence="REASONED",
+        agent_id="dora",
+        workstream_id="W1",
+        state=_state(),
+    )
+    mission_tools.add_finding_to_mission(
+        claim_text="Evidence quality is mixed",
+        confidence="REASONED",
+        agent_id="calculus",
+        workstream_id="W2",
+        state=_state(),
+    )
+
+    assert len(store.list_findings("m-fv")) == 2

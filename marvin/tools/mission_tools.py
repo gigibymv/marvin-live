@@ -192,12 +192,49 @@ def mark_milestone_delivered(
     """Mark a milestone as delivered with a result summary."""
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
+    milestone_id = _normalize_milestone_id(milestone_id)
     delivered = store.mark_milestone_delivered(milestone_id, result_summary, mission_id=mission_id)
     return {
         "milestone_id": milestone_id,
         "status": "delivered",
         "label": delivered.label,
     }
+
+
+def _normalize_finding_claim_text(claim_text: str) -> str:
+    """Normalize only formatting noise; do not guess semantic equivalence."""
+    return re.sub(r"\s+", " ", claim_text.casefold()).strip().rstrip(".!?;:")
+
+
+def _find_duplicate_finding(
+    findings: list[Finding],
+    *,
+    claim_text: str,
+    workstream_id: str | None,
+) -> Finding | None:
+    # One factual claim should appear once per workstream. Hypothesis IDs are
+    # deliberately excluded so agents do not inflate gates by filing the same
+    # claim under multiple plausible hypotheses.
+    normalized_claim = _normalize_finding_claim_text(claim_text)
+    for finding in findings:
+        if finding.workstream_id != workstream_id:
+            continue
+        if _normalize_finding_claim_text(finding.claim_text) == normalized_claim:
+            return finding
+    return None
+
+
+def _normalize_workstream_id(raw_workstream_id: str) -> str:
+    """Accept milestone-shaped workstream refs like W1.1 as recoverable W1."""
+    return raw_workstream_id.split(".", 1)[0].strip()
+
+
+def _normalize_milestone_id(raw_milestone_id: str) -> str:
+    """Extract a real seeded milestone id from recoverable LLM label noise."""
+    candidate = raw_milestone_id.strip()
+    if match := re.search(r"\bW\d+\.\d+\b", candidate):
+        return match.group(0)
+    return candidate
 
 
 def add_finding_to_mission(
@@ -230,6 +267,7 @@ def add_finding_to_mission(
             )
 
     if workstream_id is not None:
+        workstream_id = _normalize_workstream_id(workstream_id)
         allowed_ws = {w.id for w in store.list_workstreams(mission_id)}
         if workstream_id not in allowed_ws:
             raise ValueError(
@@ -237,6 +275,19 @@ def add_finding_to_mission(
                 f"mission {mission_id}. Allowed: {sorted(allowed_ws)}. "
                 "Pass one of these IDs verbatim, or omit workstream_id."
             )
+
+    duplicate = _find_duplicate_finding(
+        store.list_findings(mission_id),
+        claim_text=claim_text,
+        workstream_id=workstream_id,
+    )
+    if duplicate is not None:
+        return {
+            "finding_id": duplicate.id,
+            "claim": duplicate.claim_text,
+            "confidence": duplicate.confidence,
+            "status": "duplicate",
+        }
 
     finding = Finding(
         id=short_id("f"),
@@ -265,6 +316,7 @@ def add_finding_to_mission(
         "finding_id": finding.id,
         "claim": claim_text,
         "confidence": confidence,
+        "status": "saved",
     }
 
 

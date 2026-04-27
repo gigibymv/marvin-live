@@ -66,6 +66,60 @@ describe("mission control view", () => {
     expect(screen.getByText("No open checkpoint")).toBeInTheDocument();
   });
 
+  it("does not mark the brief tab complete before framing exists", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        briefStatus: "now",
+      }),
+    );
+
+    expect(screen.getByText("Brief")).toBeInTheDocument();
+    expect(screen.queryByText("✓ Brief")).not.toBeInTheDocument();
+  });
+
+  it("does not expose milestone counters in the visible agent roster", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        agents: [
+          {
+            id: "dora",
+            name: "Dora",
+            role: "Market evidence",
+            status: "idle",
+            milestonesDelivered: 1,
+            milestonesTotal: 3,
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getByText("Dora")).toBeInTheDocument();
+    expect(screen.queryByText("1/3")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("milestone-counter-dora")).not.toBeInTheDocument();
+  });
+
   it("does not render a pending deliverable as openable", () => {
     render(
       React.createElement(MissionControlView, {
@@ -138,5 +192,55 @@ describe("mission control view", () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("heading", { name: "Review claims" })).toBeInTheDocument();
     expect(within(dialog).getByText(/Gate ID: gate-1/)).toBeInTheDocument();
+  });
+
+  it("renders gate banners with review context", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        pendingGateBanner: {
+          onResume: vi.fn(),
+          title: "Hypothesis confirmation",
+          summary: "Three hypotheses are ready for review.",
+        },
+      }),
+    );
+
+    expect(screen.getByText("Hypothesis confirmation")).toBeInTheDocument();
+    expect(screen.getByText(/Three hypotheses are ready for review/)).toBeInTheDocument();
+    expect(screen.queryByText("A gate is pending review. Mission is paused until you decide.")).not.toBeInTheDocument();
+  });
+
+  it("renders operational activity separately from completed findings", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        activity: [{ id: "a1", ag: "DORA", text: "Dora started" }],
+        findings: [{ id: "f1", ag: "DORA", text: "Market is growing", ts: "" }],
+      }),
+    );
+
+    expect(screen.getByText("Dora started")).toBeInTheDocument();
+    expect(screen.getByText("Market is growing")).toBeInTheDocument();
   });
 });

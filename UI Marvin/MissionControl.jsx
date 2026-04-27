@@ -98,6 +98,8 @@ function Feed({ feedRef, ...props }) {
   var _s = useState(null);
   var expanded = _s[0];
   var setExpanded = _s[1];
+  var activity = props.activity || LIVE;
+  var completed = props.findings || DONE;
 
   // Fixed column widths for the completed grid
   var COL_AG = "64px";
@@ -120,14 +122,14 @@ function Feed({ feedRef, ...props }) {
         React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--amber)" } }, "In progress"),
         React.createElement("span", { style: { color: "var(--amber)", animation: "pulse 1.4s ease-in-out infinite", fontSize: "8px" } }, "\u25cf")
       ),
-      (props.findings || LIVE).map(function (e, i) {
+      activity.map(function (e, i) {
         return React.createElement("div", {
           key: e.id, style: {
             display: "grid", gridTemplateColumns: COL_AG + " 1fr",
             gap: "0 10px", alignItems: "baseline",
-            paddingBottom: i < (props.findings || LIVE).length - 1 ? "8px" : "0",
-            marginBottom: i < (props.findings || LIVE).length - 1 ? "8px" : "0",
-            borderBottom: i < (props.findings || LIVE).length - 1 ? "1px solid rgba(139,98,0,.12)" : "none"
+            paddingBottom: i < activity.length - 1 ? "8px" : "0",
+            marginBottom: i < activity.length - 1 ? "8px" : "0",
+            borderBottom: i < activity.length - 1 ? "1px solid rgba(139,98,0,.12)" : "none"
           }
         },
           React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--amber)", alignSelf: "start", paddingTop: "2px" } }, e.ag),
@@ -147,7 +149,7 @@ function Feed({ feedRef, ...props }) {
       React.createElement("div", { style: { padding: "9px 0 8px", borderBottom: "1px solid var(--ink)" } },
         React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Completed")
       ),
-      (props.findings || DONE).map(function (e) {
+      completed.map(function (e) {
         var open = expanded === e.id;
         return React.createElement("div", { key: e.id, style: { borderBottom: "1px solid var(--rule)" } },
           // Main row — strict grid
@@ -194,6 +196,9 @@ export default function MissionControl(props) {
   var onGateClose = props.onGateClose || function () { };
   var backendState = props.backendState || "local";
   var pendingGateBanner = props.pendingGateBanner || null;
+  var briefStatus = props.briefStatus || "pending";
+  var briefIsComplete = briefStatus === "completed";
+  var briefIsActive = briefStatus === "now";
   var workstreamTabs = props.workstreamContent && props.workstreamContent.length
     ? props.workstreamContent.map(function (w) {
       return { id: "ws" + String(w.id || "").replace(/^W/i, ""), label: w.label || w.id };
@@ -260,19 +265,12 @@ export default function MissionControl(props) {
           ),
           (props.agents || AGENTS).map(function (a) {
             var agentState = a.state || (a.status === "active" ? "running" : a.status === "done" ? "done" : "idle");
-            var msTotal = a.milestonesTotal || 0;
-            var msDone = a.milestonesDelivered || 0;
-            var msColor = msTotal > 0 && msDone === msTotal ? "var(--green)" : "var(--muted)";
             return React.createElement("div", { key: a.id, className: "ag", style: { opacity: agentState === "idle" ? 0.35 : 1 } },
               React.createElement("div", { style: { color: agentState === "idle" ? "var(--muted)" : "var(--ink)", flexShrink: 0 } }, React.createElement(Icon, { id: a.id })),
               React.createElement("div", { style: { flex: 1, minWidth: 0 } },
                 React.createElement("div", { style: { fontSize: "12px", fontWeight: agentState === "running" ? 500 : 400 } }, a.name),
                 React.createElement("div", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, a.role)
               ),
-              msTotal > 0 ? React.createElement("span", {
-                "data-testid": "milestone-counter-" + a.id,
-                style: { fontFamily: "var(--m)", fontSize: "9px", letterSpacing: ".06em", color: msColor, marginRight: "6px", fontVariantNumeric: "tabular-nums" }
-              }, msDone + "/" + msTotal) : null,
               React.createElement(StateTag, { state: agentState })
             );
           })
@@ -321,7 +319,10 @@ export default function MissionControl(props) {
           ),
           // Tabs
           React.createElement("div", { style: { display: "flex", overflowX: "auto", scrollbarWidth: "none" } },
-            React.createElement("span", { className: "tab done", style: { cursor: "default" } }, "\u2713 Brief"),
+            React.createElement("span", {
+              className: "tab" + (briefIsComplete ? " done" : briefIsActive ? " on" : ""),
+              style: { cursor: "default" }
+            }, (briefIsComplete ? "\u2713 " : "") + "Brief"),
             workstreamTabs.map(function (w) {
               return React.createElement("button", { key: w.id, className: "tab" + (selectedTab === w.id ? " on" : ""), onClick: function () { onSelectTab(w.id); } }, w.label);
             })
@@ -339,8 +340,9 @@ export default function MissionControl(props) {
             flexShrink: 0,
           }
         },
-          React.createElement("span", { style: { fontSize: "12px", color: "var(--ink2)" } },
-            "A gate is pending review. Mission is paused until you decide."
+          React.createElement("span", { style: { fontSize: "12px", color: "var(--ink2)", lineHeight: 1.45 } },
+            React.createElement("strong", { style: { fontWeight: 600 } }, pendingGateBanner.title || "Validation required"),
+            pendingGateBanner.summary ? " · " + pendingGateBanner.summary : " · Mission is paused until you decide."
           ),
           React.createElement("button", {
             onClick: pendingGateBanner.onResume,
@@ -352,7 +354,7 @@ export default function MissionControl(props) {
             }
           }, "Review now")
         ) : null,
-        React.createElement(Feed, { feedRef: feedRef, findings: props.findings, nextCheckpointLabel: props.nextCheckpointLabel })
+        React.createElement(Feed, { feedRef: feedRef, activity: props.activity, findings: props.findings, nextCheckpointLabel: props.nextCheckpointLabel })
       ),
 
       // RIGHT RAIL

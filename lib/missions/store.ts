@@ -86,7 +86,6 @@ export const useMissionUiStore = create<MissionUiStore>()(
         selectedPanel: state.selectedPanel,
         selectedWorkspaceTabByMissionId: state.selectedWorkspaceTabByMissionId,
         chatDrafts: state.chatDrafts,
-        runStateByMissionId: state.runStateByMissionId,
       }),
     },
   ),

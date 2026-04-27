@@ -112,6 +112,20 @@ def test_mark_milestone_delivered_updates_store(store: MissionStore, state: dict
     assert any(m.id == "W1.1" and m.status == "delivered" for m in store.list_milestones("m-test"))
 
 
+def test_mark_milestone_delivered_recovers_id_from_label_noise(
+    store: MissionStore,
+    state: dict[str, str],
+):
+    result = mission_tools.mark_milestone_delivered(
+        "W1 Market & Competitive Analysis (W1.1, W1.2, W1.3)",
+        "Delivered",
+        state,
+    )
+
+    assert result["milestone_id"] == "W1.1"
+    assert any(m.id == "W1.1" and m.status == "delivered" for m in store.list_milestones("m-test"))
+
+
 def test_add_finding_to_mission_requires_state():
     with pytest.raises(KeyError, match="mission_id not in state"):
         mission_tools.add_finding_to_mission("Claim", "REASONED", "dora", state=None)

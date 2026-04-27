@@ -116,6 +116,7 @@ interface MissionControlViewProps {
   agents: { id: string; name: string; role: string; status: string; milestonesTotal?: number; milestonesDelivered?: number }[];
   checkpoints: { id: string; label: string; status: string }[];
   hypotheses: { id: string; text: string; status: string }[];
+  activity?: Array<{ id: string; ag?: string; text?: string; ts?: string; claim_text?: string; confidence?: string }>;
   findings: Array<{ id: string; agent_id?: string | null; claim_text?: string; confidence?: string | null; ag?: string; text?: string; ts?: string; workstream_id?: string }>;
   deliverables: { id: string; label: string; status: string; href?: string }[];
   activeAgent: string | null;
@@ -125,7 +126,8 @@ interface MissionControlViewProps {
     findings: Array<{ id: string; claim_text: string; confidence: string | null; agent_id: string | null }>;
     milestones: Array<{ id: string; label: string; status: string }>;
   }[];
-  pendingGateBanner?: { onResume: () => void } | null;
+  pendingGateBanner?: { onResume: () => void; title?: string; summary?: string } | null;
+  briefStatus?: "pending" | "now" | "completed";
   nextCheckpointLabel?: string | null;
 }
 
@@ -166,6 +168,7 @@ export default function MissionControl({
   const [liveFindings, setLiveFindings] = useState<Array<{ id: string; claim_text: string; confidence?: string }>>([]);
   const [milestoneStatusOverrides, setMilestoneStatusOverrides] = useState<Record<string, string>>({});
   const [gatePayloads, setGatePayloads] = useState<Record<string, MissionGateModalState>>({});
+  const [pausedForGate, setPausedForGate] = useState(false);
 
   const chatDraft = useMissionUiStore((state) => selectChatDraft(state, missionId));
   const selectedTab = useMissionUiStore((state) => selectWorkspaceTab(state, missionId));
@@ -266,20 +269,20 @@ export default function MissionControl({
             );
             break;
           case "tool_call":
-            setMessages((current) =>
+            setLiveFindings((current) =>
               current.concat({
                 id: makeMessageId(missionId, "tool"),
-                from: "m",
-                text: humanizeToolCall(event.agent, event.text),
+                claim_text: humanizeToolCall(event.agent, event.text),
+                confidence: "step",
               }),
             );
             break;
           case "tool_result":
-            setMessages((current) =>
+            setLiveFindings((current) =>
               current.concat({
                 id: makeMessageId(missionId, "result"),
-                from: "m",
-                text: humanizeToolResult(event.text),
+                claim_text: humanizeToolResult(event.text),
+                confidence: "done",
               }),
             );
             break;
@@ -308,6 +311,8 @@ export default function MissionControl({
                 confidence: "gate",
               }),
             );
+            setPausedForGate(true);
+            setRunState(missionId, { isStreaming: false });
             void refreshProgress();
             break;
           }
@@ -317,14 +322,20 @@ export default function MissionControl({
               ...current,
               [(event.agent ?? "unknown").toLowerCase()]: "active",
             }));
+            setLiveFindings((current) =>
+              current.concat({
+                id: makeMessageId(missionId, "agent-active"),
+                claim_text: `${event.agent ?? "Agent"} started`,
+                confidence: "active",
+              }),
+            );
             break;
           case "agent_done":
-            // Agent status tracking for text events
-            setMessages((current) =>
+            setLiveFindings((current) =>
               current.concat({
                 id: makeMessageId(missionId, "done"),
-                from: "m",
-                text: `— ${event.label ?? "Agent"} finished —`,
+                claim_text: `${event.label ?? "Agent"} finished`,
+                confidence: "done",
               }),
             );
             break;
@@ -344,12 +355,31 @@ export default function MissionControl({
                 [event.milestoneId as string]: "delivered",
               }));
             }
+            setLiveFindings((current) =>
+              current.concat({
+                id: makeMessageId(missionId, "milestone"),
+                claim_text: event.label
+                  ? `Milestone complete · ${event.label}`
+                  : `Milestone complete · ${event.milestoneId ?? "mission step"}`,
+                confidence: "done",
+              }),
+            );
             void refreshProgress();
             break;
           case "deliverable_ready":
+            setLiveFindings((current) =>
+              current.concat({
+                id: makeMessageId(missionId, "deliverable"),
+                claim_text: event.label
+                  ? `Deliverable ready · ${event.label}`
+                  : "Deliverable ready",
+                confidence: "ready",
+              }),
+            );
             void refreshProgress();
             break;
           case "run_end":
+            setPausedForGate(false);
             setRunState(missionId, { isStreaming: false });
             break;
           default:
@@ -368,6 +398,10 @@ export default function MissionControl({
       subscription.close();
     };
   }, [eventStream, missionId, setRunState, refreshProgress]);
+
+  useEffect(() => {
+    setRunState(missionId, { isStreaming: false });
+  }, [missionId, setRunState]);
 
   // Handle sending a message
   const handleSendMessage = useCallback(
@@ -414,11 +448,13 @@ export default function MissionControl({
       // For fetch-based stream, call sendMessage
       if (eventStream.kind === "fetch" && eventStream.sendMessage) {
         try {
+          setPausedForGate(false);
           await eventStream.sendMessage(value, false);
         } catch (error) {
           console.error("Failed to send message:", error);
-          setRunState(mission.id, { isStreaming: false });
           setStreamError(error instanceof Error ? error.message : "Failed to send message");
+        } finally {
+          setRunState(mission.id, { isStreaming: false });
         }
       }
     },
@@ -431,6 +467,8 @@ export default function MissionControl({
       if (!mission) return;
 
       setGateModal(null);
+      setPausedForGate(false);
+      setRunState(mission.id, { isStreaming: true });
 
       // Add user action message
       // Agent status tracking for text events
@@ -461,13 +499,17 @@ export default function MissionControl({
             // The graph should resume automatically, but we can also send a message
             // to continue the conversation
           }
+          if (result.status !== "resumed" && result.status !== "resume_pending") {
+            setRunState(mission.id, { isStreaming: false });
+          }
         }
       } catch (error) {
         console.error("Failed to validate gate:", error);
+        setRunState(mission.id, { isStreaming: false });
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [mission, repository.kind, eventStream]
+    [mission, repository.kind, eventStream, setRunState]
   );
 
   // Handle gate rejection
@@ -476,6 +518,8 @@ export default function MissionControl({
       if (!mission) return;
 
       setGateModal(null);
+      setPausedForGate(false);
+      setRunState(mission.id, { isStreaming: true });
 
       // Add user action message
       // Agent status tracking for text events
@@ -490,7 +534,7 @@ export default function MissionControl({
       try {
         // For HTTP repository, call the API
         if (repository.kind === "http") {
-          await apiValidateGate(mission.id, gateId, "REJECTED", notes);
+          const result = await apiValidateGate(mission.id, gateId, "REJECTED", notes);
 
           // Agent status tracking for text events
           setMessages((current) =>
@@ -500,13 +544,17 @@ export default function MissionControl({
               text: `Gate rejected. Awaiting further instructions.`,
             }),
           );
+          if (result.status !== "resumed" && result.status !== "resume_pending") {
+            setRunState(mission.id, { isStreaming: false });
+          }
         }
       } catch (error) {
         console.error("Failed to validate gate:", error);
+        setRunState(mission.id, { isStreaming: false });
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [mission, repository.kind]
+    [mission, repository.kind, setRunState]
   );
 
   // Deferring closes the modal but does NOT call the validate API.
@@ -523,7 +571,8 @@ export default function MissionControl({
       );
     }
     setGateModal(null);
-  }, [gateModal, mission]);
+    setRunState(missionId, { isStreaming: false });
+  }, [gateModal, mission, missionId, setRunState]);
 
   // Re-open a deferred gate from the checkpoint surface.
   const reopenGateFromCheckpoint = useCallback(() => {
@@ -658,10 +707,8 @@ export default function MissionControl({
     agent_id: f.agent_id,
     claim_text: f.claim_text,
   });
-  const allFindings = [
-    ...(progress?.findings ?? []).map(normalizeFinding),
-    ...liveFindings.map(normalizeFinding),
-  ];
+  const allFindings = (progress?.findings ?? []).map(normalizeFinding);
+  const activity = liveFindings.map(normalizeFinding);
   // Tab id "ws1" maps to backend workstream id "W1", etc.
   // Strict filter: only show findings tagged to the selected workstream.
   // Untagged findings are intentionally excluded so per-tab content stays
@@ -691,6 +738,17 @@ export default function MissionControl({
 
   const hasPendingGate = (progress?.gates ?? []).some((g) => g.lifecycle_status === "open" || g.is_open);
   const showDeferredBanner = hasPendingGate && !gateModal;
+  const pendingGate = (progress?.gates ?? []).find((g) => g.lifecycle_status === "open" || g.is_open);
+  const pendingGateModal =
+    pendingGate
+      ? gatePayloads[pendingGate.id] ??
+        mapGateReviewPayloadToModal(pendingGate.review_payload, {
+          id: pendingGate.id,
+          gate_type: pendingGate.gate_type,
+        })
+      : null;
+  const briefStatus: "pending" | "now" | "completed" = progress?.framing ? "completed" : "now";
+  const showTyping = runState.isStreaming && !pausedForGate;
 
 
   // Render with gate modal that includes approve/reject buttons
@@ -705,7 +763,7 @@ export default function MissionControl({
         onSendMessage={handleSendMessage}
         selectedTab={selectedTab}
         onSelectTab={(tab: WorkspaceTab) => setWorkspaceTab(mission.id, tab)}
-        isTyping={runState.isStreaming}
+        isTyping={showTyping}
         defaultTab={DEFAULT_WORKSPACE_TAB}
         gateModal={null} // We handle gate modal separately
         onGateClose={handleGateClose}
@@ -713,11 +771,21 @@ export default function MissionControl({
         agents={agents}
         checkpoints={checkpoints}
         hypotheses={hypotheses}
+        activity={activity}
         findings={findings}
         deliverables={deliverables}
         activeAgent={activeAgent}
         workstreamContent={workstreamContent}
-        pendingGateBanner={showDeferredBanner ? { onResume: reopenGateFromCheckpoint } : null}
+        pendingGateBanner={
+          showDeferredBanner
+            ? {
+                onResume: reopenGateFromCheckpoint,
+                title: pendingGateModal?.title,
+                summary: pendingGateModal?.summary,
+              }
+            : null
+        }
+        briefStatus={briefStatus}
         nextCheckpointLabel={nextCheckpointLabel}
       />
 
