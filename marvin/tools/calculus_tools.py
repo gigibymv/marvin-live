@@ -38,12 +38,31 @@ def quality_of_earnings(financials_json: Any, state: InjectedStateArg = None) ->
     financials_json with 'revenue', 'cogs', 'opex', and 'add_backs'.
     Adjusted EBITDA = revenue - cogs - opex + add_backs. Emits a finding
     when state carries a mission_id.
+
+    LLM-supplied JSON regularly contains explicit nulls or non-numeric
+    placeholders; treat those as missing. Missing fields are surfaced via
+    `missing_inputs` so callers see the data was incomplete rather than
+    silently zeroed.
     """
     payload = coerce_jsonish(financials_json)
-    revenue = payload.get("revenue", 0)
-    cogs = payload.get("cogs", 0)
-    opex = payload.get("opex", 0)
-    add_backs = payload.get("add_backs", 0)
+    fields = ("revenue", "cogs", "opex", "add_backs")
+    missing_inputs: list[str] = []
+    values: dict[str, float] = {}
+    for name in fields:
+        raw = payload.get(name)
+        if raw is None:
+            missing_inputs.append(name)
+            values[name] = 0.0
+            continue
+        try:
+            values[name] = float(raw)
+        except (TypeError, ValueError):
+            missing_inputs.append(name)
+            values[name] = 0.0
+    revenue = values["revenue"]
+    cogs = values["cogs"]
+    opex = values["opex"]
+    add_backs = values["add_backs"]
     gross_profit = revenue - cogs
     reported_ebitda = gross_profit - opex
     adjusted_ebitda = reported_ebitda + add_backs
@@ -55,10 +74,12 @@ def quality_of_earnings(financials_json: Any, state: InjectedStateArg = None) ->
         "gross_profit": gross_profit,
         "reported_ebitda": reported_ebitda,
         "adjusted_ebitda": adjusted_ebitda,
+        "missing_inputs": missing_inputs,
     }
     if state is not None:
+        missing_note = f" [missing inputs: {', '.join(missing_inputs)}]" if missing_inputs else ""
         add_finding_to_mission(
-            claim_text=f"Adjusted EBITDA is {adjusted_ebitda:.2f} (revenue {revenue}, cogs {cogs}, opex {opex}, add-backs {add_backs})",
+            claim_text=f"Adjusted EBITDA is {adjusted_ebitda:.2f} (revenue {revenue}, cogs {cogs}, opex {opex}, add-backs {add_backs}){missing_note}",
             confidence="REASONED",
             agent_id="calculus",
             workstream_id="W2",
@@ -143,8 +164,19 @@ def concentration_analysis(customers_json: Any, state: InjectedStateArg = None) 
     total_revenue, and top_10_concentration (0-1).
     """
     payload = coerce_jsonish(customers_json)
-    customers = payload.get("customers", [])
-    revenues = sorted((c.get("revenue", 0) for c in customers), reverse=True)
+    # LLM-supplied JSON commonly sends `customers: null` rather than omitting
+    # the key; treat null and non-list values as empty.
+    customers = payload.get("customers") or []
+    if not isinstance(customers, list):
+        customers = []
+    revenues = sorted(
+        (
+            float(c.get("revenue") or 0)
+            for c in customers
+            if isinstance(c, dict)
+        ),
+        reverse=True,
+    )
     total_rev = sum(revenues)
     top_customer_share = (revenues[0] / total_rev) if revenues and total_rev > 0 else 0
     top_10_concentration = (sum(revenues[:10]) / total_rev) if total_rev > 0 else 0

@@ -222,7 +222,38 @@ def test_parse_data_room_reads_file(tmp_path: Path):
 def test_quality_of_earnings_computes_adjusted_ebitda(store: MissionStore, state: dict[str, str]):
     result = calculus_tools.quality_of_earnings({"revenue": 1000, "cogs": 300, "opex": 400, "add_backs": 50}, state)
     assert result["adjusted_ebitda"] == 350
+    assert result["missing_inputs"] == []
     assert any("Adjusted EBITDA" in finding.claim_text for finding in store.list_findings("m-test"))
+
+
+def test_quality_of_earnings_tolerates_null_inputs(store: MissionStore, state: dict[str, str]):
+    # LLM-supplied JSON with explicit nulls used to crash the tool with
+    # "TypeError: unsupported operand type(s) for -: 'int' and 'NoneType'".
+    result = calculus_tools.quality_of_earnings(
+        {"revenue": 813_000_000, "cogs": None, "opex": None, "add_backs": None},
+        state,
+    )
+    assert result["revenue"] == 813_000_000
+    assert result["cogs"] == 0
+    assert result["adjusted_ebitda"] == 813_000_000
+    assert set(result["missing_inputs"]) == {"cogs", "opex", "add_backs"}
+    finding_texts = [f.claim_text for f in store.list_findings("m-test")]
+    assert any("missing inputs" in text for text in finding_texts)
+
+
+def test_quality_of_earnings_tolerates_missing_keys_and_strings(store: MissionStore, state: dict[str, str]):
+    # Missing keys and non-numeric strings must be treated like None: zeroed
+    # and surfaced via missing_inputs, not silently coerced.
+    result = calculus_tools.quality_of_earnings(
+        {"revenue": "1000", "cogs": "n/a"},
+        state,
+    )
+    assert result["revenue"] == 1000.0
+    assert result["cogs"] == 0
+    assert result["adjusted_ebitda"] == 1000.0
+    assert "cogs" in result["missing_inputs"]
+    assert "opex" in result["missing_inputs"]
+    assert "add_backs" in result["missing_inputs"]
 
 
 def test_cohort_analysis_computes_average_retention(store: MissionStore, state: dict[str, str]):
@@ -239,6 +270,16 @@ def test_compute_cac_ltv_returns_ratio(store: MissionStore, state: dict[str, str
 def test_concentration_analysis_reports_top_customer_share(store: MissionStore, state: dict[str, str]):
     result = calculus_tools.concentration_analysis({"customers": [{"revenue": 60}, {"revenue": 40}]}, state)
     assert result["top_customer_share"] == pytest.approx(0.6)
+
+
+def test_concentration_analysis_tolerates_null_customers(store: MissionStore, state: dict[str, str]):
+    # LLM-supplied JSON with `customers: null` used to crash with
+    # "TypeError: 'NoneType' object is not iterable".
+    result = calculus_tools.concentration_analysis({"customers": None}, state)
+    assert result["customer_count"] == 0
+    assert result["total_revenue"] == 0
+    assert result["top_customer_share"] == 0
+    assert result["top_10_concentration"] == 0
 
 
 def test_anomaly_detector_flags_mismatches_and_persists_known(store: MissionStore, state: dict[str, str]):
