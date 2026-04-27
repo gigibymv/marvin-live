@@ -54,8 +54,15 @@ logger = logging.getLogger("marvin.server")
 # CONFIGURATION
 # =============================================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_cors_env = os.getenv("CORS_ORIGINS", "").strip()
+CORS_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else [
+    "http://localhost:3000",
+]
+# Allow any localhost/127.0.0.1 port in local dev so the frontend isn't pinned to :3000.
+# Production should set CORS_ORIGINS explicitly and ALLOW_LOCALHOST_ANY_PORT=0.
+ALLOW_LOCALHOST_ANY_PORT = os.getenv("ALLOW_LOCALHOST_ANY_PORT", "1") == "1"
+CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if ALLOW_LOCALHOST_ANY_PORT else None
 API_KEY_HEADER = "X-API-Key"
 API_KEY_ENV = "MARVIN_API_KEY"
 
@@ -675,6 +682,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1026,22 +1034,38 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
 
 @app.get("/api/v1/deliverables/download")
 async def download_deliverable(rel_path: str = Query(...)):
-    """Download deliverable file."""
+    """Download deliverable file.
+
+    Accepts either a path relative to the output directory (e.g.
+    "m-x/W1_report.md") OR an absolute path that already lives inside
+    the allowed output directory. The DB stores absolute file_path
+    values today, so this endpoint normalizes both shapes.
+    """
     output_dir = PROJECT_ROOT / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
-    
-    safe_rel_path = rel_path.lstrip("/").lstrip(".")
-    
-    if not safe_rel_path:
+    output_root = output_dir.resolve()
+
+    if not rel_path:
         raise HTTPException(status_code=400, detail="Invalid path")
-    
+
+    from pathlib import Path as _Path
+
+    candidate = _Path(rel_path)
     try:
-        resolved_path = (output_dir / safe_rel_path).resolve()
+        if candidate.is_absolute():
+            resolved_path = candidate.resolve()
+        else:
+            safe_rel_path = rel_path.lstrip("/").lstrip(".")
+            if not safe_rel_path:
+                raise HTTPException(status_code=400, detail="Invalid path")
+            resolved_path = (output_dir / safe_rel_path).resolve()
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid path")
-    
+
     try:
-        resolved_path.relative_to(output_dir.resolve())
+        resolved_path.relative_to(output_root)
     except ValueError:
         raise HTTPException(status_code=403, detail="Path escapes allowed directory")
     

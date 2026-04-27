@@ -7,7 +7,21 @@ export type MissionStreamEvent =
   | { type: "tool_result"; text: string; agent?: string }
   | { type: "finding_added"; text: string; badge?: string }
   | { type: "milestone_done"; milestoneId?: string; label?: string }
-  | { type: "gate_pending"; gateId: string; title: string; summary?: string }
+  | {
+      type: "gate_pending";
+      gateId: string;
+      gateType?: string;
+      title: string;
+      stage?: string;
+      summary?: string;
+      unlocksOnApprove?: string;
+      unlocksOnReject?: string;
+      hypotheses?: Array<{ id: string; text: string; status: string }>;
+      researchFindings?: Array<{ claim_text: string; confidence: string | null; agent_id: string | null }>;
+      redteamFindings?: Array<{ claim_text: string; confidence: string | null; agent_id: string | null }>;
+      arbiterFlags?: string[];
+      findingsTotal?: number;
+    }
   | { type: "deliverable_ready"; deliverableId?: string; label?: string }
   | { type: "agent_done"; agentId?: string; label?: string }
   | { type: "agent_active"; agent: string }
@@ -81,11 +95,20 @@ export function createEventSourceMissionEventStream(basePath = "/api/v1"): Missi
         milestoneId: payload.milestoneId ?? payload.id,
         label: payload.label,
       }));
-      addListener(source, "gate_pending", onEvent, (payload) => ({
+      addListener(source, "gate_pending", onEvent, (payload: any) => ({
         type: "gate_pending",
         gateId: payload.gateId ?? payload.id ?? payload.gate_id ?? "gate",
-        title: payload.title ?? "Gate review required",
+        gateType: payload.gate_type,
+        title: payload.title ?? payload.gate_type ?? "Gate review required",
+        stage: payload.stage,
         summary: payload.summary,
+        unlocksOnApprove: payload.unlocks_on_approve,
+        unlocksOnReject: payload.unlocks_on_reject,
+        hypotheses: payload.hypotheses,
+        researchFindings: payload.research_findings,
+        redteamFindings: payload.redteam_findings,
+        arbiterFlags: payload.arbiter_flags,
+        findingsTotal: payload.findings_total,
       }));
       addListener(source, "deliverable_ready", onEvent, (payload) => ({
         type: "deliverable_ready",
@@ -204,15 +227,48 @@ function mapSSEToStreamEvent(event: SSEEvent): MissionStreamEvent | null {
       return { type: "tool_call", text: String(event.tool ?? ""), agent: event.agent ? String(event.agent) : undefined };
     case "tool_result":
       return { type: "tool_result", text: String(event.text ?? ""), agent: event.agent ? String(event.agent) : undefined };
-    case "gate_pending":
+    case "gate_pending": {
+      const arbiterFlags = Array.isArray(event.arbiter_flags)
+        ? (event.arbiter_flags as unknown[]).map(String)
+        : undefined;
+      const hypotheses = Array.isArray(event.hypotheses)
+        ? (event.hypotheses as Array<Record<string, unknown>>).map((h) => ({
+            id: String(h.id ?? ""),
+            text: String(h.text ?? ""),
+            status: String(h.status ?? ""),
+          }))
+        : undefined;
+      const mapFindings = (raw: unknown) =>
+        Array.isArray(raw)
+          ? (raw as Array<Record<string, unknown>>).map((f) => ({
+              claim_text: String(f.claim_text ?? ""),
+              confidence: f.confidence == null ? null : String(f.confidence),
+              agent_id: f.agent_id == null ? null : String(f.agent_id),
+            }))
+          : undefined;
       return {
         type: "gate_pending",
         gateId: String(event.gate_id ?? event.gateId ?? "gate"),
-        title: String(event.gate_type ?? event.title ?? "Gate review required"),
-        summary: event.arbiter_flags && Array.isArray(event.arbiter_flags)
-          ? event.arbiter_flags.map(String).join(", ")
-          : event.summary ? String(event.summary) : undefined,
+        gateType: event.gate_type ? String(event.gate_type) : undefined,
+        title: String(event.title ?? event.gate_type ?? "Gate review required"),
+        stage: event.stage ? String(event.stage) : undefined,
+        summary: event.summary ? String(event.summary) : undefined,
+        unlocksOnApprove: event.unlocks_on_approve
+          ? String(event.unlocks_on_approve)
+          : undefined,
+        unlocksOnReject: event.unlocks_on_reject
+          ? String(event.unlocks_on_reject)
+          : undefined,
+        hypotheses,
+        researchFindings: mapFindings(event.research_findings),
+        redteamFindings: mapFindings(event.redteam_findings),
+        arbiterFlags,
+        findingsTotal:
+          typeof event.findings_total === "number"
+            ? (event.findings_total as number)
+            : undefined,
       };
+    }
     case "finding_added":
       return {
         type: "finding_added",

@@ -38,10 +38,31 @@ export interface MissionRunState {
   isStreaming: boolean;
 }
 
+export interface MissionGateHypothesis {
+  id: string;
+  text: string;
+  status: string;
+}
+
+export interface MissionGateFinding {
+  claim_text: string;
+  confidence: string | null;
+  agent_id: string | null;
+}
+
 export interface MissionGateModalState {
   gateId: string;
+  gateType?: string;
   title: string;
+  stage?: string;
   summary?: string;
+  unlocksOnApprove?: string;
+  unlocksOnReject?: string;
+  hypotheses?: MissionGateHypothesis[];
+  researchFindings?: MissionGateFinding[];
+  redteamFindings?: MissionGateFinding[];
+  arbiterFlags?: string[];
+  findingsTotal?: number;
 }
 
 export interface DashboardActiveMission {
