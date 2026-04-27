@@ -42,6 +42,7 @@ import {
   getDeliverableDownloadUrl,
 } from "@/lib/missions/api";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
+import { normalizeAgentName } from "@/lib/missions/agent-display";
 
 let _msgCounter = 0;
 function makeMessageId(missionId: string, suffix: string): string {
@@ -442,8 +443,9 @@ export default function MissionControl({
             void refreshProgress();
             break;
           }
-          case "agent_active":
-            setActiveAgent(event.agent ?? null);
+          case "agent_active": {
+            const display = normalizeAgentName(event.agent);
+            setActiveAgent(display);
             setAgentStatuses((current) => ({
               ...current,
               [(event.agent ?? "unknown").toLowerCase()]: "active",
@@ -452,14 +454,16 @@ export default function MissionControl({
               current.concat({
                 id: makeMessageId(missionId, "agent-active"),
                 kind: "agent",
-                claim_text: `${event.agent ?? "Agent"} started`,
+                claim_text: `${display} started`,
                 confidence: "active",
-                agent: event.agent,
+                agent: display,
               }),
             );
             break;
-          case "agent_done":
+          }
+          case "agent_done": {
             setActiveAgent(null);
+            const display = normalizeAgentName(event.label);
             if (event.label) {
               setAgentStatuses((current) => ({
                 ...current,
@@ -470,12 +474,13 @@ export default function MissionControl({
               current.concat({
                 id: makeMessageId(missionId, "agent-done"),
                 kind: "agent",
-                claim_text: `${event.label ?? "Agent"} finished`,
+                claim_text: `${display} finished`,
                 confidence: "done",
-                agent: event.label,
+                agent: display,
               }),
             );
             break;
+          }
           case "phase_changed":
             setLiveFindings((current) =>
               current.concat({
@@ -910,7 +915,7 @@ export default function MissionControl({
   // ({ id, ag, text, ts }), so progress + SSE rows render correctly.
   const normalizeFinding = (f: any) => ({
     id: f.id,
-    ag: (f.agent ?? f.agent_id ?? f.ag ?? "agent").toString().toUpperCase(),
+    ag: normalizeAgentName(f.agent ?? f.agent_id ?? f.ag),
     text: f.claim_text ?? f.text ?? "",
     ts: f.ts ?? "",
     confidence: f.confidence,
