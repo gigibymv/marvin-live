@@ -289,12 +289,53 @@ async def adversus_node(state: MarvinState) -> dict:
     return {**result, "phase": "redteam_done"}
 
 
+ADVERSUS_FINDING_CAP = 12
+SYNTHESIS_MAX_RETRIES = 3
+
+
+def _next_phase_after_merlin(
+    verdict: str,
+    retry_count: int,
+    current_finding_count: int,
+    last_finding_count: int,
+    adversus_finding_count: int,
+) -> dict:
+    """Pure decision for what comes after a merlin verdict.
+
+    Three circuit breakers prevent the post-cap retry loop seen on the Mistral
+    mission (Bug 6 — chantier 2.5):
+      1. retry_count has reached SYNTHESIS_MAX_RETRIES.
+      2. retry produced no new findings since the last verdict.
+      3. adversus has hit its 12-finding cap (any further pass is identical).
+
+    Any breaker forces phase=synthesis_done with forced_advance=True so the
+    UI surfaces a transparent "advanced after {force_reason}" line instead of
+    silently looping. SHIP advances cleanly with no retry counter reset noise.
+    """
+    if verdict == "SHIP":
+        return {"phase": "synthesis_done"}
+
+    base = {"phase": "synthesis_done", "synthesis_retry_count": 0, "forced_advance": True}
+    if retry_count >= SYNTHESIS_MAX_RETRIES:
+        return {**base, "force_reason": "max_retries"}
+    if retry_count > 0 and current_finding_count == last_finding_count:
+        return {**base, "force_reason": "no_new_findings"}
+    if adversus_finding_count >= ADVERSUS_FINDING_CAP:
+        return {**base, "force_reason": "adversus_cap_reached"}
+
+    return {
+        "phase": "synthesis_retry",
+        "synthesis_retry_count": retry_count + 1,
+        "last_verdict_at_finding_count": current_finding_count,
+    }
+
+
 async def merlin_node(state: MarvinState) -> dict:
     """Run merlin agent and determine next phase based on verdict."""
     log_node_entry("merlin", state)
     mission_id = state.get("mission_id", "")
     messages = state.get("messages", [])
-    
+
     msg = HumanMessage(
         content=(
             f"Mission: {mission_id}\n"
@@ -304,25 +345,24 @@ async def merlin_node(state: MarvinState) -> dict:
             "Verdict options: SHIP | MINOR_FIXES | BACK_TO_DRAWING_BOARD"
         )
     )
-    
+
     from marvin.graph.subgraphs.merlin import merlin_agent_node as _merlin_agent_node
 
     result = await _merlin_agent_node({**state, "messages": messages + [msg]})
     store = MissionStore()
     verdict_row = store.get_latest_merlin_verdict(mission_id)
     verdict = verdict_row.verdict if verdict_row else "MINOR_FIXES"
-    
-    if verdict == "SHIP":
-        return {**result, "phase": "synthesis_done"}
 
-    count = state.get("synthesis_retry_count", 0) + 1
-    if count >= 3:
-        return {**result, "phase": "synthesis_done", "synthesis_retry_count": 0}
-    # synthesis_retry, NOT redteam_done: routes back through adversus for
-    # another red-team pass before merlin re-evaluates. redteam_done would
-    # route directly to merlin and crash with KeyError when merlin's outgoing
-    # path map is consulted (no self-loop entry).
-    return {**result, "phase": "synthesis_retry", "synthesis_retry_count": count}
+    findings = store.list_findings(mission_id)
+    adversus_count = sum(1 for f in findings if f.agent_id == "adversus")
+    decision = _next_phase_after_merlin(
+        verdict=verdict,
+        retry_count=int(state.get("synthesis_retry_count", 0) or 0),
+        current_finding_count=len(findings),
+        last_finding_count=int(state.get("last_verdict_at_finding_count", 0) or 0),
+        adversus_finding_count=adversus_count,
+    )
+    return {**result, **decision}
 
 
 async def papyrus_delivery_node(state: MarvinState) -> dict:
