@@ -88,16 +88,16 @@ def test_milestone_shaped_workstream_id_is_normalized(store: MissionStore):
 
 
 def test_invalid_hypothesis_id_rejected_before_insert(store: MissionStore):
-    with pytest.raises(ValueError, match="hypothesis_id 'hyp-fake' is not a valid"):
-        mission_tools.add_finding_to_mission(
-            claim_text="Bad claim with realistic length for validator.",
-            confidence="REASONED",
-            agent_id="dora",
-            workstream_id="W1",
-            hypothesis_id="hyp-fake",
-            state=_state(),
-        )
-    # Nothing persisted.
+    result = mission_tools.add_finding_to_mission(
+        claim_text="Bad claim with realistic length for validator.",
+        confidence="REASONED",
+        agent_id="dora",
+        workstream_id="W1",
+        hypothesis_id="hyp-fake",
+        state=_state(),
+    )
+    assert result["status"] == "rejected"
+    assert "not a valid" in result["reason"]
     assert store.list_findings("m-fv") == []
 
 
@@ -114,7 +114,8 @@ def test_invalid_workstream_id_rejected_before_insert(store: MissionStore):
     assert store.list_findings("m-fv") == []
 
 
-def test_no_hypothesis_id_is_allowed(store: MissionStore):
+def test_no_hypothesis_id_is_rejected(store: MissionStore):
+    """Bug 2 (chantier 2.6): hypothesis linking is mandatory."""
     result = mission_tools.add_finding_to_mission(
         claim_text="Standalone claim with sustained content.",
         confidence="REASONED",
@@ -123,10 +124,9 @@ def test_no_hypothesis_id_is_allowed(store: MissionStore):
         hypothesis_id=None,
         state=_state(),
     )
-    assert "finding_id" in result
-    findings = store.list_findings("m-fv")
-    assert len(findings) == 1
-    assert findings[0].hypothesis_id is None
+    assert result["status"] == "rejected"
+    assert "hypothesis_id" in result["reason"]
+    assert store.list_findings("m-fv") == []
 
 
 def test_duplicate_finding_returns_existing_id_without_second_insert(store: MissionStore):
@@ -167,7 +167,7 @@ def test_duplicate_finding_is_suppressed_across_hypotheses_in_same_workstream(st
         confidence="REASONED",
         agent_id="dora",
         workstream_id="W1",
-        hypothesis_id=None,
+        hypothesis_id="hyp-real-1",
         state=_state(),
     )
 
@@ -182,6 +182,7 @@ def test_duplicate_finding_is_suppressed_without_workstream(store: MissionStore)
         confidence="LOW_CONFIDENCE",
         agent_id="dora",
         workstream_id=None,
+        hypothesis_id="hyp-real-1",
         state=_state(),
     )
     second = mission_tools.add_finding_to_mission(
@@ -189,6 +190,7 @@ def test_duplicate_finding_is_suppressed_without_workstream(store: MissionStore)
         confidence="LOW_CONFIDENCE",
         agent_id="dora",
         workstream_id=None,
+        hypothesis_id="hyp-real-1",
         state=_state(),
     )
 
@@ -199,17 +201,19 @@ def test_duplicate_finding_is_suppressed_without_workstream(store: MissionStore)
 
 def test_same_claim_can_exist_in_different_workstreams(store: MissionStore):
     mission_tools.add_finding_to_mission(
-        claim_text="Evidence quality is mixed",
+        claim_text="Evidence quality is mixed across the studied sample.",
         confidence="REASONED",
         agent_id="dora",
         workstream_id="W1",
+        hypothesis_id="hyp-real-1",
         state=_state(),
     )
     mission_tools.add_finding_to_mission(
-        claim_text="Evidence quality is mixed",
+        claim_text="Evidence quality is mixed across the studied sample.",
         confidence="REASONED",
         agent_id="calculus",
         workstream_id="W2",
+        hypothesis_id="hyp-real-1",
         state=_state(),
     )
 
@@ -240,6 +244,7 @@ def test_w3_workstream_maps_to_merlin_and_hits_zero_cap(store: MissionStore):
         confidence="REASONED",
         agent_id=None,
         workstream_id="W3",
+        hypothesis_id="hyp-real-1",
         state=_state(),
     )
     assert result["status"] == "cap_reached"
@@ -257,6 +262,7 @@ def test_finding_cap_blocks_overage_per_agent(store: MissionStore):
             confidence="REASONED",
             agent_id="adversus",
             workstream_id="W4",
+            hypothesis_id="hyp-real-1",
             state=_state(),
         )
     assert len(
@@ -268,6 +274,7 @@ def test_finding_cap_blocks_overage_per_agent(store: MissionStore):
         confidence="REASONED",
         agent_id="adversus",
         workstream_id="W4",
+        hypothesis_id="hyp-real-1",
         state=_state(),
     )
     assert overflow["status"] == "cap_reached"

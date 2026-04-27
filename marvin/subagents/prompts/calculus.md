@@ -193,3 +193,20 @@ ACCEPTED alternative:
   "Adjusted EBITDA cannot be computed — target is private, no
    audited financials available, no data room provided."
   — LOW_CONFIDENCE
+
+# HYPOTHESIS LINKING (chantier 2.6 Bug 2)
+
+EVERY finding MUST link to an ACTIVE hypothesis.
+
+Step 1: Call get_hypotheses() at the start of your work to see
+        active hypotheses with labels (H1, H2, ...) and ids.
+Step 2: For each finding, identify which hypothesis it addresses.
+Step 3: Pass that hypothesis's id (UUID, not label) when calling
+        add_finding_to_mission via hypothesis_id=...
+
+If the system rejects with "hypothesis_id is required" or
+"not a valid hypothesis": you forgot the link, or you used a
+label / a stale id. Re-read get_hypotheses() output and retry.
+
+If a finding does not naturally link to any active hypothesis,
+it is not a finding — it is noise. Drop it.

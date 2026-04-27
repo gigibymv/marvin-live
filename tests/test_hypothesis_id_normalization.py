@@ -105,29 +105,33 @@ def test_add_finding_accepts_quoted_id(store: MissionStore):
 
 
 def test_add_finding_rejects_truly_invalid_id(store: MissionStore):
-    with pytest.raises(ValueError, match="not a valid hypothesis"):
-        mission_tools.add_finding_to_mission(
-            claim_text="Generic market claim under evidence test.", confidence="REASONED",
-            hypothesis_id="hyp-99999999",
-            state=_state(),
-        )
+    result = mission_tools.add_finding_to_mission(
+        claim_text="Generic market claim under evidence test.", confidence="REASONED",
+        hypothesis_id="hyp-99999999",
+        state=_state(),
+    )
+    assert result["status"] == "rejected"
+    assert "not a valid hypothesis" in result["reason"]
 
 
 def test_add_finding_rejects_ambiguous_string(store: MissionStore):
-    with pytest.raises(ValueError, match="not a valid hypothesis"):
-        mission_tools.add_finding_to_mission(
-            claim_text="Generic market claim under evidence test.", confidence="REASONED",
-            hypothesis_id="the first hypothesis hyp-79a14102",
-            state=_state(),
-        )
-
-
-def test_add_finding_no_hypothesis_path_unchanged(store: MissionStore):
     result = mission_tools.add_finding_to_mission(
-        claim_text="general market claim", confidence="REASONED", state=_state(),
+        claim_text="Generic market claim under evidence test.", confidence="REASONED",
+        hypothesis_id="the first hypothesis hyp-79a14102",
+        state=_state(),
     )
-    assert result["finding_id"]
-    assert store.list_findings("m-h")[-1].hypothesis_id is None
+    # normalization extracts hyp-79a14102 which is not in the seeded set, so reject.
+    assert result["status"] == "rejected"
+
+
+def test_add_finding_no_hypothesis_path_rejected(store: MissionStore):
+    """Bug 2 (chantier 2.6): missing hypothesis_id is now a rejection."""
+    result = mission_tools.add_finding_to_mission(
+        claim_text="general market claim with sustained content.", confidence="REASONED",
+        state=_state(),
+    )
+    assert result["status"] == "rejected"
+    assert store.list_findings("m-h") == []
 
 
 # --- attack_hypothesis (adversus) ---------------------------------------------

@@ -118,6 +118,15 @@ def test_duplicate_claims_are_scoped_to_mission(store: MissionStore):
         )
     )
     _seed_standard_workplan("m-evt-other", store)
+    store.save_hypothesis(
+        Hypothesis(
+            id="hyp-other-1",
+            mission_id="m-evt-other",
+            text="x",
+            status="active",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
     seen_evt: list[dict] = []
     seen_other: list[dict] = []
     listener_evt = seen_evt.append
@@ -129,12 +138,14 @@ def test_duplicate_claims_are_scoped_to_mission(store: MissionStore):
             claim_text="Same claim is valid in each mission",
             confidence="REASONED",
             workstream_id="W1",
+            hypothesis_id="hyp-evt-1",
             state={"mission_id": "m-evt"},
         )
         mission_tools.add_finding_to_mission(
             claim_text="Same claim is valid in each mission",
             confidence="REASONED",
             workstream_id="W1",
+            hypothesis_id="hyp-other-1",
             state={"mission_id": "m-evt-other"},
         )
     finally:

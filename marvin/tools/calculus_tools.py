@@ -31,7 +31,11 @@ def parse_data_room(file_path: str, state: InjectedStateArg = None) -> dict[str,
     }
 
 
-def quality_of_earnings(financials_json: Any, state: InjectedStateArg = None) -> dict[str, Any]:
+def quality_of_earnings(
+    financials_json: Any,
+    state: InjectedStateArg = None,
+    hypothesis_id: str | None = None,
+) -> dict[str, Any]:
     """Compute adjusted EBITDA from a P&L slice plus management add-backs.
 
     Use to test whether reported earnings hold up after one-offs. Input:
@@ -76,10 +80,8 @@ def quality_of_earnings(financials_json: Any, state: InjectedStateArg = None) ->
         "adjusted_ebitda": adjusted_ebitda,
         "missing_inputs": missing_inputs,
     }
-    if state is not None:
+    if state is not None and hypothesis_id is not None:
         if missing_inputs:
-            # Bug 1 (chantier 2.6): missing inputs → honest LOW_CONFIDENCE,
-            # not fabricated zeros marked REASONED.
             add_finding_to_mission(
                 claim_text=(
                     f"Adjusted EBITDA cannot be computed from primary data; "
@@ -88,6 +90,7 @@ def quality_of_earnings(financials_json: Any, state: InjectedStateArg = None) ->
                 confidence="LOW_CONFIDENCE",
                 agent_id="calculus",
                 workstream_id="W2",
+                hypothesis_id=hypothesis_id,
                 state=state,
             )
         else:
@@ -96,12 +99,17 @@ def quality_of_earnings(financials_json: Any, state: InjectedStateArg = None) ->
                 confidence="REASONED",
                 agent_id="calculus",
                 workstream_id="W2",
+                hypothesis_id=hypothesis_id,
                 state=state,
             )
     return result
 
 
-def cohort_analysis(cohort_data_json: Any, state: InjectedStateArg = None) -> dict[str, Any]:
+def cohort_analysis(
+    cohort_data_json: Any,
+    state: InjectedStateArg = None,
+    hypothesis_id: str | None = None,
+) -> dict[str, Any]:
     """Compute average retention across customer cohorts.
 
     Use to assess customer durability when cohort data is provided. Input:
@@ -121,18 +129,23 @@ def cohort_analysis(cohort_data_json: Any, state: InjectedStateArg = None) -> di
         "average_m3_retention": average_m3_retention,
         "per_cohort_m3_retention": per_cohort,
     }
-    if state is not None:
+    if state is not None and hypothesis_id is not None:
         add_finding_to_mission(
-            claim_text=f"Cohort analysis shows {average_m3_retention:.1%} M3 retention",
+            claim_text=f"Cohort analysis shows {average_m3_retention:.1%} M3 retention across observed cohorts.",
             confidence="REASONED",
             agent_id="calculus",
             workstream_id="W2",
+            hypothesis_id=hypothesis_id,
             state=state,
         )
     return result
 
 
-def compute_cac_ltv(sales_data_json: Any, state: InjectedStateArg = None) -> dict[str, Any]:
+def compute_cac_ltv(
+    sales_data_json: Any,
+    state: InjectedStateArg = None,
+    hypothesis_id: str | None = None,
+) -> dict[str, Any]:
     """Derive CAC, LTV, and LTV/CAC from sales economics inputs.
 
     Use to test unit-economics quality. Input: sales_data_json with
@@ -158,9 +171,8 @@ def compute_cac_ltv(sales_data_json: Any, state: InjectedStateArg = None) -> dic
         "ltv_to_cac": ratio,
         "ltv_cac_ratio": ratio,
     }
-    if state is not None:
+    if state is not None and hypothesis_id is not None:
         if not new_customers or not monthly_churn:
-            # Bug 1 (chantier 2.6): zero denominators → honest LOW_CONFIDENCE.
             missing = []
             if not new_customers: missing.append("new_customers")
             if not monthly_churn: missing.append("monthly_churn")
@@ -172,20 +184,26 @@ def compute_cac_ltv(sales_data_json: Any, state: InjectedStateArg = None) -> dic
                 confidence="LOW_CONFIDENCE",
                 agent_id="calculus",
                 workstream_id="W2",
+                hypothesis_id=hypothesis_id,
                 state=state,
             )
         else:
             add_finding_to_mission(
-                claim_text=f"LTV/CAC ratio is {ratio:.2f}x (CAC ${cac:.0f}, LTV ${ltv:.0f})",
+                claim_text=f"LTV/CAC ratio is {ratio:.2f}x (CAC ${cac:.0f}, LTV ${ltv:.0f}) across the customer base.",
                 confidence="REASONED",
                 agent_id="calculus",
                 workstream_id="W2",
+                hypothesis_id=hypothesis_id,
                 state=state,
             )
     return result
 
 
-def concentration_analysis(customers_json: Any, state: InjectedStateArg = None) -> dict[str, Any]:
+def concentration_analysis(
+    customers_json: Any,
+    state: InjectedStateArg = None,
+    hypothesis_id: str | None = None,
+) -> dict[str, Any]:
     """Compute top-10 customer revenue concentration as a share of total.
 
     Use to flag customer-concentration risk. Input: customers_json with a
@@ -215,18 +233,24 @@ def concentration_analysis(customers_json: Any, state: InjectedStateArg = None) 
         "top_customer_share": top_customer_share,
         "top_10_concentration": top_10_concentration,
     }
-    if state is not None:
+    if state is not None and hypothesis_id is not None:
         add_finding_to_mission(
-            claim_text=f"Top customer share is {top_customer_share:.1%}; top-10 share is {top_10_concentration:.1%}",
+            claim_text=f"Top customer share is {top_customer_share:.1%}; top-10 share is {top_10_concentration:.1%}.",
             confidence="REASONED",
             agent_id="calculus",
             workstream_id="W2",
+            hypothesis_id=hypothesis_id,
             state=state,
         )
     return result
 
 
-def anomaly_detector(management_claims_json: Any, data_room_json: Any, state: InjectedStateArg = None) -> dict[str, Any]:
+def anomaly_detector(
+    management_claims_json: Any,
+    data_room_json: Any,
+    state: InjectedStateArg = None,
+    hypothesis_id: str | None = None,
+) -> dict[str, Any]:
     """Compare management-claimed metrics against data-room metrics, key by key.
 
     Inputs: two flat dicts of metric_name -> value. Each shared key is
@@ -248,10 +272,8 @@ def anomaly_detector(management_claims_json: Any, data_room_json: Any, state: In
         "count": len(anomalies),
         "anomalies": anomalies,
     }
-    if state is not None and anomalies:
+    if state is not None and anomalies and hypothesis_id is not None:
         details = "; ".join(f"{a['metric']} claimed {a['claimed']} vs observed {a['observed']}" for a in anomalies)
-        # KNOWN findings require a source. Persist a data-room provenance row
-        # so the divergence is auditable rather than free-floating.
         source = persist_source_for_mission(
             url_or_ref="data_room",
             quote=f"observed: {data}; claimed: {claims}",
@@ -263,6 +285,7 @@ def anomaly_detector(management_claims_json: Any, data_room_json: Any, state: In
             agent_id="calculus",
             workstream_id="W2",
             source_id=source["source_id"],
+            hypothesis_id=hypothesis_id,
             state=state,
         )
     return result

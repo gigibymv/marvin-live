@@ -32,6 +32,7 @@ def build_bottom_up_tam(
     penetration_rate: float,
     avg_price: float,
     state: InjectedStateArg = None,
+    hypothesis_id: str | None = None,
 ) -> dict[str, Any]:
     """Compute a bottom-up TAM as total_companies * penetration_rate * avg_price.
 
@@ -47,18 +48,23 @@ def build_bottom_up_tam(
         "avg_price": avg_price,
         "tam": tam,
     }
-    if state is not None:
+    if state is not None and hypothesis_id is not None:
         add_finding_to_mission(
-            claim_text=f"Bottom-up TAM estimate is {tam:.2f}",
+            claim_text=f"Bottom-up TAM estimate is {tam:.2f} based on penetration assumptions.",
             confidence="REASONED",
             agent_id="dora",
             workstream_id="W1",
+            hypothesis_id=hypothesis_id,
             state=state,
         )
     return result
 
 
-def analyze_market_data(data_json: Any, state: InjectedStateArg = None) -> dict[str, Any]:
+def analyze_market_data(
+    data_json: Any,
+    state: InjectedStateArg = None,
+    hypothesis_id: str | None = None,
+) -> dict[str, Any]:
     """Aggregate segment-level revenue and growth from a market data payload.
 
     Use to summarize a multi-segment market description before drawing a
@@ -71,12 +77,13 @@ def analyze_market_data(data_json: Any, state: InjectedStateArg = None) -> dict[
     total_revenue = sum(segment.get("revenue", 0) for segment in segments)
     avg_growth = mean([segment.get("growth_rate", 0) for segment in segments]) if segments else 0
     result = {"segment_count": len(segments), "total_revenue": total_revenue, "avg_growth_rate": avg_growth}
-    if state is not None:
+    if state is not None and hypothesis_id is not None:
         add_finding_to_mission(
-            claim_text=f"Market segments total revenue is {total_revenue:.2f}",
+            claim_text=f"Market segments total revenue is {total_revenue:.2f} across observed segments.",
             confidence="REASONED",
             agent_id="dora",
             workstream_id="W1",
+            hypothesis_id=hypothesis_id,
             state=state,
         )
     return result
@@ -164,7 +171,11 @@ def moat_analysis(
     return result
 
 
-def win_loss_framework(interviews_json: Any, state: InjectedStateArg = None) -> dict[str, Any]:
+def win_loss_framework(
+    interviews_json: Any,
+    state: InjectedStateArg = None,
+    hypothesis_id: str | None = None,
+) -> dict[str, Any]:
     """Tally wins and losses from a customer interview payload.
 
     Use to convert raw interview outcomes into a quantitative win/loss
@@ -177,12 +188,13 @@ def win_loss_framework(interviews_json: Any, state: InjectedStateArg = None) -> 
     wins = sum(1 for interview in interviews if interview.get("outcome") == "win")
     losses = sum(1 for interview in interviews if interview.get("outcome") == "loss")
     result = {"wins": wins, "losses": losses, "sample_size": len(interviews)}
-    if state is not None:
+    if state is not None and hypothesis_id is not None:
         add_finding_to_mission(
-            claim_text=f"Win/loss sample shows {wins} wins and {losses} losses",
+            claim_text=f"Win/loss sample shows {wins} wins and {losses} losses across interviews.",
             confidence="LOW_CONFIDENCE" if len(interviews) < 5 else "REASONED",
             agent_id="dora",
             workstream_id="W1",
+            hypothesis_id=hypothesis_id,
             state=state,
         )
     return result

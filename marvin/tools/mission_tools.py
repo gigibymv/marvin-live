@@ -385,15 +385,47 @@ def add_finding_to_mission(
         confidence = suggested_conf
         claim_text = f"{claim_text} [confidence auto-adjusted: {quality_reason}]"
 
-    if hypothesis_id is not None:
-        hypothesis_id = normalize_hypothesis_id(hypothesis_id)
-        allowed = {h.id for h in store.list_hypotheses(mission_id)}
-        if hypothesis_id not in allowed:
-            raise ValueError(
-                f"hypothesis_id {hypothesis_id!r} is not a valid hypothesis for "
-                f"mission {mission_id}. Allowed: {sorted(allowed)}. "
-                "Pass one of these IDs verbatim, or omit hypothesis_id."
-            )
+    # Bug 2 (chantier 2.6): hypothesis linking is mandatory. Every finding
+    # must reference an active hypothesis; orphan or stale-hypothesis findings
+    # are rejected at the tool boundary so the LLM gets a corrective message.
+    hypotheses = store.list_hypotheses(mission_id)
+    active_refs = [
+        f"{h.label or '(no label)'}={h.id}"
+        for h in hypotheses if h.status == "active"
+    ]
+    if hypothesis_id is None:
+        return {
+            "status": "rejected",
+            "reason": "hypothesis_id is required",
+            "guidance": (
+                "Every finding must link to an active hypothesis. "
+                "Call get_hypotheses() to see active hypotheses, then "
+                "pick the one your finding addresses by id. "
+                f"Active: {active_refs}."
+            ),
+        }
+    hypothesis_id = normalize_hypothesis_id(hypothesis_id)
+    matching = next((h for h in hypotheses if h.id == hypothesis_id), None)
+    if matching is None:
+        return {
+            "status": "rejected",
+            "reason": f"hypothesis_id {hypothesis_id!r} is not a valid hypothesis",
+            "guidance": (
+                f"Active hypotheses for this mission: {active_refs}. "
+                "Use one of these IDs verbatim."
+            ),
+        }
+    if matching.status != "active":
+        return {
+            "status": "rejected",
+            "reason": (
+                f"hypothesis {hypothesis_id} is {matching.status}, not active"
+            ),
+            "guidance": (
+                f"This hypothesis was {matching.status} (e.g. via pivot). "
+                f"Active hypotheses: {active_refs}."
+            ),
+        }
 
     if workstream_id is not None:
         workstream_id = _normalize_workstream_id(workstream_id)
