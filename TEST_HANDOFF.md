@@ -232,3 +232,40 @@ Newly tracked (previously untracked, not a code change but a packaging fix):
 - **Env contract is documented and enforced.** `.env.example` and `.env.local.example` cover every variable the code reads. Frontend now points to the same port the backend defaults to.
 - **No reliance on session shell state.** All commands above are explicit; no aliases, no hidden `PATH` quirks. The only shell-specific note is `set -a; source .env; set +a` for env loading, which is in §4.
 - **Tests are green at this commit** (pytest 154, vitest 21, typecheck clean) and one clean-DB smoke run reproduces the first runtime checkpoint.
+
+---
+
+## 13. Runbook — reproducing late-phase backend crashes (e.g. `Exit 137`)
+
+`Exit 137` (SIGKILL) was reported once during Adversus by an independent tester. It did **not** reproduce locally on macOS / Python 3.14 after fixing an upstream calculus null-input crash. The instrumentation below is left in tree (gated, off by default) so any future repro attempt produces the curves needed to rank the cause.
+
+**Enable instrumentation and start the backend:**
+
+```bash
+set -a; source .env; set +a
+MARVIN_DEBUG_RUNTIME=1 PYTHONPATH=$PWD nohup .venv/bin/python -m uvicorn marvin_ui.server:app --host 127.0.0.1 --port 8095 > /tmp/marvin.stderr 2>&1 &
+echo $! > /tmp/marvin.pid
+```
+
+`MARVIN_DEBUG_RUNTIME=1` activates `marvin.runtime_debug`, which logs `node_entry` and `agent_io` lines for `research_join`, `adversus`, and `merlin` (message count, content bytes, accumulated tool_calls, RSS, monotonic time). With the env var unset there is zero behavior change and zero log output.
+
+**Start the RSS / VSZ sampler against the backend PID:**
+
+```bash
+nohup tools/devops/mem_sampler.sh $(cat /tmp/marvin.pid) /tmp/marvin.rss.csv > /tmp/marvin.sampler.log 2>&1 &
+```
+
+**On crash, capture:**
+
+- backend exit code: `wait $(cat /tmp/marvin.pid); echo $?` — `137` = SIGKILL
+- `tail -200 /tmp/marvin.stderr` — Python tracebacks and runtime_debug timeline
+- `/tmp/marvin.rss.csv` — full memory curve at 1 Hz
+- macOS jetsam evidence: `log show --last 30m --predicate 'eventMessage CONTAINS[c] "memorystatus" OR eventMessage CONTAINS[c] "jetsam"'`
+- Linux OOM evidence (when applicable): `dmesg | tail -200`, `journalctl -k --since "30 min ago"`
+- ancestry: `ps -o pid,ppid,pgid,command -p <pid>` — confirm no `--reload`, IDE, or supervisor parent
+
+**Files (all gated / removable in one commit):**
+
+- `marvin/runtime_debug.py` — gated logger
+- `tools/devops/mem_sampler.sh` — RSS/VSZ sampler
+- single-line `log_node_entry` / `log_agent_io` calls in `marvin/graph/runner.py`, `marvin/graph/subgraphs/adversus.py`, `marvin/graph/subgraphs/merlin.py`

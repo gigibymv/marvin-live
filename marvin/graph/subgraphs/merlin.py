@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from marvin.graph.subgraphs.common import build_agent
+from marvin.runtime_debug import log_agent_io
 from marvin.tools.merlin_tools import check_mece, get_storyline_findings, update_action_title
 from marvin.tools.mission_tools import check_merlin_verdict, set_merlin_verdict
 
@@ -21,4 +22,7 @@ async def merlin_agent_node(state):
         if "OPENROUTER_API_KEY is not set" in str(exc):
             return dict(state)
         raise
-    return await agent.ainvoke(state)
+    log_agent_io("merlin", "before_invoke", state)
+    result = await agent.ainvoke(state)
+    log_agent_io("merlin", "after_invoke", result)
+    return result

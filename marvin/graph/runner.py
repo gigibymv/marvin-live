@@ -21,6 +21,7 @@ from marvin.graph.subgraphs.dora import dora_agent_node
 from marvin.graph.subgraphs.orchestrator import orchestrator_agent_node
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore
+from marvin.runtime_debug import log_node_entry
 
 
 def _resolve_gate_by_day(mission_id: str, day: int) -> str:
@@ -112,6 +113,10 @@ def phase_router(state: MarvinState) -> str | list[Send]:
     return "orchestrator"
 
 
+def _log_join(state: MarvinState) -> None:
+    log_node_entry("research_join", state)
+
+
 def research_join(state: MarvinState) -> dict:
     """Deterministic join after the dora/calculus parallel branches.
 
@@ -127,6 +132,7 @@ def research_join(state: MarvinState) -> dict:
     same anti-pattern we removed for event ownership in marvin.events — the
     fix is to own the business fact in graph control flow.
     """
+    _log_join(state)
     mission_id = state.get("mission_id", "")
     store = MissionStore()
 
@@ -192,6 +198,7 @@ async def gate_entry_node(state: MarvinState) -> dict:
 
 async def adversus_node(state: MarvinState) -> dict:
     """Run adversus agent and move to redteam_done phase."""
+    log_node_entry("adversus", state)
     mission_id = state.get("mission_id", "")
     messages = state.get("messages", [])
     store = MissionStore()
@@ -217,6 +224,7 @@ async def adversus_node(state: MarvinState) -> dict:
 
 async def merlin_node(state: MarvinState) -> dict:
     """Run merlin agent and determine next phase based on verdict."""
+    log_node_entry("merlin", state)
     mission_id = state.get("mission_id", "")
     messages = state.get("messages", [])
     
