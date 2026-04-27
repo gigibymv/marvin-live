@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import date
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from langgraph.types import Command
 
@@ -614,18 +617,35 @@ def _generate_hypotheses_inline(mission_id: str, raw_brief: str | None = None) -
 
 
 def persist_framing_from_brief(mission_id: str, raw_brief: str) -> MissionBrief:
-    """Persist the user's brief and deterministic framing scaffold."""
+    """Persist the user's brief and deterministic framing scaffold.
+
+    Bug 2 (chantier 2.5): the raw_brief field is FROZEN once set. Subsequent
+    calls with different text are no-ops on raw_brief — clarification answers
+    must go through MissionStore.append_clarification_answer instead. We still
+    refresh derived fields (mission_angle, ic_question, workstream_plan) so
+    they stay in sync with the original brief.
+    """
     store = get_store(_STORE_FACTORY)
     mission = store.get_mission(mission_id)
     cleaned = _clean_brief_text(raw_brief)
     if not cleaned:
         raise ValueError("framing requires a non-empty brief")
 
+    existing = store.get_mission_brief(mission_id)
+    if existing is not None and (existing.raw_brief or "").strip():
+        existing_clean = (existing.raw_brief or "").strip()
+        if existing_clean != cleaned:
+            logger.warning(
+                "persist_framing_from_brief: refusing to overwrite frozen brief for %s",
+                mission_id,
+            )
+        # Brief is frozen; return current persisted record unchanged.
+        return existing
+
     ic_question = _derive_ic_question(mission, cleaned)
     mission_angle = _derive_mission_angle(cleaned)
     now = utc_now_iso()
-    existing = store.get_mission_brief(mission_id)
-    created_at = existing.created_at if existing else now
+    created_at = now
     brief = MissionBrief(
         mission_id=mission_id,
         raw_brief=cleaned,

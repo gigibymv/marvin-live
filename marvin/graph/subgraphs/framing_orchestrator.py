@@ -65,21 +65,33 @@ def _latest_human_text(messages: list) -> str:
 
 
 def _persist_brief_with_history(mission_id: str, new_text: str) -> str:
-    """Append new_text to the mission brief and return the merged raw brief."""
+    """Persist the brief on the FIRST substantive message; thereafter route
+    later turns into clarification_answers. The raw_brief field is frozen
+    once set so the framing memo always reflects the original brief
+    (Bug 2 — chantier 2.5).
+
+    Returns the combined "brief + clarifications" text used as LLM context.
+    """
     store = MissionStore()
     existing = store.get_mission_brief(mission_id)
-    if existing is None:
-        merged = _clean_brief_text(new_text)
-    else:
-        existing_text = (existing.raw_brief or "").strip()
-        cleaned_new = _clean_brief_text(new_text)
-        if cleaned_new and cleaned_new not in existing_text:
-            merged = (existing_text + "\n\n" + cleaned_new).strip()
-        else:
-            merged = existing_text
-    if merged:
-        persist_framing_from_brief(mission_id, merged)
-    return merged
+    cleaned_new = _clean_brief_text(new_text)
+
+    if existing is None or not (existing.raw_brief or "").strip():
+        if cleaned_new:
+            persist_framing_from_brief(mission_id, cleaned_new)
+            return cleaned_new
+        return ""
+
+    raw_brief = (existing.raw_brief or "").strip()
+    if cleaned_new and cleaned_new != raw_brief:
+        # Subsequent message — clarification answer, NOT brief.
+        existing_answers = store.get_clarification_state(mission_id)["answers"]
+        if cleaned_new not in existing_answers:
+            store.append_clarification_answer(mission_id, cleaned_new)
+    answers = store.get_clarification_state(mission_id)["answers"]
+    if answers:
+        return (raw_brief + "\n\nClarifications:\n" + "\n".join(answers)).strip()
+    return raw_brief
 
 
 def _evaluate_brief_via_llm(mission_id: str, raw_brief: str) -> dict:
