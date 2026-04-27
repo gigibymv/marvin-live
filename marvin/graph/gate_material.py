@@ -1,0 +1,269 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Any
+
+from marvin.mission.schema import (
+    Finding,
+    Gate,
+    Hypothesis,
+    MerlinVerdict,
+    Milestone,
+    MissionBrief,
+    Workstream,
+)
+from marvin.mission.store import MissionStore
+
+
+GATE_COPY = {
+    "hypothesis_confirmation": {
+        "title": "Confirm initial hypotheses",
+        "stage": "Framing",
+        "summary": (
+            "MARVIN has framed the deal into testable hypotheses. "
+            "Approve to start parallel research workstreams. "
+            "Reject to revise the framing before any research runs."
+        ),
+        "unlocks_on_approve": "Dora, Calculus, and Lector begin Day 1-3 research.",
+        "unlocks_on_reject": "MARVIN reopens framing for revision.",
+    },
+    "manager_review": {
+        "title": "Manager review of research claims",
+        "stage": "Mid-mission checkpoint (G1)",
+        "summary": (
+            "Initial research is complete. Review the claims surfaced so far for "
+            "soundness, sourcing, and confidence before red-team challenges them."
+        ),
+        "unlocks_on_approve": "Adversus runs the red-team challenge against the storyline.",
+        "unlocks_on_reject": "Workstreams loop back for additional research.",
+    },
+    "final_review": {
+        "title": "Final IC memo review",
+        "stage": "Pre-delivery (G3)",
+        "summary": (
+            "Synthesis is complete after the red-team pass. "
+            "Approve to finalize the IC memo and deliverables. "
+            "Reject to send Merlin back through another synthesis pass."
+        ),
+        "unlocks_on_approve": "Papyrus produces the final memo and deliverable set.",
+        "unlocks_on_reject": "Merlin re-runs synthesis incorporating remaining concerns.",
+    },
+}
+
+
+@dataclass(frozen=True)
+class GateMaterial:
+    lifecycle_status: str
+    is_open: bool
+    missing_material: tuple[str, ...]
+    review_payload: dict[str, Any]
+
+
+def human_gate_copy(gate_type: str) -> dict[str, str]:
+    return GATE_COPY.get(
+        gate_type,
+        {
+            "title": gate_type.replace("_", " ").capitalize() if gate_type else "Validation required",
+            "stage": "Mission checkpoint",
+            "summary": "A gate is waiting for human review before the mission can proceed.",
+            "unlocks_on_approve": "Mission continues to the next phase.",
+            "unlocks_on_reject": "Mission pauses; team revisits the prior phase.",
+        },
+    )
+
+
+def evaluate_gate_material(
+    store: MissionStore,
+    mission_id: str,
+    gate: Gate,
+    *,
+    hypotheses: list[Hypothesis] | None = None,
+    findings: list[Finding] | None = None,
+    mission_brief: MissionBrief | None = None,
+    workstreams: list[Workstream] | None = None,
+    milestones: list[Milestone] | None = None,
+    merlin_verdict: MerlinVerdict | None = None,
+    arbiter_flags: list[str] | None = None,
+) -> GateMaterial:
+    """Build the review material required to open a human gate."""
+    hypotheses = store.list_hypotheses(mission_id) if hypotheses is None else hypotheses
+    findings = store.list_findings(mission_id) if findings is None else findings
+    mission_brief = store.get_mission_brief(mission_id) if mission_brief is None else mission_brief
+    workstreams = store.list_workstreams(mission_id) if workstreams is None else workstreams
+    milestones = store.list_milestones(mission_id) if milestones is None else milestones
+    if merlin_verdict is None and gate.gate_type == "final_review":
+        merlin_verdict = store.get_latest_merlin_verdict(mission_id)
+
+    research_findings = [
+        _finding_payload(finding)
+        for finding in findings
+        if (finding.agent_id or "").lower() != "adversus"
+    ]
+    redteam_findings = [
+        _finding_payload(finding)
+        for finding in findings
+        if (finding.agent_id or "").lower() == "adversus"
+    ]
+
+    missing_material: list[str] = []
+    payload: dict[str, Any] = {
+        "gate_id": gate.id,
+        "gate_type": gate.gate_type,
+        "format": gate.format,
+        **human_gate_copy(gate.gate_type),
+        "material_status": "pending",
+        "arbiter_flags": arbiter_flags or [],
+    }
+
+    if gate.gate_type == "hypothesis_confirmation":
+        framing = _framing_payload(mission_brief)
+        if not framing:
+            missing_material.append("framing_summary")
+        if not hypotheses:
+            missing_material.append("hypotheses")
+        payload.update(
+            {
+                "framing": framing,
+                "hypotheses": [_hypothesis_payload(h) for h in hypotheses],
+            }
+        )
+
+    elif gate.gate_type == "manager_review":
+        coverage = _coverage_payload(workstreams, milestones, findings)
+        if not research_findings:
+            missing_material.append("research_findings")
+        payload.update(
+            {
+                "research_findings": research_findings[-12:],
+                "findings_total": len(research_findings),
+                "coverage": coverage,
+            }
+        )
+
+    elif gate.gate_type == "final_review":
+        if merlin_verdict is None:
+            missing_material.append("merlin_verdict")
+        if not redteam_findings:
+            missing_material.append("redteam_evidence")
+        open_risks = [
+            f["claim_text"]
+            for f in redteam_findings
+            if f.get("confidence") == "LOW_CONFIDENCE"
+        ]
+        payload.update(
+            {
+                "merlin_verdict": _verdict_payload(merlin_verdict),
+                "redteam_findings": redteam_findings[-8:],
+                "research_findings": research_findings[-6:],
+                "weakest_links": redteam_findings[-5:],
+                "open_risks": open_risks,
+                "arbiter_flags": arbiter_flags or [],
+                "findings_total": len(findings),
+            }
+        )
+
+    else:
+        missing_material.append("gate_material")
+
+    if gate.status != "pending":
+        lifecycle_status = gate.status
+        is_open = False
+    else:
+        is_open = not missing_material
+        lifecycle_status = "open" if is_open else "scheduled"
+
+    payload["material_status"] = "ready" if is_open else lifecycle_status
+    payload["missing_material"] = list(missing_material)
+    return GateMaterial(
+        lifecycle_status=lifecycle_status,
+        is_open=is_open,
+        missing_material=tuple(missing_material),
+        review_payload=payload,
+    )
+
+
+def _hypothesis_payload(hypothesis: Hypothesis) -> dict[str, Any]:
+    return {
+        "id": hypothesis.id,
+        "text": hypothesis.text,
+        "status": hypothesis.status,
+    }
+
+
+def _finding_payload(finding: Finding) -> dict[str, Any]:
+    return {
+        "id": finding.id,
+        "workstream_id": finding.workstream_id,
+        "hypothesis_id": finding.hypothesis_id,
+        "claim_text": finding.claim_text,
+        "confidence": finding.confidence,
+        "agent_id": finding.agent_id,
+    }
+
+
+def _framing_payload(brief: MissionBrief | None) -> dict[str, Any] | None:
+    if brief is None or not brief.ic_question.strip() or not brief.brief_summary.strip():
+        return None
+    return {
+        "ic_question": brief.ic_question,
+        "mission_angle": brief.mission_angle,
+        "brief_summary": brief.brief_summary,
+        "workstream_plan": _parse_workstream_plan(brief.workstream_plan_json),
+    }
+
+
+def _parse_workstream_plan(value: str) -> list[dict[str, Any]]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _coverage_payload(
+    workstreams: list[Workstream],
+    milestones: list[Milestone],
+    findings: list[Finding],
+) -> dict[str, Any]:
+    research_findings = [
+        finding for finding in findings
+        if (finding.agent_id or "").lower() != "adversus"
+    ]
+    workstream_rows: list[dict[str, Any]] = []
+    for workstream in workstreams:
+        ws_milestones = [m for m in milestones if m.workstream_id == workstream.id]
+        ws_findings = [f for f in research_findings if f.workstream_id == workstream.id]
+        delivered = [m for m in ws_milestones if m.status == "delivered"]
+        workstream_rows.append(
+            {
+                "id": workstream.id,
+                "label": workstream.label,
+                "assigned_agent": workstream.assigned_agent,
+                "status": workstream.status,
+                "milestones_delivered": len(delivered),
+                "milestones_total": len(ws_milestones),
+                "findings_total": len(ws_findings),
+                "has_material": bool(ws_findings or delivered or workstream.status == "delivered"),
+            }
+        )
+
+    return {
+        "findings_total": len(research_findings),
+        "workstreams_total": len(workstreams),
+        "workstreams_with_material": sum(1 for row in workstream_rows if row["has_material"]),
+        "milestones_delivered": sum(1 for m in milestones if m.status == "delivered"),
+        "milestones_total": len(milestones),
+        "workstreams": workstream_rows,
+    }
+
+
+def _verdict_payload(verdict: MerlinVerdict | None) -> dict[str, Any] | None:
+    if verdict is None:
+        return None
+    return {
+        "id": verdict.id,
+        "verdict": verdict.verdict,
+        "notes": verdict.notes,
+        "created_at": verdict.created_at,
+    }

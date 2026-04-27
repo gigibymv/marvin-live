@@ -39,6 +39,7 @@ import {
   getMissionProgress,
   getDeliverableDownloadUrl,
 } from "@/lib/missions/api";
+import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
 
 let _msgCounter = 0;
 function makeMessageId(missionId: string, suffix: string): string {
@@ -164,6 +165,7 @@ export default function MissionControl({
   const [agentStatuses, setAgentStatuses] = useState<Record<string, "idle" | "active" | "done">>({});
   const [liveFindings, setLiveFindings] = useState<Array<{ id: string; claim_text: string; confidence?: string }>>([]);
   const [milestoneStatusOverrides, setMilestoneStatusOverrides] = useState<Record<string, string>>({});
+  const [gatePayloads, setGatePayloads] = useState<Record<string, MissionGateModalState>>({});
 
   const chatDraft = useMissionUiStore((state) => selectChatDraft(state, missionId));
   const selectedTab = useMissionUiStore((state) => selectWorkspaceTab(state, missionId));
@@ -287,6 +289,11 @@ export default function MissionControl({
             // persistent banner (derived from progress.gates) is the entry
             // point that opens the detailed review surface on user action.
             // Source of truth for gate state remains the backend gate row.
+            const modalPayload = mapGateReviewPayloadToModal(event);
+            setGatePayloads((current) => ({
+              ...current,
+              [modalPayload.gateId]: modalPayload,
+            }));
             setMessages((current) =>
               current.concat({
                 id: makeMessageId(missionId, "gate-pending"),
@@ -523,16 +530,16 @@ export default function MissionControl({
     if (!progress) return;
     const pending = (progress.gates ?? []).find((g) => g.lifecycle_status === "open" || g.is_open);
     if (!pending) return;
+    const modalPayload =
+      gatePayloads[pending.id] ??
+      mapGateReviewPayloadToModal(pending.review_payload, {
+        id: pending.id,
+        gate_type: pending.gate_type,
+      });
     setGateModal((current) =>
-      current ?? {
-        gateId: pending.id,
-        gateType: pending.gate_type,
-        title: pending.gate_type?.replace(/_/g, " ") ?? "Validation required",
-        summary:
-          "A gate is waiting for human review. Approve, reject, or close to decide later — the mission state is preserved.",
-      },
+      current ?? modalPayload,
     );
-  }, [progress]);
+  }, [gatePayloads, progress]);
 
   if (!hasLoaded) {
     return null;
@@ -823,6 +830,56 @@ export default function MissionControl({
               {gateModal.summary || "A gate is waiting for human review before the mission can proceed."}
             </p>
 
+            {gateModal.framing && (
+              <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
+                <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
+                  Framing summary
+                </div>
+                {gateModal.framing.briefSummary && (
+                  <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "6px" }}>
+                    {gateModal.framing.briefSummary}
+                  </div>
+                )}
+                {gateModal.framing.missionAngle && (
+                  <div style={{ fontSize: "11px", lineHeight: 1.5, color: "#78716A" }}>
+                    Angle: {gateModal.framing.missionAngle}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {gateModal.coverage && (
+              <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
+                <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
+                  Research coverage
+                </div>
+                <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "8px" }}>
+                  {gateModal.coverage.findings_total} findings across {gateModal.coverage.workstreams_with_material}/{gateModal.coverage.workstreams_total} workstreams · {gateModal.coverage.milestones_delivered}/{gateModal.coverage.milestones_total} milestones delivered
+                </div>
+                <div style={{ display: "grid", gap: "4px" }}>
+                  {gateModal.coverage.workstreams.map((w) => (
+                    <div key={w.id} style={{ display: "flex", justifyContent: "space-between", gap: "10px", fontSize: "11px", color: "#5a5854" }}>
+                      <span>{w.id} · {w.label}</span>
+                      <span>{w.findings_total} findings · {w.milestones_delivered}/{w.milestones_total}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {gateModal.merlinVerdict && (
+              <div style={{ marginBottom: "14px", border: "1px solid #d5e2d8", borderRadius: "8px", padding: "10px 12px", background: "rgba(45,110,78,.06)" }}>
+                <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
+                  Merlin verdict · {gateModal.merlinVerdict.verdict}
+                </div>
+                {gateModal.merlinVerdict.notes && (
+                  <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                    {gateModal.merlinVerdict.notes}
+                  </div>
+                )}
+              </div>
+            )}
+
             {(gateModal.unlocksOnApprove || gateModal.unlocksOnReject) && (
               <div
                 style={{
@@ -920,6 +977,17 @@ export default function MissionControl({
                 <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
                   {gateModal.redteamFindings.map((f, i) => (
                     <li key={`rt-${i}`}>{f.claim_text}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {gateModal.openRisks && gateModal.openRisks.length > 0 && (
+              <div style={{ marginBottom: "14px", color: "#8B6200", fontSize: "12px", lineHeight: 1.5 }}>
+                <strong>Open risks:</strong>
+                <ul style={{ margin: "4px 0 0", paddingLeft: "16px" }}>
+                  {gateModal.openRisks.map((risk, i) => (
+                    <li key={`risk-${i}`}>{risk}</li>
                   ))}
                 </ul>
               </div>

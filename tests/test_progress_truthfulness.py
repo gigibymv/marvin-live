@@ -9,6 +9,7 @@ import pytest
 from marvin.mission.schema import Deliverable, Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin_ui import server as srv
+from fastapi import HTTPException
 
 
 @pytest.fixture
@@ -73,6 +74,8 @@ def test_hypothesis_gate_opens_only_after_hypotheses_exist(store: MissionStore):
 
     assert gates["hypothesis_confirmation"]["lifecycle_status"] == "open"
     assert gates["hypothesis_confirmation"]["is_open"] is True
+    assert gates["hypothesis_confirmation"]["review_payload"]["framing"]["brief_summary"] == "Assess differentiated growth."
+    assert gates["hypothesis_confirmation"]["review_payload"]["hypotheses"][0]["id"] == "hyp-progress"
     assert gates["manager_review"]["lifecycle_status"] == "scheduled"
     assert gates["final_review"]["lifecycle_status"] == "scheduled"
 
@@ -123,6 +126,8 @@ def test_manager_review_opens_after_research_finding(store: MissionStore):
 
     assert gates["manager_review"]["lifecycle_status"] == "open"
     assert gates["manager_review"]["is_open"] is True
+    assert gates["manager_review"]["review_payload"]["coverage"]["findings_total"] == 1
+    assert gates["manager_review"]["review_payload"]["research_findings"][0]["id"] == "f-research"
     assert gates["final_review"]["lifecycle_status"] == "scheduled"
 
 
@@ -152,3 +157,37 @@ def test_final_review_opens_after_merlin_verdict_and_redteam_finding(store: Miss
 
     assert gates["final_review"]["lifecycle_status"] == "open"
     assert gates["final_review"]["is_open"] is True
+    assert gates["final_review"]["review_payload"]["merlin_verdict"]["verdict"] == "SHIP"
+    assert gates["final_review"]["review_payload"]["redteam_findings"][0]["id"] == "f-redteam"
+
+
+def test_validate_gate_rejects_scheduled_gate_without_material(store: MissionStore):
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            srv.validate_gate(
+                "m-progress",
+                "gate-m-progress-hyp-confirm",
+                srv.GateValidateRequest(verdict="APPROVED", notes="too early"),
+            )
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["lifecycle_status"] == "scheduled"
+    assert set(exc_info.value.detail["missing_material"]) == {"framing_summary", "hypotheses"}
+
+
+def test_validate_gate_rejects_opposite_verdict_after_gate_closed(store: MissionStore):
+    store.update_gate_status("gate-m-progress-G1", "failed", notes="Needs more work")
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            srv.validate_gate(
+                "m-progress",
+                "gate-m-progress-G1",
+                srv.GateValidateRequest(verdict="APPROVED", notes="changed mind"),
+            )
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["lifecycle_status"] == "failed"
+    assert "already been decided" in exc_info.value.detail["message"]

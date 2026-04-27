@@ -7,6 +7,8 @@
 
 import type { MissionGateVerdict } from "@/lib/missions/types";
 
+export type GateReviewPayload = Record<string, unknown>;
+
 // Allow runtime configuration via env var or window global
 const getApiBase = (): string => {
   if (typeof window !== "undefined" && (window as any).__MARVIN_API_BASE__) {
@@ -145,6 +147,8 @@ export async function getMissionProgress(missionId: string): Promise<{
     status: string;
     lifecycle_status: string;
     is_open: boolean;
+    missing_material: string[];
+    review_payload: GateReviewPayload;
     format: string | null;
   }>;
   milestones: Array<{

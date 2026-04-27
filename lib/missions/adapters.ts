@@ -83,10 +83,13 @@ export function toDashboardMissionBuckets(missions: Mission[]): {
 // These helpers only translate a `gate_pending` SSE payload into surface text.
 
 export interface GatePendingPresentationInput {
+  gate_type?: string | null;
   gateType?: string | null;
   title?: string | null;
   stage?: string | null;
   summary?: string | null;
+  unlocks_on_approve?: string | null;
+  unlocks_on_reject?: string | null;
   unlocksOnApprove?: string | null;
   unlocksOnReject?: string | null;
 }
@@ -94,11 +97,13 @@ export interface GatePendingPresentationInput {
 export function formatGatePendingChatMessage(event: GatePendingPresentationInput): string {
   const lines: string[] = [];
   const heading = event.title?.trim() || "Validation requested";
+  const unlocksOnApprove = event.unlocksOnApprove ?? event.unlocks_on_approve;
+  const unlocksOnReject = event.unlocksOnReject ?? event.unlocks_on_reject;
   lines.push(`🔔 Gate pending — ${heading}`);
   if (event.stage?.trim()) lines.push(`Stage: ${event.stage.trim()}`);
   if (event.summary?.trim()) lines.push(event.summary.trim());
-  if (event.unlocksOnApprove?.trim()) lines.push(`Approve → ${event.unlocksOnApprove.trim()}`);
-  if (event.unlocksOnReject?.trim()) lines.push(`Reject → ${event.unlocksOnReject.trim()}`);
+  if (unlocksOnApprove?.trim()) lines.push(`Approve → ${unlocksOnApprove.trim()}`);
+  if (unlocksOnReject?.trim()) lines.push(`Reject → ${unlocksOnReject.trim()}`);
   lines.push(
     "Take your time. Click \u201cReview now\u201d in the banner above to approve, reject, or come back later.",
   );
@@ -106,7 +111,7 @@ export function formatGatePendingChatMessage(event: GatePendingPresentationInput
 }
 
 export function formatGatePendingFeedSignal(event: GatePendingPresentationInput): string {
-  const label = (event.title || event.gateType || "validation").toString().replace(/_/g, " ").trim();
+  const label = (event.title || event.gateType || event.gate_type || "validation").toString().replace(/_/g, " ").trim();
   return `Gate pending · ${label}`;
 }
 

@@ -1,56 +1,21 @@
 from __future__ import annotations
 
+import logging
+
 from langgraph.types import interrupt
 
+from marvin.graph.gate_material import evaluate_gate_material, human_gate_copy
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore
 from marvin.tools.arbiter_tools import check_internal_consistency
 
 
-_GATE_COPY = {
-    "hypothesis_confirmation": {
-        "title": "Confirm initial hypotheses",
-        "stage": "Framing",
-        "summary": (
-            "MARVIN has framed the deal into testable hypotheses. "
-            "Approve to start parallel research workstreams. "
-            "Reject to revise the framing before any research runs."
-        ),
-        "unlocks_on_approve": "Dora, Calculus, and Lector begin Day 1–3 research.",
-        "unlocks_on_reject": "MARVIN reopens framing for revision.",
-    },
-    "manager_review": {
-        "title": "Manager review of research claims",
-        "stage": "Mid-mission checkpoint (G1)",
-        "summary": (
-            "Initial research is complete. Review the claims surfaced so far for "
-            "soundness, sourcing, and confidence before red-team challenges them."
-        ),
-        "unlocks_on_approve": "Adversus runs the red-team challenge against the storyline.",
-        "unlocks_on_reject": "Workstreams loop back for additional research.",
-    },
-    "final_review": {
-        "title": "Final IC memo review",
-        "stage": "Pre-delivery (G3)",
-        "summary": (
-            "Synthesis is complete after the red-team pass. "
-            "Approve to finalize the IC memo and deliverables. "
-            "Reject to send Merlin back through another synthesis pass."
-        ),
-        "unlocks_on_approve": "Papyrus produces the final memo and deliverable set.",
-        "unlocks_on_reject": "Merlin re-runs synthesis incorporating remaining concerns.",
-    },
-}
+logger = logging.getLogger(__name__)
 
 
-def _human_copy(gate_type: str) -> dict:
-    return _GATE_COPY.get(gate_type, {
-        "title": gate_type.replace("_", " ").capitalize() if gate_type else "Validation required",
-        "stage": "Mission checkpoint",
-        "summary": "A gate is waiting for human review before the mission can proceed.",
-        "unlocks_on_approve": "Mission continues to the next phase.",
-        "unlocks_on_reject": "Mission pauses; team revisits the prior phase.",
-    })
+def _human_copy(gate_type: str) -> dict[str, str]:
+    """Backward-compatible alias for existing tests/imports."""
+    return human_gate_copy(gate_type)
 
 
 async def gate_node(state: MarvinState, config=None) -> dict:
@@ -68,39 +33,36 @@ async def gate_node(state: MarvinState, config=None) -> dict:
     gate = next((candidate for candidate in gates if candidate.id == gate_id), None)
     findings = store.list_findings(mission_id)
     hypotheses = store.list_hypotheses(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+    workstreams = store.list_workstreams(mission_id)
+    milestones = store.list_milestones(mission_id)
 
-    gate_type = gate.gate_type if gate else "unknown"
-    copy = _human_copy(gate_type)
+    if gate is None:
+        return {"phase": "idle", "pending_gate_id": None}
 
-    redteam_findings = [
-        {"claim_text": f.claim_text, "confidence": f.confidence, "agent_id": f.agent_id}
-        for f in findings
-        if (f.agent_id or "").lower() == "adversus"
-    ]
-    research_findings = [
-        {"claim_text": f.claim_text, "confidence": f.confidence, "agent_id": f.agent_id}
-        for f in findings
-        if (f.agent_id or "").lower() != "adversus"
-    ]
+    arbiter_flags = arbiter_result.get("inconsistencies", []) + arbiter_result.get("flags", [])
+    material = evaluate_gate_material(
+        store,
+        mission_id,
+        gate,
+        hypotheses=hypotheses,
+        findings=findings,
+        mission_brief=mission_brief,
+        workstreams=workstreams,
+        milestones=milestones,
+        arbiter_flags=arbiter_flags,
+    )
+    if not material.is_open:
+        logger.info(
+            "gate_node: gate %s not opened; missing material: %s",
+            gate_id,
+            ", ".join(material.missing_material),
+        )
+        return {"phase": "idle", "pending_gate_id": None}
 
-    payload = {
-        "gate_id": gate_id,
-        "gate_type": gate_type,
-        "format": gate.format if gate else "review_claims",
-        "title": copy["title"],
-        "stage": copy["stage"],
-        "summary": copy["summary"],
-        "unlocks_on_approve": copy["unlocks_on_approve"],
-        "unlocks_on_reject": copy["unlocks_on_reject"],
-        "hypotheses": [
-            {"id": h.id, "text": h.text, "status": h.status} for h in hypotheses
-        ],
-        "research_findings": research_findings[-12:],
-        "redteam_findings": redteam_findings[-8:],
-        "findings_total": len(findings),
-        "findings_snapshot": research_findings[-3:],
-        "arbiter_flags": arbiter_result.get("inconsistencies", []) + arbiter_result.get("flags", []),
-    }
+    payload = dict(material.review_payload)
+    research_findings = payload.get("research_findings", [])
+    payload["findings_snapshot"] = research_findings[-3:]
 
     if config:
         from langchain_core.callbacks import adispatch_custom_event

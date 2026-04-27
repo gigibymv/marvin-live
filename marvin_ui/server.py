@@ -41,6 +41,7 @@ from marvin.events import (
     unregister_finding_listener,
     unregister_milestone_listener,
 )
+from marvin.graph.gate_material import evaluate_gate_material
 from marvin.graph.runner import build_graph
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore, _seed_standard_workplan
@@ -110,38 +111,6 @@ def _mission_exists(store: MissionStore, mission_id: str) -> bool:
         return True
     except KeyError:
         return False
-
-
-def _gate_lifecycle_status(
-    store: MissionStore,
-    mission_id: str,
-    gate: Gate,
-    hypotheses: list[Hypothesis],
-    findings: list[Finding],
-    has_framing: bool,
-) -> str:
-    """Separate scheduled gates from gates with real material to review."""
-    if gate.status != "pending":
-        return gate.status
-
-    if gate.gate_type == "hypothesis_confirmation":
-        return "open" if has_framing and hypotheses else "scheduled"
-
-    if gate.gate_type == "manager_review":
-        research_findings = [
-            finding for finding in findings
-            if (finding.agent_id or "").lower() != "adversus"
-        ]
-        return "open" if research_findings else "scheduled"
-
-    if gate.gate_type == "final_review":
-        redteam_findings = [
-            finding for finding in findings
-            if (finding.agent_id or "").lower() == "adversus"
-        ]
-        return "open" if store.get_latest_merlin_verdict(mission_id) and redteam_findings else "scheduled"
-
-    return "scheduled"
 
 
 def _deliverable_progress_payload(deliverable) -> dict:
@@ -828,10 +797,20 @@ async def list_missions():
         gates = store.list_gates(mission_id)
         hypotheses = store.list_hypotheses(mission_id)
         findings = store.list_findings(mission_id)
-        has_framing = store.get_mission_brief(mission_id) is not None
+        mission_brief = store.get_mission_brief(mission_id)
+        workstreams = store.list_workstreams(mission_id)
         open_gates = [
             g for g in gates
-            if _gate_lifecycle_status(store, mission_id, g, hypotheses, findings, has_framing) == "open"
+            if evaluate_gate_material(
+                store,
+                mission_id,
+                g,
+                hypotheses=hypotheses,
+                findings=findings,
+                mission_brief=mission_brief,
+                workstreams=workstreams,
+                milestones=milestones,
+            ).is_open
         ]
         next_checkpoint = None
         if open_gates:
@@ -880,8 +859,17 @@ async def get_mission_progress(mission_id: str):
     deliverables = store.list_deliverables(mission_id)
     workstreams = store.list_workstreams(mission_id)
     mission_brief = store.get_mission_brief(mission_id)
-    gate_states = {
-        g.id: _gate_lifecycle_status(store, mission_id, g, hypotheses, findings, mission_brief is not None)
+    gate_material = {
+        g.id: evaluate_gate_material(
+            store,
+            mission_id,
+            g,
+            hypotheses=hypotheses,
+            findings=findings,
+            mission_brief=mission_brief,
+            workstreams=workstreams,
+            milestones=milestones,
+        )
         for g in gates
     }
     
@@ -901,8 +889,10 @@ async def get_mission_progress(mission_id: str):
                 "gate_type": g.gate_type,
                 "scheduled_day": g.scheduled_day,
                 "status": g.status,
-                "lifecycle_status": gate_states[g.id],
-                "is_open": gate_states[g.id] == "open",
+                "lifecycle_status": gate_material[g.id].lifecycle_status,
+                "is_open": gate_material[g.id].is_open,
+                "missing_material": gate_material[g.id].missing_material,
+                "review_payload": gate_material[g.id].review_payload,
                 "format": g.format,
             }
             for g in gates
@@ -1041,6 +1031,43 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
             mission_id=mission_id,
             gate_id=gate_id,
             resume_id=resume_id,
+        )
+    if gate.status in ("completed", "failed"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"Gate has already been decided with status={gate.status}",
+                "gate_id": gate_id,
+                "gate_type": gate.gate_type,
+                "lifecycle_status": gate.status,
+            },
+        )
+
+    hypotheses = store.list_hypotheses(mission_id)
+    findings = store.list_findings(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+    workstreams = store.list_workstreams(mission_id)
+    milestones = store.list_milestones(mission_id)
+    material = evaluate_gate_material(
+        store,
+        mission_id,
+        gate,
+        hypotheses=hypotheses,
+        findings=findings,
+        mission_brief=mission_brief,
+        workstreams=workstreams,
+        milestones=milestones,
+    )
+    if not material.is_open:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Gate cannot be validated until required review material exists",
+                "gate_id": gate_id,
+                "gate_type": gate.gate_type,
+                "lifecycle_status": material.lifecycle_status,
+                "missing_material": material.missing_material,
+            },
         )
     
     store.update_gate_status(gate_id, expected_status, notes=body.notes)

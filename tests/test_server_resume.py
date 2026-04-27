@@ -21,7 +21,7 @@ from langgraph.types import Command
 from marvin.graph import gates as gates_module
 from marvin.graph import runner
 from marvin.graph.runner import build_graph
-from marvin.mission.schema import Hypothesis, Mission
+from marvin.mission.schema import Hypothesis, Mission, MissionBrief
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools import arbiter_tools, mission_tools, papyrus_tools
 from marvin_ui import server as srv
@@ -84,6 +84,19 @@ def test_graph_resume_after_interrupt_advances_phase(graph_store: MissionStore):
                 text="market is large",
                 status="active",
                 created_at=datetime.now(UTC).isoformat(),
+            )
+        )
+        now = datetime.now(UTC).isoformat()
+        graph_store.save_mission_brief(
+            MissionBrief(
+                mission_id="m-resume",
+                raw_brief="Assess whether Target's market is large enough for investment.",
+                ic_question="Q?",
+                mission_angle="Market attractiveness",
+                brief_summary="Assess whether the market is large enough for investment.",
+                workstream_plan_json='[{"id":"W1","label":"Market","focus":"Market attractiveness"}]',
+                created_at=now,
+                updated_at=now,
             )
         )
         gate_id = "gate-m-resume-hyp-confirm"

@@ -13,6 +13,7 @@ import {
   formatGatePendingChatMessage,
   formatGatePendingFeedSignal,
 } from "@/lib/missions/adapters";
+import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
 
 describe("MissionControl UX slice", () => {
   it("getDeliverableDownloadUrl encodes rel_path safely", () => {
@@ -25,7 +26,6 @@ describe("MissionControl UX slice", () => {
   });
 
   it("gate payload mapping preserves human-language fields", async () => {
-    // Re-implement the mapper-equivalent inline for unit-level coverage.
     const raw = {
       type: "gate_pending",
       gate_id: "gate-7",
@@ -37,36 +37,48 @@ describe("MissionControl UX slice", () => {
       unlocks_on_reject: "Workstreams loop back.",
       hypotheses: [{ id: "h1", text: "TAM > $10B", status: "open" }],
       research_findings: [
-        { claim_text: "Market growing 12%", confidence: "sourced", agent_id: "dora" },
+        { id: "f1", claim_text: "Market growing 12%", confidence: "sourced", agent_id: "dora" },
       ],
       redteam_findings: [
-        { claim_text: "Customer concentration risk", confidence: "inferred", agent_id: "adversus" },
+        { id: "f2", claim_text: "Customer concentration risk", confidence: "inferred", agent_id: "adversus" },
       ],
+      coverage: {
+        findings_total: 1,
+        workstreams_total: 2,
+        workstreams_with_material: 1,
+        milestones_delivered: 2,
+        milestones_total: 10,
+        workstreams: [],
+      },
+      merlin_verdict: { id: "mv1", verdict: "SHIP", notes: "Ready for IC." },
       arbiter_flags: ["minor inconsistency in pricing"],
       findings_total: 17,
     };
-    // Mirror the mapper logic
-    const mapped = {
-      gateId: String(raw.gate_id ?? "gate"),
-      gateType: raw.gate_type,
-      title: raw.title,
-      stage: raw.stage,
-      summary: raw.summary,
-      unlocksOnApprove: raw.unlocks_on_approve,
-      unlocksOnReject: raw.unlocks_on_reject,
-      hypotheses: raw.hypotheses,
-      researchFindings: raw.research_findings,
-      redteamFindings: raw.redteam_findings,
-      arbiterFlags: raw.arbiter_flags,
-      findingsTotal: raw.findings_total,
-    };
+    const mapped = mapGateReviewPayloadToModal(raw);
+
     expect(mapped.gateId).toBe("gate-7");
     expect(mapped.title).toBe("Manager review of research claims");
     expect(mapped.unlocksOnApprove).toContain("red-team");
     expect(mapped.hypotheses?.[0]?.text).toBe("TAM > $10B");
     expect(mapped.redteamFindings?.[0]?.agent_id).toBe("adversus");
+    expect(mapped.coverage?.workstreams_with_material).toBe(1);
+    expect(mapped.merlinVerdict?.verdict).toBe("SHIP");
     expect(mapped.findingsTotal).toBe(17);
     expect(mapped.arbiterFlags?.length).toBe(1);
+  });
+
+  it("gate payload mapping normalizes incomplete coverage safely", async () => {
+    const mapped = mapGateReviewPayloadToModal(
+      {
+        gate_type: "manager_review",
+        coverage: { findings_total: 3 },
+      },
+      { id: "gate-fallback", gate_type: "manager_review" },
+    );
+
+    expect(mapped.gateId).toBe("gate-fallback");
+    expect(mapped.coverage?.findings_total).toBe(3);
+    expect(mapped.coverage?.workstreams).toEqual([]);
   });
 
   it("makeMessageId produces unique ids across rapid bursts (feed key safety)", () => {
@@ -122,6 +134,18 @@ describe("MissionControl UX slice", () => {
       expect(
         formatGatePendingFeedSignal({ gateType: "hypothesis_confirmation" }),
       ).toBe("Gate pending · hypothesis confirmation");
+    });
+
+    it("formatGatePendingChatMessage accepts backend snake_case unlock fields", () => {
+      const text = formatGatePendingChatMessage({
+        gate_type: "manager_review",
+        title: "Manager review",
+        unlocks_on_approve: "Adversus runs.",
+        unlocks_on_reject: "Research loops.",
+      });
+
+      expect(text).toContain("Approve → Adversus runs.");
+      expect(text).toContain("Reject → Research loops.");
     });
 
     it("gate_pending handler builds chat + feed signal without modal state (controller contract)", () => {

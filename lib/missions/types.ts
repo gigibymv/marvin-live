@@ -45,9 +45,46 @@ export interface MissionGateHypothesis {
 }
 
 export interface MissionGateFinding {
+  id?: string;
+  workstream_id?: string | null;
+  hypothesis_id?: string | null;
   claim_text: string;
   confidence: string | null;
   agent_id: string | null;
+}
+
+export interface MissionGateFraming {
+  icQuestion?: string;
+  missionAngle?: string;
+  briefSummary?: string;
+  workstreamPlan?: Array<Record<string, unknown>>;
+}
+
+export interface MissionGateCoverageWorkstream {
+  id: string;
+  label: string;
+  assigned_agent?: string | null;
+  status: string;
+  milestones_delivered: number;
+  milestones_total: number;
+  findings_total: number;
+  has_material: boolean;
+}
+
+export interface MissionGateCoverage {
+  findings_total: number;
+  workstreams_total: number;
+  workstreams_with_material: number;
+  milestones_delivered: number;
+  milestones_total: number;
+  workstreams: MissionGateCoverageWorkstream[];
+}
+
+export interface MissionGateMerlinVerdict {
+  id: string;
+  verdict: string;
+  notes?: string | null;
+  created_at?: string | null;
 }
 
 export interface MissionGateModalState {
@@ -63,6 +100,12 @@ export interface MissionGateModalState {
   redteamFindings?: MissionGateFinding[];
   arbiterFlags?: string[];
   findingsTotal?: number;
+  framing?: MissionGateFraming | null;
+  coverage?: MissionGateCoverage | null;
+  merlinVerdict?: MissionGateMerlinVerdict | null;
+  weakestLinks?: MissionGateFinding[];
+  openRisks?: string[];
+  missingMaterial?: string[];
 }
 
 export interface DashboardActiveMission {
