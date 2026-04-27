@@ -114,7 +114,10 @@ def _mission_exists(store: MissionStore, mission_id: str) -> bool:
 
 
 def _deliverable_progress_payload(deliverable) -> dict:
-    is_ready = deliverable.status == "ready" and artifact_file_is_ready(deliverable.file_path)
+    is_ready = (
+        deliverable.status == "ready"
+        and artifact_file_is_ready(deliverable.file_path, deliverable.deliverable_type)
+    )
     return {
         "id": deliverable.id,
         "deliverable_type": deliverable.deliverable_type,

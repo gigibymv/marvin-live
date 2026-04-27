@@ -209,6 +209,129 @@ def test_failed_artifact_validation_removes_orphan_file(store: MissionStore, tmp
     assert store.list_deliverables("m-dlv") == []
 
 
+def test_short_artifact_is_not_marked_ready(store: MissionStore, tmp_path: Path):
+    path = tmp_path / "short_report.md"
+    path.write_text("Finding ID: f-1. Too short.\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not ready"):
+        papyrus_tools._save_deliverable(
+            store,
+            "m-dlv",
+            "deliverable-short",
+            "workstream_report",
+            path,
+        )
+
+    assert not path.exists()
+    assert store.list_deliverables("m-dlv") == []
+
+
+def test_artifact_without_required_reference_is_not_marked_ready(store: MissionStore, tmp_path: Path):
+    path = tmp_path / "unlinked_report.md"
+    path.write_text(
+        "# Workstream Report\n\n"
+        "This report is long enough to be useful at a basic formatting level, "
+        "but it deliberately omits the persisted finding identifier required "
+        "for reviewer traceability. Without that link, it must not be announced "
+        "as a ready deliverable even if the prose itself looks plausible.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="not ready"):
+        papyrus_tools._save_deliverable(
+            store,
+            "m-dlv",
+            "deliverable-unlinked",
+            "workstream_report",
+            path,
+        )
+
+    assert not path.exists()
+    assert store.list_deliverables("m-dlv") == []
+
+
+def test_generated_workstream_report_contains_traceable_finding_link(store: MissionStore):
+    _add_hypothesis(store)
+    _add_finding(store, "f-w1", "W1")
+
+    result = papyrus_tools._generate_workstream_report_impl("W1", "m-dlv")
+    body = Path(result["file_path"]).read_text(encoding="utf-8")
+
+    assert "Finding ID: f-w1" in body
+    assert "Hypothesis ID: hyp-dlv" in body
+    assert store.list_deliverables("m-dlv")[0].status == "ready"
+
+
+def test_engagement_brief_without_hypothesis_reference_is_not_ready(store: MissionStore, tmp_path: Path):
+    path = tmp_path / "engagement_brief.md"
+    path.write_text(
+        "# Engagement Brief\n\n"
+        "This engagement brief is long enough to look plausible and discusses the "
+        "mission angle, initial workstreams, and intended validation focus in a way "
+        "that might pass a shallow non-empty check. It deliberately omits the "
+        "required hypothesis identifier, so it must fail the artifact quality gate "
+        "before any deliverable_ready event can be emitted.\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing required references"):
+        papyrus_tools._save_deliverable(
+            store,
+            "m-dlv",
+            "deliverable-unlinked-brief",
+            "engagement_brief",
+            path,
+        )
+
+    assert not path.exists()
+    assert store.list_deliverables("m-dlv") == []
+
+
+def test_exec_summary_and_data_book_without_finding_reference_are_not_ready(
+    store: MissionStore,
+    tmp_path: Path,
+):
+    for deliverable_type, filename in (
+        ("exec_summary", "exec_summary.md"),
+        ("data_book", "data_book.md"),
+    ):
+        path = tmp_path / filename
+        path.write_text(
+            f"# {deliverable_type}\n\n"
+            "This artifact has enough prose to clear the minimum length threshold. "
+            "It talks about the investment context, research themes, and review usage, "
+            "but it intentionally omits the required persisted finding identifier. "
+            "That missing traceability should prevent ready persistence.\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="missing required references"):
+            papyrus_tools._save_deliverable(
+                store,
+                "m-dlv",
+                f"deliverable-unlinked-{deliverable_type}",
+                deliverable_type,
+                path,
+            )
+
+        assert not path.exists()
+    assert store.list_deliverables("m-dlv") == []
+
+
+def test_generated_engagement_summary_and_data_book_include_traceability(store: MissionStore):
+    _add_hypothesis(store)
+    _add_framing(store)
+    _add_finding(store, "f-w1", "W1")
+
+    engagement = papyrus_tools._generate_engagement_brief_impl("m-dlv")
+    summary = papyrus_tools._generate_exec_summary_impl("m-dlv")
+    data_book = papyrus_tools._generate_data_book_impl("m-dlv")
+
+    assert "Hypothesis ID: hyp-dlv" in Path(engagement["file_path"]).read_text(encoding="utf-8")
+    assert "Finding ID: f-w1" in Path(summary["file_path"]).read_text(encoding="utf-8")
+    assert "Finding ID: f-w1" in Path(data_book["file_path"]).read_text(encoding="utf-8")
+
+
 def test_listener_scoped_to_mission_id(store: MissionStore):
     _add_hypothesis(store)
     _add_framing(store)

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from marvin.artifacts import artifact_body_has_placeholder, artifact_file_is_ready
+from marvin.artifacts import artifact_file_readiness_errors
 from marvin.events import emit_deliverable_persisted
 from marvin.mission.schema import Deliverable
 from marvin.mission.store import MissionStore
@@ -20,12 +20,9 @@ class BriefPrerequisiteNotMet(ValueError):
 
 def _assert_artifact_can_be_ready(file_path: Path, deliverable_type: str) -> None:
     """Fail closed before any artifact is announced as ready."""
-    if not artifact_file_is_ready(file_path):
-        if file_path.exists() and file_path.is_file():
-            body = file_path.read_bytes().decode("utf-8", errors="ignore")
-            if artifact_body_has_placeholder(body):
-                raise ValueError(f"{deliverable_type} contains placeholder content")
-        raise ValueError(f"{deliverable_type} is not ready")
+    errors = artifact_file_readiness_errors(file_path, deliverable_type)
+    if errors:
+        raise ValueError(f"{deliverable_type} is not ready: {', '.join(errors)}")
 
 
 def _save_deliverable(
@@ -96,10 +93,24 @@ def _generate_engagement_brief_impl(mission_id: str) -> dict[str, Any]:
         "",
         "## Hypotheses",
     ]
-    lines.extend([f"- {hypothesis.text}" for hypothesis in hypotheses])
+    lines.extend(
+        [
+            f"- Hypothesis ID: {hypothesis.id} - {hypothesis.text} (status: {hypothesis.status})"
+            for hypothesis in hypotheses
+        ]
+    )
     lines.extend(["", "## Workstream Plan"])
     for item in json.loads(mission_brief.workstream_plan_json):
         lines.append(f"- {item['id']} - {item['label']}: {item['focus']}")
+    lines.extend(
+        [
+            "",
+            "## Validation Focus",
+            "This engagement brief is ready because it ties the mission angle, IC question, "
+            "and initial hypotheses into named diligence workstreams. Gate 1 should validate "
+            "whether these hypotheses are the right questions before research begins.",
+        ]
+    )
     next_body = "\n".join(lines) + "\n"
     status = "generated"
     if existed:
@@ -139,8 +150,30 @@ def _generate_workstream_report_impl(workstream_id: str, mission_id: str) -> dic
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / f"{workstream_id}_report.md"
     lines = [f"# {workstream_id} Report", ""]
+    lines.extend(
+        [
+            "## Scope",
+            f"This workstream report summarizes persisted findings for {workstream_id}. "
+            "Each claim below includes the finding identifier that backs the report.",
+            "",
+            "## Evidence-backed Findings",
+        ]
+    )
     for finding in findings:
-        lines.append(f"- [{finding.confidence}] {finding.claim_text}")
+        hypothesis_ref = f" Hypothesis ID: {finding.hypothesis_id}." if finding.hypothesis_id else ""
+        source_ref = f" Source ID: {finding.source_id}." if finding.source_id else ""
+        lines.append(
+            f"- Finding ID: {finding.id}. Confidence: {finding.confidence}. "
+            f"Claim: {finding.claim_text}.{hypothesis_ref}{source_ref}"
+        )
+    lines.extend(
+        [
+            "",
+            "## Manager Review Note",
+            "Use this report to confirm whether the workstream has enough evidence for the "
+            "manager review gate, and identify any claims that need additional sourcing.",
+        ]
+    )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-{workstream_id.lower()}-report"
     deliverable_type = "workstream_report"
@@ -202,9 +235,33 @@ def _generate_exec_summary_impl(mission_id: str) -> dict[str, Any]:
         "",
         f"Mission: {mission.client} / {mission.target}",
         "",
+        "## Decision Context",
+        "This summary is generated only from persisted mission findings. Each bullet links "
+        "back to a finding identifier so reviewers can trace the claim to the mission record.",
+        "",
         "## Key Findings",
     ]
-    lines.extend([f"- {finding.claim_text}" for finding in findings[:10]])
+    lines.extend(
+        [
+            f"- Finding ID: {finding.id}. Confidence: {finding.confidence}. Claim: {finding.claim_text}"
+            for finding in findings[:10]
+        ]
+    )
+    verdict = store.get_latest_merlin_verdict(mission_id)
+    if verdict:
+        verdict_notes = (verdict.notes or "").strip()
+        verdict_line = f"Verdict ID: {verdict.id}. Outcome: {verdict.verdict}."
+        if verdict_notes:
+            verdict_line = f"{verdict_line} {verdict_notes}"
+        lines.extend(["", "## Merlin Verdict", verdict_line])
+    lines.extend(
+        [
+            "",
+            "## Review Use",
+            "This document should be used as a concise orientation layer, not as a substitute "
+            "for the underlying findings, sources, and gate review payloads.",
+        ]
+    )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-exec-summary"
     deliverable_type = "exec_summary"
@@ -236,9 +293,31 @@ def _generate_data_book_impl(mission_id: str) -> dict[str, Any]:
 
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / "data_book.md"
-    lines = ["# Data Book", "", "## Findings"]
+    lines = [
+        "# Data Book",
+        "",
+        "## Purpose",
+        "The data book is an indexed evidence register. Every row below links to a persisted "
+        "finding identifier and preserves confidence, hypothesis, source, and agent metadata.",
+        "",
+        "## Findings",
+    ]
     for finding in findings:
-        lines.append(f"- {finding.id}: {finding.claim_text} [{finding.confidence}]")
+        lines.append(
+            f"- Finding ID: {finding.id}. Workstream: {finding.workstream_id or 'unassigned'}. "
+            f"Hypothesis ID: {finding.hypothesis_id or 'unassigned'}. "
+            f"Source ID: {finding.source_id or 'unassigned'}. "
+            f"Agent: {finding.agent_id or 'unknown'}. Confidence: {finding.confidence}. "
+            f"Claim: {finding.claim_text}"
+        )
+    lines.extend(
+        [
+            "",
+            "## Traceability",
+            "If a row lacks source or hypothesis metadata, reviewers should treat that as an "
+            "explicit coverage gap rather than hidden evidence.",
+        ]
+    )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-data-book"
     deliverable_type = "data_book"

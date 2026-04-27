@@ -82,7 +82,16 @@ def test_hypothesis_gate_opens_only_after_hypotheses_exist(store: MissionStore):
 
 def test_progress_never_marks_placeholder_artifact_ready(store: MissionStore, tmp_path: Path):
     path = tmp_path / "engagement_brief.md"
-    path.write_text("# Engagement Brief\n\n- No hypotheses yet\n", encoding="utf-8")
+    path.write_text(
+        "# Engagement Brief\n\n"
+        "Hypothesis ID: hyp-placeholder\n\n"
+        "This file is deliberately long enough to pass the minimum length check, "
+        "so the regression proves placeholder detection still blocks readiness "
+        "instead of accidentally passing because another validation rule fired first. "
+        "The rest of this sentence is padding for the artifact quality threshold.\n\n"
+        "- No hypotheses yet\n",
+        encoding="utf-8",
+    )
     store.save_deliverable(
         Deliverable(
             id="deliverable-placeholder",
@@ -106,6 +115,28 @@ def test_progress_never_marks_placeholder_artifact_ready(store: MissionStore, tm
             "created_at": payload["deliverables"][0]["created_at"],
         }
     ]
+
+
+def test_progress_never_marks_short_artifact_ready(store: MissionStore, tmp_path: Path):
+    path = tmp_path / "workstream_report.md"
+    path.write_text("Finding ID: f-1. Too short.\n", encoding="utf-8")
+    store.save_deliverable(
+        Deliverable(
+            id="deliverable-short",
+            mission_id="m-progress",
+            deliverable_type="workstream_report",
+            status="ready",
+            file_path=str(path.resolve()),
+            file_size_bytes=path.stat().st_size,
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+
+    payload = asyncio.run(srv.get_mission_progress("m-progress"))
+
+    assert payload["deliverables"][0]["id"] == "deliverable-short"
+    assert payload["deliverables"][0]["status"] == "pending"
+    assert payload["deliverables"][0]["file_path"] is None
 
 
 def test_manager_review_opens_after_research_finding(store: MissionStore):
