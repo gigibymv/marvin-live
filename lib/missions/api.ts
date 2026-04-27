@@ -354,6 +354,9 @@ export async function validateGate(
   mission_id: string;
   gate_id: string;
   resume_id: string;
+  idempotent?: boolean;
+  conflict?: boolean;
+  message?: string;
 }> {
   const response = await fetch(
     `${API_BASE}/missions/${missionId}/gates/${gateId}/validate`,
@@ -364,6 +367,9 @@ export async function validateGate(
     }
   );
 
+  // Bug 4 (chantier 2.6): backend returns 200 with {idempotent|conflict}
+  // for double-clicks and verdict swaps. Surface those as a normal
+  // payload — the UI shows a toast instead of throwing.
   if (!response.ok) {
     if (response.status === 0) {
       throw new BackendOfflineError();

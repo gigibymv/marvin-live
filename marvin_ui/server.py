@@ -309,10 +309,21 @@ class GateValidateRequest(BaseModel):
 
 
 class GateValidateResponse(BaseModel):
-    status: Literal["resumed", "validated_no_stream", "already_processed", "resume_pending"]
+    status: Literal[
+        "resumed",
+        "validated_no_stream",
+        "already_processed",
+        "resume_pending",
+        "conflict",
+    ]
     mission_id: str
     gate_id: str
     resume_id: str
+    # Bug 4 (chantier 2.6): idempotency / conflict signal so the frontend
+    # can show a toast instead of a console error on double-click.
+    idempotent: bool = False
+    conflict: bool = False
+    message: str | None = None
 
 
 # =============================================================================
@@ -1310,22 +1321,31 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
         _clear_gate_decision_in_flight(gate_id)
         resume_id = f"resume-{uuid.uuid4().hex[:8]}"
         logger.info(f"Gate {gate_id} already {expected_status}, skipping resume")
+        # Bug 4 (chantier 2.6): same-verdict re-submit is idempotent.
         return GateValidateResponse(
             status="already_processed",
             mission_id=mission_id,
             gate_id=gate_id,
             resume_id=resume_id,
+            idempotent=True,
+            message=f"Gate already validated with this verdict ({expected_status}).",
         )
     if gate.status in ("completed", "failed"):
+        # Bug 4 (chantier 2.6): mismatched-verdict on a finalised gate is a
+        # user error, not a 409 server error. Surface a structured conflict
+        # so the UI shows a toast and the console stays clean.
         _clear_gate_decision_in_flight(gate_id)
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "message": f"Gate has already been decided with status={gate.status}",
-                "gate_id": gate_id,
-                "gate_type": gate.gate_type,
-                "lifecycle_status": gate.status,
-            },
+        resume_id = f"resume-{uuid.uuid4().hex[:8]}"
+        return GateValidateResponse(
+            status="conflict",
+            mission_id=mission_id,
+            gate_id=gate_id,
+            resume_id=resume_id,
+            conflict=True,
+            message=(
+                f"Gate already completed with status={gate.status}. "
+                "Cannot change after completion."
+            ),
         )
 
     in_flight = _gate_decisions_in_flight.get(gate_id)

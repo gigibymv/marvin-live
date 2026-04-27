@@ -649,6 +649,31 @@ export default function MissionControl({
         if (repository.kind === "http") {
           const result = await apiValidateGate(mission.id, gateId, "APPROVED", notes);
 
+          // Bug 4 (chantier 2.6): idempotent / conflict responses are 200,
+          // not errors. Show a quiet toast-style status message and stop.
+          if (result.idempotent) {
+            setMessages((current) =>
+              current.concat({
+                id: makeMessageId(mission.id, "idem"),
+                from: "m",
+                text: result.message ?? "Gate already validated.",
+              }),
+            );
+            setRunState(mission.id, { isStreaming: false });
+            return;
+          }
+          if (result.conflict) {
+            setMessages((current) =>
+              current.concat({
+                id: makeMessageId(mission.id, "conflict"),
+                from: "m",
+                text: result.message ?? "Gate already completed; cannot change.",
+              }),
+            );
+            setRunState(mission.id, { isStreaming: false });
+            return;
+          }
+
           // Agent status tracking for text events
           setMessages((current) =>
             current.concat({
@@ -699,6 +724,29 @@ export default function MissionControl({
         // For HTTP repository, call the API
         if (repository.kind === "http") {
           const result = await apiValidateGate(mission.id, gateId, "REJECTED", notes);
+
+          if (result.idempotent) {
+            setMessages((current) =>
+              current.concat({
+                id: makeMessageId(mission.id, "idem"),
+                from: "m",
+                text: result.message ?? "Gate already rejected.",
+              }),
+            );
+            setRunState(mission.id, { isStreaming: false });
+            return;
+          }
+          if (result.conflict) {
+            setMessages((current) =>
+              current.concat({
+                id: makeMessageId(mission.id, "conflict"),
+                from: "m",
+                text: result.message ?? "Gate already completed; cannot change.",
+              }),
+            );
+            setRunState(mission.id, { isStreaming: false });
+            return;
+          }
 
           // Agent status tracking for text events
           setMessages((current) =>

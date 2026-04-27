@@ -212,20 +212,21 @@ def test_validate_gate_rejects_scheduled_gate_without_material(store: MissionSto
 
 
 def test_validate_gate_rejects_opposite_verdict_after_gate_closed(store: MissionStore):
+    """Bug 4 (chantier 2.6): mismatched-verdict on a finalised gate returns
+    a structured 200 conflict, not a 409 server error."""
     store.update_gate_status("gate-m-progress-G1", "failed", notes="Needs more work")
 
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(
-            srv.validate_gate(
-                "m-progress",
-                "gate-m-progress-G1",
-                srv.GateValidateRequest(verdict="APPROVED", notes="changed mind"),
-            )
+    response = asyncio.run(
+        srv.validate_gate(
+            "m-progress",
+            "gate-m-progress-G1",
+            srv.GateValidateRequest(verdict="APPROVED", notes="changed mind"),
         )
+    )
 
-    assert exc_info.value.status_code == 409
-    assert exc_info.value.detail["lifecycle_status"] == "failed"
-    assert "already been decided" in exc_info.value.detail["message"]
+    assert response.status == "conflict"
+    assert response.conflict is True
+    assert "already completed" in response.message
 
 
 def test_validate_gate_does_not_preclose_gate_when_stream_resumes(
