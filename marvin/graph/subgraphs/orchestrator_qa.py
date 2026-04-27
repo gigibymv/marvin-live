@@ -48,6 +48,22 @@ def _summarize_state(mission_id: str) -> dict:
     verdict = store.get_latest_merlin_verdict(mission_id)
     deliverables = store.list_deliverables(mission_id)
 
+    # Bug 5 (chantier 2.6): Q&A must read findings, not just count them.
+    # Surface claim_text + correct agent attribution so MARVIN never says
+    # "Merlin logged findings" (Merlin doesn't — Calculus / Dora / Adversus do).
+    finding_details = [
+        {
+            "claim_text": f.claim_text,
+            "confidence": f.confidence,
+            "agent_id": f.agent_id,
+            "hypothesis_id": f.hypothesis_id,
+        }
+        for f in findings
+    ]
+    by_agent: dict[str, list[dict]] = {}
+    for fd in finding_details:
+        by_agent.setdefault(fd["agent_id"] or "unknown", []).append(fd)
+
     return {
         "mission": {
             "client": mission.client,
@@ -55,7 +71,12 @@ def _summarize_state(mission_id: str) -> dict:
             "status": mission.status,
         },
         "findings_count": len(findings),
+        "findings": finding_details,
+        "findings_by_agent": by_agent,
         "hypotheses_count": len(hypotheses),
+        "hypotheses": [
+            {"id": h.id, "label": h.label, "text": h.text} for h in hypotheses
+        ],
         "pending_gate": (
             {"id": pending_gates[0].id, "type": pending_gates[0].gate_type}
             if pending_gates
@@ -102,9 +123,28 @@ def _deterministic_response(state: dict, user_text: str) -> str:
             return f"Merlin's verdict: {verdict['verdict']}."
         return "No verdict yet."
 
-    # Findings question
-    if "finding" in text_lower:
-        return f"{state['findings_count']} findings logged."
+    # Findings question — Bug 5: cite actual content + correct attribution.
+    if "finding" in text_lower or "claim" in text_lower or "poor" in text_lower or "weak" in text_lower:
+        findings = state.get("findings") or []
+        if not findings:
+            return "No findings logged yet."
+        by_agent = state.get("findings_by_agent") or {}
+        # Single-agent case: cite the specific agent + a representative claim.
+        if len(by_agent) == 1:
+            (agent, agent_findings), = by_agent.items()
+            low = [f for f in agent_findings if f["confidence"] == "LOW_CONFIDENCE"]
+            if low:
+                sample = low[0]["claim_text"][:120]
+                return (
+                    f"{agent.title()} logged {len(agent_findings)} finding(s); "
+                    f"{len(low)} are LOW_CONFIDENCE. Example: \"{sample}\"."
+                )
+            sample = agent_findings[0]["claim_text"][:120]
+            return f"{agent.title()} logged {len(agent_findings)} finding(s). Example: \"{sample}\"."
+        attribution = ", ".join(
+            f"{a.title()}: {len(fs)}" for a, fs in by_agent.items()
+        )
+        return f"Findings by agent — {attribution}."
 
     # Hypotheses question
     if "hypothes" in text_lower:
@@ -150,14 +190,31 @@ async def respond_qa(mission_id: str, user_text: str) -> str:
     verdict = state.get("verdict")
     verdict_str = verdict["verdict"] if verdict else "none yet"
 
+    # Bug 5 (chantier 2.6): pass findings text + correct agent attribution
+    # into the LLM context so it never says "Merlin logged findings".
+    findings_block_lines: list[str] = []
+    for fd in (state.get("findings") or [])[:20]:
+        findings_block_lines.append(
+            f"- [{fd['agent_id']} · {fd['confidence']}] {fd['claim_text']}"
+        )
+    findings_block = "\n".join(findings_block_lines) or "(none persisted)"
+
+    hypotheses_block_lines = [
+        f"- {h.get('label') or '?'}: {h['text']}"
+        for h in (state.get("hypotheses") or [])
+    ]
+    hypotheses_block = "\n".join(hypotheses_block_lines) or "(none active)"
+
     context = (
         f"Mission: {state['mission'].get('client', '')} - {state['mission'].get('target', '')}\n"
         f"Pending gate: {pending_label}\n"
-        f"Findings: {state['findings_count']}\n"
-        f"Active hypotheses: {state['hypotheses_count']}\n"
         f"Verdict: {verdict_str}\n"
-        f"Deliverables ready: {sum(1 for d in state['deliverables'] if d['status'] == 'ready')}\n\n"
-        f"User said: {user_text}"
+        f"Deliverables ready: {sum(1 for d in state['deliverables'] if d['status'] == 'ready')}\n"
+        f"\nActive hypotheses ({state['hypotheses_count']}):\n{hypotheses_block}\n"
+        f"\nPersisted findings ({state['findings_count']}):\n{findings_block}\n"
+        f"\nAgent attribution rule: Dora/Calculus/Adversus log findings; "
+        "Merlin issues a verdict (no findings); Papyrus generates deliverables.\n"
+        f"\nUser said: {user_text}"
     )
 
     try:
