@@ -175,6 +175,12 @@ async def respond_qa(mission_id: str, user_text: str) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
 
         llm = get_chat_llm("orchestrator")
+        # CP5 (chantier 2.6.1): cap Q&A at ~2-4 sentences. Backend hard
+        # cap matches the prompt-level instruction.
+        try:
+            llm = llm.bind(max_tokens=160)
+        except Exception:  # noqa: BLE001 - bind not always supported
+            pass
     except RuntimeError as exc:
         if "OPENROUTER_API_KEY" in str(exc):
             return _deterministic_response(state, user_text)
@@ -224,7 +230,21 @@ async def respond_qa(mission_id: str, user_text: str) -> str:
         text = (response.content or "").strip()
         if not text:
             return _deterministic_response(state, user_text)
-        return text
+        # CP5 (chantier 2.6.1): enforce a 2-4 sentence cap server-side.
+        # If the LLM returns more, trim to the first 4 sentences.
+        return _enforce_sentence_cap(text, max_sentences=4)
     except Exception as exc:  # noqa: BLE001 - never let Q&A crash the chat
         logger.warning("orchestrator_qa LLM call failed: %s", exc)
         return _deterministic_response(state, user_text)
+
+
+def _enforce_sentence_cap(text: str, *, max_sentences: int = 4) -> str:
+    """Trim text to at most `max_sentences` sentences. Preserves trailing
+    punctuation. Pure: no side effects, no mutation."""
+    import re
+
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    parts = [p for p in parts if p]
+    if len(parts) <= max_sentences:
+        return text.strip()
+    return " ".join(parts[:max_sentences]).strip()

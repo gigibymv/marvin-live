@@ -302,10 +302,13 @@ class ChatRequest(BaseModel):
 
 class GateValidateRequest(BaseModel):
     # Approval gates supply verdict + optional notes; clarification gates
-    # supply answers (one per question). Both shapes share the endpoint.
+    # supply answers (one per question); data_decision gates supply a
+    # `decision` value (skip_calculus / proceed_low_confidence /
+    # request_data_room). All shapes share the endpoint.
     verdict: str | None = None
     notes: str = ""
     answers: list[str] | None = None
+    decision: str | None = None
 
 
 class GateValidateResponse(BaseModel):
@@ -1174,6 +1177,7 @@ async def get_mission_progress(mission_id: str):
         "hypotheses": [
             {
                 "id": h.id,
+                "label": h.label,
                 "text": h.text,
                 "status": h.status,
             }
@@ -1348,6 +1352,13 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
         raise HTTPException(status_code=404, detail="Gate not found")
 
     is_clarification = gate.format == "clarification_questions"
+    is_data_decision = gate.format == "data_decision"
+
+    _VALID_DATA_DECISIONS = {
+        "skip_calculus",
+        "proceed_low_confidence",
+        "request_data_room",
+    }
 
     if is_clarification:
         if body.answers is None:
@@ -1357,6 +1368,19 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
             )
         # A clarification gate always resolves as completed (we record the
         # answers regardless of how thin they are).
+        expected_status = "completed"
+    elif is_data_decision:
+        # Bug 3 / CP2 (chantier 2.6.1): data_decision gates use `decision`
+        # instead of `verdict`. Validate against the allowed set; any
+        # data_decision resolution closes the gate as completed.
+        if not body.decision or body.decision.strip().lower() not in _VALID_DATA_DECISIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "data_decision gate requires `decision` in "
+                    "{skip_calculus, proceed_low_confidence, request_data_room}"
+                ),
+            )
         expected_status = "completed"
     else:
         if body.verdict not in ("APPROVED", "REJECTED"):
@@ -1447,6 +1471,14 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
             "gate_id": gate_id,
         }
         verdict_label = "ANSWERED"
+    elif is_data_decision:
+        decision_value = (body.decision or "").strip().lower()
+        resume_payload = {
+            "decision": decision_value,
+            "notes": body.notes,
+            "gate_id": gate_id,
+        }
+        verdict_label = decision_value.upper()
     else:
         approved = body.verdict == "APPROVED"
         resume_payload = {
@@ -1482,6 +1514,13 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
                     gate_id,
                     expected_status,
                     notes=body.notes or joined or "no answers provided",
+                )
+            elif is_data_decision:
+                decision_value = (body.decision or "").strip().lower()
+                store.update_gate_status(
+                    gate_id,
+                    expected_status,
+                    notes=body.notes or f"data_decision={decision_value}",
                 )
             else:
                 store.update_gate_status(gate_id, expected_status, notes=body.notes)

@@ -166,7 +166,7 @@ export async function getMissionProgress(missionId: string): Promise<{
     claim_text: string;
     agent_id: string | null;
   }>;
-  hypotheses?: Array<{ id: string; text: string; status: string }>;
+  hypotheses?: Array<{ id: string; label?: string | null; text: string; status: string }>;
   deliverables?: Array<{
     id: string;
     deliverable_type: string;
@@ -370,6 +370,44 @@ export async function validateGate(
   // Bug 4 (chantier 2.6): backend returns 200 with {idempotent|conflict}
   // for double-clicks and verdict swaps. Surface those as a normal
   // payload — the UI shows a toast instead of throwing.
+  if (!response.ok) {
+    if (response.status === 0) {
+      throw new BackendOfflineError();
+    }
+    throw new Error(`Failed to validate gate: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * CP2 (chantier 2.6.1): data_decision gates ship a `decision` value
+ * (skip_calculus / proceed_low_confidence / request_data_room) instead
+ * of an APPROVED/REJECTED verdict.
+ */
+export async function validateGateDecision(
+  missionId: string,
+  gateId: string,
+  decision: "skip_calculus" | "proceed_low_confidence" | "request_data_room",
+  notes = "",
+): Promise<{
+  status: string;
+  mission_id: string;
+  gate_id: string;
+  resume_id: string;
+  idempotent?: boolean;
+  conflict?: boolean;
+  message?: string;
+}> {
+  const response = await fetch(
+    `${API_BASE}/missions/${missionId}/gates/${gateId}/validate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, notes }),
+    },
+  );
+
   if (!response.ok) {
     if (response.status === 0) {
       throw new BackendOfflineError();

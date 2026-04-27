@@ -43,6 +43,7 @@ export type MissionStreamEvent =
       questions?: string[];
       round?: number;
       maxRounds?: number;
+      options?: Array<{ value: string; label: string; consequence: string }>;
     }
   | {
       type: "deliverable_ready";
@@ -165,6 +166,7 @@ export function createEventSourceMissionEventStream(basePath = "/api/v1"): Missi
         questions: Array.isArray(payload.questions) ? payload.questions.map(String) : undefined,
         round: typeof payload.round === "number" ? payload.round : undefined,
         maxRounds: typeof payload.max_rounds === "number" ? payload.max_rounds : undefined,
+        options: Array.isArray(payload.options) ? payload.options : undefined,
       }));
       addListener(source, "deliverable_ready", onEvent, (payload) => ({
         type: "deliverable_ready",
@@ -340,6 +342,19 @@ function mapSSEToStreamEvent(event: SSEEvent): MissionStreamEvent | null {
         round: typeof event.round === "number" ? (event.round as number) : undefined,
         maxRounds:
           typeof event.max_rounds === "number" ? (event.max_rounds as number) : undefined,
+        options: Array.isArray(event.options)
+          ? (event.options as unknown[])
+              .map((opt) => {
+                if (!opt || typeof opt !== "object") return null;
+                const o = opt as Record<string, unknown>;
+                const value = typeof o.value === "string" ? o.value : null;
+                const label = typeof o.label === "string" ? o.label : null;
+                const consequence = typeof o.consequence === "string" ? o.consequence : "";
+                if (!value || !label) return null;
+                return { value, label, consequence };
+              })
+              .filter((o): o is { value: string; label: string; consequence: string } => o !== null)
+          : undefined,
       };
     }
     case "finding_added":

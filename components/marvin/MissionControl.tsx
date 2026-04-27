@@ -36,6 +36,7 @@ import type {
 } from "@/lib/missions/types";
 import {
   validateGate as apiValidateGate,
+  validateGateDecision as apiValidateGateDecision,
   submitClarificationAnswers as apiSubmitClarificationAnswers,
   getMissionProgress,
   getMissionEvents,
@@ -103,7 +104,7 @@ interface MissionControlViewProps {
   backendState?: BackendConnectionState;
   agents: { id: string; name: string; role: string; status: string; milestonesTotal?: number; milestonesDelivered?: number }[];
   checkpoints: { id: string; label: string; status: string }[];
-  hypotheses: { id: string; text: string; status: string }[];
+  hypotheses: { id: string; label?: string | null; text: string; status: string }[];
   activity?: Array<{ id: string; ag?: string; text?: string; ts?: string; claim_text?: string; confidence?: string }>;
   findings: Array<{ id: string; agent_id?: string | null; claim_text?: string; confidence?: string | null; ag?: string; text?: string; ts?: string; workstream_id?: string }>;
   deliverables: { id: string; label: string; status: string; href?: string }[];
@@ -767,6 +768,64 @@ export default function MissionControl({
       }
     },
     [mission, repository.kind, setRunState]
+  );
+
+  // CP2 (chantier 2.6.1): data_decision gate handler. Posts a `decision`
+  // value (skip_calculus / proceed_low_confidence / request_data_room)
+  // instead of an APPROVED/REJECTED verdict.
+  const handleGateDecision = useCallback(
+    async (
+      gateId: string,
+      decision: "skip_calculus" | "proceed_low_confidence" | "request_data_room",
+      label: string,
+    ) => {
+      if (!mission) return;
+      setGateModal(null);
+      setPausedForGate(false);
+      setRunState(mission.id, { isStreaming: true });
+      setMessages((current) =>
+        current.concat({
+          id: makeMessageId(mission.id, "decision"),
+          from: "u",
+          text: `→ ${label}`,
+        }),
+      );
+      try {
+        if (repository.kind === "http") {
+          const result = await apiValidateGateDecision(mission.id, gateId, decision, "");
+          if (result.idempotent) {
+            setMessages((current) =>
+              current.concat({
+                id: makeMessageId(mission.id, "idem"),
+                from: "m",
+                text: result.message ?? "Decision already recorded.",
+              }),
+            );
+            setRunState(mission.id, { isStreaming: false });
+            return;
+          }
+          if (result.conflict) {
+            setMessages((current) =>
+              current.concat({
+                id: makeMessageId(mission.id, "conflict"),
+                from: "m",
+                text: result.message ?? "Decision already recorded; cannot change.",
+              }),
+            );
+            setRunState(mission.id, { isStreaming: false });
+            return;
+          }
+          if (result.status !== "resumed" && result.status !== "resume_pending") {
+            setRunState(mission.id, { isStreaming: false });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to record decision:", error);
+        setRunState(mission.id, { isStreaming: false });
+        setStreamError(error instanceof Error ? error.message : "Failed to record decision");
+      }
+    },
+    [mission, repository.kind, setRunState],
   );
 
   // Submit clarification answers for a clarification_request gate.
@@ -1467,6 +1526,55 @@ export default function MissionControl({
               Gate ID: {gateModal.gateId}
             </div>
 
+            {gateModal.format === "data_decision" && gateModal.options && gateModal.options.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "8px" }}>
+                {gateModal.options.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleGateDecision(
+                      gateModal.gateId,
+                      opt.value as "skip_calculus" | "proceed_low_confidence" | "request_data_room",
+                      opt.label,
+                    )}
+                    style={{
+                      textAlign: "left",
+                      padding: "12px 14px",
+                      background: "#fff",
+                      border: "1px solid #d5d2ce",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      fontFamily: "system-ui",
+                    }}
+                  >
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#1a1814", marginBottom: "4px" }}>
+                      {opt.label}
+                    </div>
+                    {opt.consequence && (
+                      <div style={{ fontSize: "12px", color: "#5a5854", lineHeight: 1.4 }}>
+                        {opt.consequence}
+                      </div>
+                    )}
+                  </button>
+                ))}
+                <button
+                  onClick={handleGateClose}
+                  style={{
+                    alignSelf: "flex-start",
+                    marginTop: "4px",
+                    padding: "8px 0",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    fontFamily: "system-ui",
+                    fontSize: "12px",
+                    color: "#78716A",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Decide later
+                </button>
+              </div>
+            ) : (
             <div style={{ display: "flex", gap: "10px", justifyContent: "space-between", alignItems: "center" }}>
               <button
                 onClick={handleGateClose}
@@ -1519,6 +1627,7 @@ export default function MissionControl({
                 </button>
               </div>
             </div>
+            )}
           </div>
         </div>
       )}

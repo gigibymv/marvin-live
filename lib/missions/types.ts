@@ -110,6 +110,7 @@ export interface MissionGateModalState {
   questions?: string[];
   round?: number;
   maxRounds?: number;
+  options?: Array<{ value: string; label: string; consequence: string }>;
 }
 
 export interface DashboardActiveMission {

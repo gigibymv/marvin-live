@@ -319,6 +319,34 @@ export default function MissionControl(props) {
           })
         ),
 
+        // Hypotheses (CP1 chantier 2.6.1) — show H1..H4 labels + text once
+        // framing has produced them. Stays empty pre-framing.
+        ((props.hypotheses && props.hypotheses.length > 0) ?
+          React.createElement("div", { style: { padding: "13px 20px", borderBottom: "1px solid var(--ruleh)" } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px", paddingBottom: "8px", borderBottom: "1px solid var(--ink)" } },
+              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Hypotheses")
+            ),
+            props.hypotheses.map(function (h, idx) {
+              var label = h.label || ("H" + (idx + 1));
+              var isAbandoned = h.status === "abandoned";
+              return React.createElement("div", {
+                key: h.id || ("h-" + idx),
+                style: {
+                  padding: "6px 0",
+                  borderBottom: "1px solid var(--rule)",
+                  opacity: isAbandoned ? 0.45 : 1,
+                }
+              },
+                React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "2px" } },
+                  React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 700, color: "var(--ink)" } }, label),
+                  React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em" } }, h.status || "active")
+                ),
+                React.createElement("div", { style: { fontSize: "11px", lineHeight: 1.4, color: "var(--ink2)" } }, h.text || "")
+              );
+            })
+          )
+        : null),
+
         // Deliverables
         React.createElement("div", { style: { padding: "13px 20px 16px" } },
           React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px", paddingBottom: "8px", borderBottom: "1px solid var(--ink)" } },

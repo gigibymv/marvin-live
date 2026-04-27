@@ -97,5 +97,17 @@ export function mapGateReviewPayloadToModal(
       : typeof payload.maxRounds === "number"
         ? payload.maxRounds
         : undefined,
+    options: Array.isArray(payload.options)
+      ? (payload.options as unknown[])
+          .map((opt) => {
+            const o = asRecord(opt);
+            const value = asString(o.value);
+            const label = asString(o.label);
+            const consequence = asString(o.consequence);
+            if (!value || !label) return null;
+            return { value, label, consequence: consequence ?? "" };
+          })
+          .filter((o): o is { value: string; label: string; consequence: string } => o !== null)
+      : undefined,
   };
 }
