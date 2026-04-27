@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from marvin.mission.schema import (
 
 
 def _default_db_path() -> Path:
+    if env_path := os.getenv("MARVIN_DB_PATH"):
+        return Path(env_path).expanduser().resolve()
     return Path.home() / ".marvin" / "marvin.db"
 
 

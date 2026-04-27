@@ -22,7 +22,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, date
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,12 +135,18 @@ _graph = None
 _graph_lock = asyncio.Lock()
 _mission_locks: dict[str, asyncio.Lock] = {}
 
+# Process-local coordination state. The live resume path depends on the chat
+# stream and gate validation request landing in the same worker process; run
+# uvicorn as a single worker unless this state is moved to shared storage.
+#
 # Per-mission pending resume futures. When _stream_chat hits an interrupt frame,
 # it parks on a future here keyed by mission_id; validate_gate sets the result
 # with the approval payload, which unblocks the stream to call
 # graph.astream(Command(resume=...)) on the same thread_id and keep yielding SSE
 # events to the still-open client connection.
 _pending_resumes: dict[str, asyncio.Future[dict]] = {}
+_gate_decisions_in_flight: dict[str, dict[str, str]] = {}
+_gate_decision_by_mission: dict[str, str] = {}
 
 # Bounded wait so a forgotten gate doesn't pin the per-mission lock forever.
 _RESUME_TIMEOUT_SECONDS = 600
@@ -168,6 +174,34 @@ def _deliver_resume(mission_id: str, payload: dict) -> bool:
         return False
     fut.set_result(payload)
     return True
+
+
+def _mark_gate_decision_in_flight(
+    mission_id: str,
+    gate_id: str,
+    *,
+    expected_status: str,
+    verdict: str,
+    resume_id: str,
+) -> None:
+    _gate_decisions_in_flight[gate_id] = {
+        "expected_status": expected_status,
+        "verdict": verdict,
+        "resume_id": resume_id,
+    }
+    _gate_decision_by_mission[mission_id] = gate_id
+
+
+def _clear_gate_decision_in_flight(gate_id: str | None) -> None:
+    if gate_id:
+        _gate_decisions_in_flight.pop(gate_id, None)
+        for mission_id, active_gate_id in list(_gate_decision_by_mission.items()):
+            if active_gate_id == gate_id:
+                _gate_decision_by_mission.pop(mission_id, None)
+
+
+def _clear_gate_decision_for_mission(mission_id: str) -> None:
+    _clear_gate_decision_in_flight(_gate_decision_by_mission.get(mission_id))
 
 
 def _get_mission_lock(mission_id: str) -> asyncio.Lock:
@@ -241,7 +275,7 @@ class GateValidateRequest(BaseModel):
 
 
 class GateValidateResponse(BaseModel):
-    status: str
+    status: Literal["resumed", "validated_no_stream", "already_processed", "resume_pending"]
     mission_id: str
     gate_id: str
     resume_id: str
@@ -558,6 +592,7 @@ async def _stream_chat(
         current_agent = None
         heartbeat_counter = 0
         next_input: Any = initial_state
+        resume_payload_to_clear: dict[str, Any] | None = None
 
         # Side channel for finding_added events. The listener fires from
         # whichever thread the persistence call runs on (LangGraph tools run
@@ -608,22 +643,28 @@ async def _stream_chat(
         # interrupt or when the resume wait times out.
         while True:
             interrupted = False
-            async for event in graph.astream(next_input, config, stream_mode="updates"):
-                heartbeat_counter += 1
-                if heartbeat_counter % 10 == 0:
-                    yield _sse_heartbeat()
+            clearing_resume_payload = resume_payload_to_clear
+            resume_payload_to_clear = None
+            try:
+                async for event in graph.astream(next_input, config, stream_mode="updates"):
+                    heartbeat_counter += 1
+                    if heartbeat_counter % 10 == 0:
+                        yield _sse_heartbeat()
 
-                if not isinstance(event, dict):
-                    continue
+                    if not isinstance(event, dict):
+                        continue
 
-                sse_strings, current_agent, is_interrupt = await _emit_for_update(event, current_agent)
-                for s in sse_strings:
-                    if s:
+                    sse_strings, current_agent, is_interrupt = await _emit_for_update(event, current_agent)
+                    for s in sse_strings:
+                        if s:
+                            yield s
+                    for s in _drain_events():
                         yield s
-                for s in _drain_events():
-                    yield s
-                if is_interrupt:
-                    interrupted = True
+                    if is_interrupt:
+                        interrupted = True
+            finally:
+                if clearing_resume_payload is not None:
+                    _clear_gate_decision_in_flight(clearing_resume_payload.get("gate_id"))
 
             for s in _drain_events():
                 yield s
@@ -638,10 +679,12 @@ async def _stream_chat(
                 yield await _emit_error("Gate approval timed out")
                 break
             except asyncio.CancelledError:
+                _clear_gate_decision_for_mission(mission_id)
                 raise
             finally:
                 _clear_pending_resume(mission_id, fut)
 
+            resume_payload_to_clear = resume_payload
             next_input = Command(resume=resume_payload)
 
         if current_agent is not None:
@@ -1011,8 +1054,6 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
     if not _mission_exists(store, mission_id):
         raise HTTPException(status_code=404, detail="Mission not found")
     
-    mission = store.get_mission(mission_id)
-    
     gate = None
     for g in store.list_gates(mission_id):
         if g.id == gate_id:
@@ -1027,6 +1068,7 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
     
     expected_status = "completed" if body.verdict == "APPROVED" else "failed"
     if gate.status == expected_status:
+        _clear_gate_decision_in_flight(gate_id)
         resume_id = f"resume-{uuid.uuid4().hex[:8]}"
         logger.info(f"Gate {gate_id} already {expected_status}, skipping resume")
         return GateValidateResponse(
@@ -1036,6 +1078,7 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
             resume_id=resume_id,
         )
     if gate.status in ("completed", "failed"):
+        _clear_gate_decision_in_flight(gate_id)
         raise HTTPException(
             status_code=409,
             detail={
@@ -1043,6 +1086,25 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
                 "gate_id": gate_id,
                 "gate_type": gate.gate_type,
                 "lifecycle_status": gate.status,
+            },
+        )
+
+    in_flight = _gate_decisions_in_flight.get(gate_id)
+    if in_flight is not None:
+        if in_flight["expected_status"] == expected_status:
+            return GateValidateResponse(
+                status="resume_pending",
+                mission_id=mission_id,
+                gate_id=gate_id,
+                resume_id=in_flight["resume_id"],
+            )
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Gate decision is already being processed",
+                "gate_id": gate_id,
+                "gate_type": gate.gate_type,
+                "lifecycle_status": "resuming",
             },
         )
 
@@ -1073,15 +1135,21 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
             },
         )
     
-    store.update_gate_status(gate_id, expected_status, notes=body.notes)
-
     resume_id = f"resume-{uuid.uuid4().hex[:8]}"
     approved = body.verdict == "APPROVED"
     resume_payload = {
         "approved": approved,
         "verdict": body.verdict,
         "notes": body.notes,
+        "gate_id": gate_id,
     }
+    _mark_gate_decision_in_flight(
+        mission_id,
+        gate_id,
+        expected_status=expected_status,
+        verdict=body.verdict,
+        resume_id=resume_id,
+    )
     delivered = _deliver_resume(mission_id, resume_payload)
 
     if delivered:
@@ -1090,6 +1158,10 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
         )
         status = "resumed"
     else:
+        try:
+            store.update_gate_status(gate_id, expected_status, notes=body.notes)
+        finally:
+            _clear_gate_decision_in_flight(gate_id)
         # No stream is parked on this mission. The DB has been updated, but
         # without an active SSE consumer we deliberately do not start a
         # detached graph run — events would have nowhere to go and would

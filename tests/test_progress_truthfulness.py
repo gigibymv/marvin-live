@@ -14,6 +14,8 @@ from fastapi import HTTPException
 
 @pytest.fixture
 def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore:
+    srv._gate_decisions_in_flight.clear()
+    srv._gate_decision_by_mission.clear()
     s = MissionStore(":memory:")
     s.save_mission(
         Mission(
@@ -28,6 +30,8 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore:
     _seed_standard_workplan("m-progress", s)
     monkeypatch.setattr(srv, "get_store", lambda: s)
     yield s
+    srv._gate_decisions_in_flight.clear()
+    srv._gate_decision_by_mission.clear()
     s.close()
 
 
@@ -222,3 +226,159 @@ def test_validate_gate_rejects_opposite_verdict_after_gate_closed(store: Mission
     assert exc_info.value.status_code == 409
     assert exc_info.value.detail["lifecycle_status"] == "failed"
     assert "already been decided" in exc_info.value.detail["message"]
+
+
+def test_validate_gate_does_not_preclose_gate_when_stream_resumes(
+    store: MissionStore,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime.now(UTC).isoformat()
+    store.save_hypothesis(
+        Hypothesis(
+            id="hyp-resume",
+            mission_id="m-progress",
+            text="Resume path hypothesis",
+            created_at=now,
+        )
+    )
+    store.save_mission_brief(
+        MissionBrief(
+            mission_id="m-progress",
+            raw_brief="Assess whether Target can sustain growth.",
+            ic_question="Should IC invest?",
+            mission_angle="Growth durability",
+            brief_summary="Assess growth durability.",
+            workstream_plan_json='[{"id":"W1","label":"Market","focus":"Market"}]',
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    delivered_payloads: list[dict] = []
+
+    def deliver_resume(mission_id: str, payload: dict) -> bool:
+        delivered_payloads.append(payload)
+        return True
+
+    monkeypatch.setattr(srv, "_deliver_resume", deliver_resume)
+
+    response = asyncio.run(
+        srv.validate_gate(
+            "m-progress",
+            "gate-m-progress-hyp-confirm",
+            srv.GateValidateRequest(verdict="APPROVED", notes="approve"),
+        )
+    )
+
+    gate = next(g for g in store.list_gates("m-progress") if g.id == "gate-m-progress-hyp-confirm")
+    assert response.status == "resumed"
+    assert gate.status == "pending"
+    assert delivered_payloads == [
+        {
+            "approved": True,
+            "verdict": "APPROVED",
+            "notes": "approve",
+            "gate_id": "gate-m-progress-hyp-confirm",
+        }
+    ]
+
+
+def test_validate_gate_rejects_conflicting_decision_while_resume_in_flight(
+    store: MissionStore,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime.now(UTC).isoformat()
+    store.save_hypothesis(
+        Hypothesis(
+            id="hyp-resume",
+            mission_id="m-progress",
+            text="Resume path hypothesis",
+            created_at=now,
+        )
+    )
+    store.save_mission_brief(
+        MissionBrief(
+            mission_id="m-progress",
+            raw_brief="Assess whether Target can sustain growth.",
+            ic_question="Should IC invest?",
+            mission_angle="Growth durability",
+            brief_summary="Assess growth durability.",
+            workstream_plan_json='[{"id":"W1","label":"Market","focus":"Market"}]',
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    monkeypatch.setattr(srv, "_deliver_resume", lambda mission_id, payload: True)
+
+    first = asyncio.run(
+        srv.validate_gate(
+            "m-progress",
+            "gate-m-progress-hyp-confirm",
+            srv.GateValidateRequest(verdict="APPROVED", notes="approve"),
+        )
+    )
+    same = asyncio.run(
+        srv.validate_gate(
+            "m-progress",
+            "gate-m-progress-hyp-confirm",
+            srv.GateValidateRequest(verdict="APPROVED", notes="approve again"),
+        )
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            srv.validate_gate(
+                "m-progress",
+                "gate-m-progress-hyp-confirm",
+                srv.GateValidateRequest(verdict="REJECTED", notes="reject"),
+            )
+        )
+
+    gate = next(g for g in store.list_gates("m-progress") if g.id == "gate-m-progress-hyp-confirm")
+    assert first.status == "resumed"
+    assert same.status == "resume_pending"
+    assert gate.status == "pending"
+    assert srv._gate_decision_by_mission == {"m-progress": "gate-m-progress-hyp-confirm"}
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["lifecycle_status"] == "resuming"
+
+
+def test_validate_gate_persists_decision_without_active_stream(
+    store: MissionStore,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    now = datetime.now(UTC).isoformat()
+    store.save_hypothesis(
+        Hypothesis(
+            id="hyp-no-stream",
+            mission_id="m-progress",
+            text="No stream hypothesis",
+            created_at=now,
+        )
+    )
+    store.save_mission_brief(
+        MissionBrief(
+            mission_id="m-progress",
+            raw_brief="Assess whether Target can sustain growth.",
+            ic_question="Should IC invest?",
+            mission_angle="Growth durability",
+            brief_summary="Assess growth durability.",
+            workstream_plan_json='[{"id":"W1","label":"Market","focus":"Market"}]',
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    monkeypatch.setattr(srv, "_deliver_resume", lambda mission_id, payload: False)
+
+    response = asyncio.run(
+        srv.validate_gate(
+            "m-progress",
+            "gate-m-progress-hyp-confirm",
+            srv.GateValidateRequest(verdict="APPROVED", notes="approve without stream"),
+        )
+    )
+
+    gate = next(g for g in store.list_gates("m-progress") if g.id == "gate-m-progress-hyp-confirm")
+    assert response.status == "validated_no_stream"
+    assert gate.status == "completed"
+    assert gate.completion_notes == "approve without stream"
+    assert srv._gate_decisions_in_flight == {}
+    assert srv._gate_decision_by_mission == {}

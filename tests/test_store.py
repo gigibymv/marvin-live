@@ -59,6 +59,35 @@ def test_store_initializes_temp_db_file(tmp_path: Path):
     store.close()
 
 
+def test_store_uses_marvin_db_path_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    db_path = tmp_path / "env-marvin.db"
+    monkeypatch.setenv("MARVIN_DB_PATH", str(db_path))
+
+    store = MissionStore()
+    try:
+        assert Path(store.db_path) == db_path
+        assert db_path.exists()
+        store.save_mission(_mission())
+        assert store.get_mission("m-test").target == "TargetCo"
+    finally:
+        store.close()
+
+
+def test_store_resolves_relative_marvin_db_path_env(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MARVIN_DB_PATH", "relative-marvin.db")
+
+    store = MissionStore()
+    try:
+        assert Path(store.db_path) == (tmp_path / "relative-marvin.db").resolve()
+        assert Path(store.db_path).exists()
+    finally:
+        store.close()
+
+
 def test_store_initializes_in_memory():
     store = MissionStore(":memory:")
     store.save_mission(_mission())
