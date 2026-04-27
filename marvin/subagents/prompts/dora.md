@@ -76,7 +76,11 @@ When you call save_finding, every finding must include:
 claim_text: specific, numerical when possible, sourced
 confidence: KNOWN | REASONED | LOW_CONFIDENCE
 source_id: required if confidence=KNOWN
-hypothesis_id: required, links to which hypothesis
+hypothesis_id: required, links to which hypothesis. Use the
+               UUID ("hyp-...") for the tool arg, but in
+               claim_text and any prose, reference the
+               hypothesis by its LABEL (H1, H2, ...). NEVER
+               paste raw "hyp-XXXXX" into user-facing text.
 workstream_id: ALWAYS "W1" (your workstream — never W2/W3/W4)
 supports: True if it supports the hypothesis
 contradicts: True if it contradicts the hypothesis

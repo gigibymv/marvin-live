@@ -104,7 +104,10 @@ Every finding must include:
 claim_text: with period (FY24, Q3 2024) AND source line
 confidence: KNOWN | REASONED | LOW_CONFIDENCE
 source_id: required if KNOWN, must reference filing/page
-hypothesis_id: required
+hypothesis_id: required (UUID "hyp-..." for the tool arg).
+               In claim_text and any prose, reference the
+               hypothesis by its LABEL (H1, H2, ...). NEVER
+               paste raw "hyp-XXXXX" into user-facing text.
 workstream_id: ALWAYS "W2" (your workstream — never W1/W3/W4)
 supports / contradicts: explicit, never ambiguous
 impact: critical | important | info

@@ -596,11 +596,12 @@ def generate_framing_with_reply(
         )
 
     persisted: list[Hypothesis] = []
-    for text in hypothesis_texts:
+    for idx, text in enumerate(hypothesis_texts, start=1):
         hyp = Hypothesis(
             id=short_id("hyp"),
             mission_id=mission_id,
             text=text,
+            label=f"H{idx}",
             created_at=utc_now_iso(),
         )
         store.save_hypothesis(hyp)

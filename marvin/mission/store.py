@@ -214,6 +214,7 @@ class MissionStore:
                 "ALTER TABLE missions ADD COLUMN clarification_answers TEXT DEFAULT '[]'",
             ),
             ("gates", "questions", "ALTER TABLE gates ADD COLUMN questions TEXT"),
+            ("hypotheses", "label", "ALTER TABLE hypotheses ADD COLUMN label TEXT"),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
@@ -324,13 +325,14 @@ class MissionStore:
         self._execute(
             """
             INSERT OR REPLACE INTO hypotheses
-            (id, mission_id, text, status, abandon_reason, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (id, mission_id, text, label, status, abandon_reason, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 hypothesis.id,
                 hypothesis.mission_id,
                 hypothesis.text,
+                hypothesis.label,
                 hypothesis.status,
                 hypothesis.abandon_reason,
                 hypothesis.created_at,
@@ -346,7 +348,15 @@ class MissionStore:
             params.append(status)
         sql += " ORDER BY created_at, id"
         rows = self._execute(sql, tuple(params)).fetchall()
-        return [Hypothesis.model_validate(dict(row)) for row in rows]
+        # Defensive: backfill labels for legacy rows that pre-date the column
+        # so user-facing surfaces always show H1/H2/H3 (Bug 4).
+        out: list[Hypothesis] = []
+        for idx, row in enumerate(rows, start=1):
+            data = dict(row)
+            if not data.get("label"):
+                data["label"] = f"H{idx}"
+            out.append(Hypothesis.model_validate(data))
+        return out
 
     def update_hypothesis(
         self,

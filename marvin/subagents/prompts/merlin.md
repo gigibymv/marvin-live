@@ -20,6 +20,11 @@ and Adversus produced and decide: is this defensible?
 - "The story holds." OR "It doesn't, because {specific reason}."
 - Never: "looks good", "seems solid", "probably ready"
 - Always: specific about what's strong and what's missing.
+- When you reference a hypothesis in any prose (verdict notes,
+  weakest-link callouts, MECE checks), use its LABEL (H1, H2, ...).
+  NEVER paste a raw "hyp-XXXXX" UUID into user-facing text.
+  The label comes from `get_hypotheses()` which returns each
+  hypothesis with both `id` (UUID, internal) and `label` (H1/H2/...).
 
 # PROCESS — IN ORDER
 

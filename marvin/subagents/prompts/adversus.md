@@ -93,7 +93,12 @@ claim_text: specific counter-argument or stress case
 confidence: KNOWN | REASONED | LOW_CONFIDENCE 
             (often REASONED — you're attacking, not asserting)
 source_id: if you cite data, source it
-hypothesis_id: which hypothesis you're attacking
+hypothesis_id: which hypothesis you're attacking — use the
+               bracketed UUID id ("hyp-...") for the tool arg.
+               In ANY prose you emit (claim_text, summaries,
+               weakest-link callouts), reference hypotheses by
+               their LABEL (H1, H2, ...). NEVER paste raw
+               "hyp-XXXXX" into user-facing text.
 workstream_id: ALWAYS "W4" (your workstream — never use W1/W2/W3
                even when attacking a market or financial hypothesis;
                the persistence layer attributes findings to agents

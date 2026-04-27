@@ -46,6 +46,7 @@ class Hypothesis(MarvinModel):
     id: str
     mission_id: str
     text: str
+    label: str | None = None  # H1, H2, ... — user-facing reference (Bug 4)
     status: HypothesisStatus = "active"
     abandon_reason: str | None = None
     created_at: str | None = None
