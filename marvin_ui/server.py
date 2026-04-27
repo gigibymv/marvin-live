@@ -1052,6 +1052,51 @@ async def get_mission(mission_id: str):
     return mission.model_dump()
 
 
+@app.get("/api/v1/missions/{mission_id}/workstreams/{ws_id}/findings")
+async def get_workstream_findings(mission_id: str, ws_id: str):
+    """Bug 6 (chantier 2.6): per-workstream findings for tab display.
+
+    Tabs are content (findings from DB), not the SSE meta-event stream.
+    The agent → workstream map is intentionally hard-coded here so the
+    UI does not depend on workstream_id annotations the agents may skip.
+    """
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    AGENT_TO_WORKSTREAM = {
+        "dora": "W1",
+        "calculus": "W2",
+        "merlin": "W3",
+        "adversus": "W4",
+    }
+    findings = store.list_findings(mission_id)
+    workstream_findings = [
+        f for f in findings
+        if AGENT_TO_WORKSTREAM.get((f.agent_id or "").lower()) == ws_id
+        or (f.workstream_id or "") == ws_id
+    ]
+    label_by_id = {h.id: (h.label or "") for h in store.list_hypotheses(mission_id)}
+    return {
+        "workstream_id": ws_id,
+        "count": len(workstream_findings),
+        "findings": [
+            {
+                "id": f.id,
+                "claim_text": f.claim_text,
+                "confidence": f.confidence,
+                "agent_id": f.agent_id,
+                "workstream_id": f.workstream_id,
+                "hypothesis_id": f.hypothesis_id,
+                "hypothesis_label": label_by_id.get(f.hypothesis_id or ""),
+                "source_id": f.source_id,
+                "created_at": f.created_at,
+            }
+            for f in workstream_findings
+        ],
+    }
+
+
 @app.get("/api/v1/missions/{mission_id}/progress")
 async def get_mission_progress(mission_id: str):
     """Get mission progress with gates, milestones, findings, hypotheses, and deliverables."""

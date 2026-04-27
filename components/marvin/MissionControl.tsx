@@ -998,10 +998,20 @@ export default function MissionControl({
   const deliverables = seedDeliverables;
 
   // Build per-workstream content for the center tabs from real findings.
+  // Bug 6 (chantier 2.6): tabs are content-driven (DB findings), not the
+  // SSE meta-event stream. Fall back to the agent → workstream map so a
+  // finding with workstream_id=null still surfaces in the right tab.
+  const AGENT_TO_WS: Record<string, string> = {
+    dora: "W1", calculus: "W2", merlin: "W3", adversus: "W4",
+  };
   const workstreamContent = (progress?.workstreams ?? []).map((ws) => ({
     id: ws.id,
     label: ws.label,
-    findings: (progress?.findings ?? []).filter((f: any) => f.workstream_id === ws.id),
+    findings: (progress?.findings ?? []).filter((f: any) => {
+      if (f.workstream_id === ws.id) return true;
+      const mapped = AGENT_TO_WS[(f.agent_id || "").toLowerCase()];
+      return mapped === ws.id;
+    }),
     milestones: (progress?.milestones ?? []).filter((m: any) => m.workstream_id === ws.id),
   }));
 
