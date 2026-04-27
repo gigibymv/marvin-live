@@ -68,22 +68,45 @@ CORS_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$" if ALLOW_LOCAL
 API_KEY_HEADER = "X-API-Key"
 API_KEY_ENV = "MARVIN_API_KEY"
 
-# Display name mapping for user-facing event emission
-_DISPLAY_NAME = {
+# Display name mapping for user-facing event emission. Explicit None for
+# internal/system nodes so they never leak into the live rail; explicit
+# Title Case for working agents so casing is consistent end-to-end (Bug 3).
+_DISPLAY_NAME: dict[str, str | None] = {
+    # Working agents
     "dora": "Dora",
     "calculus": "Calculus",
     "adversus": "Adversus",
     "merlin": "Merlin",
     "synthesis_critic": "Merlin",
+    # Document agents
+    "papyrus_phase0": "Papyrus",
     "papyrus_delivery": "Papyrus",
+    # Orchestration voice
     "orchestrator": "MARVIN",
+    "orchestrator_qa": "MARVIN",
     "framing": "MARVIN",
     "framing_orchestrator": "MARVIN",
+    # System / control-flow nodes — must NEVER appear in the rail
     "phase_router": None,
     "research_join": None,
     "gate": None,
+    "gate_node": None,
     "gate_entry": None,
 }
+
+
+def get_display_name(node_name: str | None) -> str | None:
+    """Resolve a graph node identifier to a user-facing display name.
+
+    Returns None for internal/system nodes — callers must skip emitting any
+    event for those. Unknown nodes fall through to Title Case so a new agent
+    never leaks as "AGENT" or as a snake_case identifier.
+    """
+    if not node_name:
+        return None
+    if node_name in _DISPLAY_NAME:
+        return _DISPLAY_NAME[node_name]
+    return node_name.replace("_", " ").title()
 
 # Nodes whose AIMessage content speaks to the user as Marvin's voice in the
 # chat. Sub-agents (dora/calculus/adversus/merlin) are doing work, not
@@ -311,7 +334,7 @@ async def _emit_run_start() -> str:
 
 
 async def _emit_text(agent: str, text: str) -> str:
-    display = _DISPLAY_NAME.get(agent, agent)
+    display = get_display_name(agent)
     if display is None:
         return ""
     logger.info(f"Emitting text event: agent={display}, text_length={len(text)}")
@@ -319,14 +342,14 @@ async def _emit_text(agent: str, text: str) -> str:
 
 
 async def _emit_tool_call(agent: str, tool: str) -> str:
-    display = _DISPLAY_NAME.get(agent, agent)
+    display = get_display_name(agent)
     if display is None:
         return ""
     return _sse_event("tool_call", {"agent": display, "tool": tool})
 
 
 async def _emit_tool_result(agent: str, text: str) -> str:
-    display = _DISPLAY_NAME.get(agent, agent)
+    display = get_display_name(agent)
     if display is None:
         return ""
     return _sse_event("tool_result", {"agent": display, "text": text})
@@ -477,14 +500,14 @@ def map_tool_to_sse_event(tool_name: str | None, content: Any) -> tuple[str, dic
 
 async def _emit_agent_active(agent: str) -> str:
     """Emit event when an agent starts processing."""
-    display = _DISPLAY_NAME.get(agent, agent)
+    display = get_display_name(agent)
     if display is None:
         return ""
     return _sse_event("agent_active", {"agent": display})
 
 
 async def _emit_agent_done(agent: str) -> str:
-    display = _DISPLAY_NAME.get(agent, agent)
+    display = get_display_name(agent)
     if display is None:
         return ""
     return _sse_event("agent_done", {"agent": display})
@@ -494,7 +517,7 @@ async def _emit_agent_message(agent: str, text: str) -> str:
     """Sub-agent prose for the live rail (not chat). Used when a working
     agent like Dora/Calculus emits AIMessage content — the user sees what
     the agent is reasoning about in the rail without flooding the chat."""
-    display = _DISPLAY_NAME.get(agent, agent)
+    display = get_display_name(agent)
     if display is None:
         return ""
     return _sse_event("agent_message", {"agent": display, "text": text})
@@ -566,7 +589,7 @@ async def _emit_for_update(
             out.append(await _emit_phase_changed(new_phase))
             current_phase = new_phase
 
-        display = _DISPLAY_NAME.get(node_name)
+        display = get_display_name(node_name)
         if display is None:
             continue
 
