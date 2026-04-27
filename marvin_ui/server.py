@@ -663,9 +663,31 @@ async def _stream_chat(
     try:
         yield await _emit_run_start()
         yield _sse_heartbeat()
-        
+
+        # Mode detection: continuation vs initial brief.
+        # If a brief is already persisted, this chat message is a continuation
+        # (Q&A) and must NOT replay the mission flow. We answer in 1-3 sentences
+        # via orchestrator_qa and skip the graph entirely. The user uses the
+        # gate UI (POST /gates/{id}/validate) to advance the mission.
+        existing_brief = store.get_mission_brief(mission_id)
+        has_brief = bool(existing_brief and (existing_brief.raw_brief or "").strip())
+        is_initial_brief = (not has_brief) and len(text.strip()) >= 50
+
+        if has_brief or not is_initial_brief:
+            from marvin.graph.subgraphs.orchestrator_qa import respond_qa
+
+            try:
+                reply = await respond_qa(mission_id, text)
+            except Exception as exc:  # noqa: BLE001 - defensive: never crash the SSE stream
+                logger.warning("orchestrator_qa failed: %s", exc)
+                reply = "Mission paused. Use the gate panel to continue."
+            if reply:
+                yield await _emit_text("orchestrator", reply)
+            yield await _emit_run_end()
+            return
+
         graph = await get_graph()
-        
+
         # Build initial state
         initial_state: MarvinState = {
             "messages": [HumanMessage(content=text)],

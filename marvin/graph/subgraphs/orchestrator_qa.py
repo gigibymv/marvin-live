@@ -1,0 +1,173 @@
+"""Orchestrator Q&A mode.
+
+Read-only responder for chat messages that arrive while a mission is paused
+at a gate or completed. Bypasses the LangGraph mission flow entirely so a
+casual user message ("Approved", "what's the verdict?") does not replay
+framing/research/synthesis.
+
+Returns a short string. Never modifies mission state. Never triggers agents.
+"""
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+
+from marvin.mission.store import MissionStore
+
+logger = logging.getLogger(__name__)
+
+_PROMPT_PATH = Path(__file__).resolve().parents[2] / "subagents" / "prompts" / "orchestrator_qa.md"
+
+_PHASE_LABEL = {
+    "setup": "setup",
+    "framing": "framing",
+    "awaiting_clarification": "Clarification",
+    "awaiting_confirmation": "Hypothesis review",
+    "confirmed": "research",
+    "research_done": "Manager review",
+    "gate_g1_passed": "research",
+    "redteam_done": "synthesis",
+    "synthesis_retry": "synthesis",
+    "synthesis_done": "Final review",
+    "gate_g3_passed": "delivery",
+    "done": "complete",
+}
+
+
+def _summarize_state(mission_id: str) -> dict:
+    store = MissionStore()
+    try:
+        mission = store.get_mission(mission_id)
+    except KeyError:
+        return {"error": "mission not found"}
+
+    findings = store.list_findings(mission_id)
+    hypotheses = store.list_hypotheses(mission_id, status="active")
+    gates = store.list_gates(mission_id)
+    pending_gates = [g for g in gates if g.status == "pending"]
+    verdict = store.get_latest_merlin_verdict(mission_id)
+    deliverables = store.list_deliverables(mission_id)
+
+    return {
+        "mission": {
+            "client": mission.client,
+            "target": mission.target,
+            "status": mission.status,
+        },
+        "findings_count": len(findings),
+        "hypotheses_count": len(hypotheses),
+        "pending_gate": (
+            {"id": pending_gates[0].id, "type": pending_gates[0].gate_type}
+            if pending_gates
+            else None
+        ),
+        "verdict": (
+            {"verdict": verdict.verdict, "notes": verdict.notes}
+            if verdict
+            else None
+        ),
+        "deliverables": [
+            {"type": d.deliverable_type, "status": d.status} for d in deliverables
+        ],
+    }
+
+
+def _gate_label(gate_type: str) -> str:
+    return {
+        "hypothesis_confirmation": "Hypothesis review",
+        "manager_review": "Manager review (G1)",
+        "final_review": "Final review (G3)",
+        "clarification_request": "Clarification",
+    }.get(gate_type, gate_type)
+
+
+def _deterministic_response(state: dict, user_text: str) -> str:
+    """Pure-Python Q&A fallback for environments without an LLM key.
+    Emits a single short sentence that reflects current mission state."""
+    if state.get("error"):
+        return "Mission state unavailable."
+
+    text_lower = (user_text or "").lower().strip()
+    pending = state.get("pending_gate")
+
+    # User trying to advance without using gate UI
+    advance_words = ("approve", "approved", "go", "ship", "proceed", "next", "ok")
+    if pending and any(word in text_lower for word in advance_words):
+        return f"{_gate_label(pending['type'])} is pending. Click 'Review now' to advance."
+
+    # Verdict question
+    if "verdict" in text_lower:
+        verdict = state.get("verdict")
+        if verdict:
+            return f"Merlin's verdict: {verdict['verdict']}."
+        return "No verdict yet."
+
+    # Findings question
+    if "finding" in text_lower:
+        return f"{state['findings_count']} findings logged."
+
+    # Hypotheses question
+    if "hypothes" in text_lower:
+        return f"{state['hypotheses_count']} active hypotheses."
+
+    # Memo / deliverable
+    if "memo" in text_lower or "deliverable" in text_lower or "report" in text_lower:
+        ready = [d for d in state["deliverables"] if d["status"] == "ready"]
+        if ready:
+            return f"{len(ready)} deliverable(s) ready."
+        return "No deliverables generated yet."
+
+    # Default
+    if pending:
+        return f"{_gate_label(pending['type'])} is pending. Click 'Review now' to advance."
+    return "Mission paused. Use the gate panel to continue."
+
+
+async def respond_qa(mission_id: str, user_text: str) -> str:
+    """Generate a Q&A reply. Never modifies mission state.
+
+    Tries LLM first; falls back to deterministic response if no API key.
+    """
+    state = _summarize_state(mission_id)
+
+    try:
+        from marvin.llm_factory import get_chat_llm
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        llm = get_chat_llm("orchestrator")
+    except RuntimeError as exc:
+        if "OPENROUTER_API_KEY" in str(exc):
+            return _deterministic_response(state, user_text)
+        raise
+
+    try:
+        system_prompt = _PROMPT_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return _deterministic_response(state, user_text)
+
+    pending = state.get("pending_gate")
+    pending_label = _gate_label(pending["type"]) if pending else "none"
+    verdict = state.get("verdict")
+    verdict_str = verdict["verdict"] if verdict else "none yet"
+
+    context = (
+        f"Mission: {state['mission'].get('client', '')} - {state['mission'].get('target', '')}\n"
+        f"Pending gate: {pending_label}\n"
+        f"Findings: {state['findings_count']}\n"
+        f"Active hypotheses: {state['hypotheses_count']}\n"
+        f"Verdict: {verdict_str}\n"
+        f"Deliverables ready: {sum(1 for d in state['deliverables'] if d['status'] == 'ready')}\n\n"
+        f"User said: {user_text}"
+    )
+
+    try:
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=context)]
+        )
+        text = (response.content or "").strip()
+        if not text:
+            return _deterministic_response(state, user_text)
+        return text
+    except Exception as exc:  # noqa: BLE001 - never let Q&A crash the chat
+        logger.warning("orchestrator_qa LLM call failed: %s", exc)
+        return _deterministic_response(state, user_text)
