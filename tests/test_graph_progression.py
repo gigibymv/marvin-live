@@ -21,7 +21,7 @@ from langchain_core.messages import HumanMessage
 from marvin import events
 from marvin.graph import runner
 from marvin.graph.runner import build_graph, research_join
-from marvin.mission.schema import Mission
+from marvin.mission.schema import Finding, Hypothesis, Mission
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools import papyrus_tools
 
@@ -63,12 +63,39 @@ def test_research_join_advances_phase_unconditionally(store: MissionStore):
     after = {m.id: m.status for m in store.list_milestones("m-graph")}
     assert after["W1.1"] == "delivered"
     assert after["W2.1"] == "delivered"
+    workstreams = {w.id: w.status for w in store.list_workstreams("m-graph")}
+    assert workstreams["W1"] == "pending"
+    assert workstreams["W2"] == "pending"
 
 
 def test_research_join_emits_deliverable_ready_for_workstream_reports(store: MissionStore):
     """Workstream reports must persist via the papyrus chokepoint, firing
     deliverable_ready listeners — proving downstream deliverables become
     reachable once the join advances phase."""
+    store.save_hypothesis(
+        Hypothesis(
+            id="hyp-graph",
+            mission_id="m-graph",
+            text="Target has evidence-backed diligence claims",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    for finding_id, workstream_id, agent_id in (
+        ("f-w1", "W1", "dora"),
+        ("f-w2", "W2", "calculus"),
+    ):
+        store.save_finding(
+            Finding(
+                id=finding_id,
+                mission_id="m-graph",
+                workstream_id=workstream_id,
+                hypothesis_id="hyp-graph",
+                claim_text=f"{workstream_id} finding supports report generation",
+                confidence="REASONED",
+                agent_id=agent_id,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
     seen: list[dict] = []
     events.register_deliverable_listener("m-graph", seen.append)
     try:
@@ -81,6 +108,9 @@ def test_research_join_emits_deliverable_ready_for_workstream_reports(store: Mis
         "deliverable-m-graph-w1-report",
         "deliverable-m-graph-w2-report",
     ]
+    workstreams = {w.id: w.status for w in store.list_workstreams("m-graph")}
+    assert workstreams["W1"] == "delivered"
+    assert workstreams["W2"] == "delivered"
 
 
 @pytest.mark.skip(

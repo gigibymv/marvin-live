@@ -12,6 +12,17 @@ CREATE TABLE IF NOT EXISTS missions (
     updated_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS mission_briefs (
+    mission_id TEXT PRIMARY KEY REFERENCES missions(id) ON DELETE CASCADE,
+    raw_brief TEXT NOT NULL,
+    ic_question TEXT NOT NULL,
+    mission_angle TEXT NOT NULL,
+    brief_summary TEXT NOT NULL,
+    workstream_plan_json TEXT NOT NULL,
+    created_at TEXT,
+    updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS hypotheses (
     id TEXT PRIMARY KEY,
     mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,

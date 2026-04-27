@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from marvin.mission.schema import Finding, Gate, Hypothesis, Mission, Source
+from marvin.mission.schema import Finding, Gate, Hypothesis, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools import adversus_tools, arbiter_tools, calculus_tools, dora_tools, merlin_tools, mission_tools, papyrus_tools
 
@@ -26,6 +26,19 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore:
     _seed_standard_workplan("m-test", store)
     store.save_hypothesis(Hypothesis(id="h-1", mission_id="m-test", text="Core category is resilient", created_at=datetime.now(UTC).isoformat()))
     store.save_hypothesis(Hypothesis(id="h-2", mission_id="m-test", text="Expansion supports valuation", created_at=datetime.now(UTC).isoformat()))
+    now = datetime.now(UTC).isoformat()
+    store.save_mission_brief(
+        MissionBrief(
+            mission_id="m-test",
+            raw_brief="Assess market resilience and expansion upside.",
+            ic_question="Is this attractive?",
+            mission_angle="Market position and competitive durability",
+            brief_summary="Assess market resilience and expansion upside.",
+            workstream_plan_json='[{"id":"W1","label":"Market","focus":"Market resilience"}]',
+            created_at=now,
+            updated_at=now,
+        )
+    )
 
     monkeypatch.setattr(mission_tools, "_STORE_FACTORY", lambda: store)
     monkeypatch.setattr(dora_tools, "_STORE_FACTORY", lambda: store)
@@ -58,6 +71,21 @@ def test_get_workplan_for_mission_returns_seeded_rows(store: MissionStore, state
     result = mission_tools.get_workplan_for_mission(state)
     assert len(result["workstreams"]) == 4
     assert len(result["gates"]) == 3
+
+
+def test_persist_framing_from_brief_records_brief_and_ic_question(monkeypatch: pytest.MonkeyPatch):
+    store = MissionStore(":memory:")
+    store.save_mission(Mission(id="m-blank", client="Client", target="Target", ic_question=""))
+    monkeypatch.setattr(mission_tools, "_STORE_FACTORY", lambda: store)
+    brief = mission_tools.persist_framing_from_brief(
+        "m-blank",
+        "Can Target sustain pricing power? Focus on retention, moat, and concentration.",
+    )
+
+    assert brief.ic_question == "Can Target sustain pricing power?"
+    assert "retention" in brief.raw_brief
+    assert store.get_mission("m-blank").ic_question == "Can Target sustain pricing power?"
+    store.close()
 
 
 def test_get_hypotheses_returns_current_hypotheses(store: MissionStore, state: dict[str, str]):
@@ -120,6 +148,14 @@ def test_papyrus_returns_include_deliverable_id_and_type_for_sse(
     store: MissionStore, state: dict[str, str]
 ):
     """Phase 1A: streamer reads deliverable_id + deliverable_type to build deliverable_ready event."""
+    mission_tools.add_finding_to_mission(
+        "Market evidence is sufficient for a workstream report",
+        "REASONED",
+        "dora",
+        workstream_id="W1",
+        hypothesis_id="h-1",
+        state=state,
+    )
     brief = papyrus_tools.generate_engagement_brief(state)
     assert brief["deliverable_id"] == f"deliverable-m-test-engagement-brief"
     assert brief["deliverable_type"] == "engagement_brief"
@@ -160,6 +196,20 @@ def test_generate_interview_guides_returns_hypothesis_guides(store: MissionStore
     result = mission_tools.generate_interview_guides(["h-1"], state)
     assert result["guides"][0]["hypothesis_id"] == "h-1"
     assert len(result["guides"][0]["questions"]) == 3
+
+
+def test_generate_hypotheses_inline_uses_brief_context(store: MissionStore):
+    for hypothesis in store.list_hypotheses("m-test"):
+        store.update_hypothesis(hypothesis.id, "abandoned", "reset for test")
+
+    hypotheses = mission_tools._generate_hypotheses_inline(
+        "m-test",
+        "Focus on pricing power, retention, and whether unit economics can scale.",
+    )
+
+    texts = " ".join(h.text for h in hypotheses).lower()
+    assert "pricing power" in texts
+    assert "unit economics" in texts or "financial quality" in texts
 
 
 def test_tavily_search_returns_stub_results():
@@ -352,8 +402,9 @@ def test_generate_report_pdf_requires_ship_or_g3(store: MissionStore, state: dic
         papyrus_tools.generate_report_pdf(state)
     store.update_gate_status(f"gate-m-test-G3", "completed", notes="Approved")
     result = papyrus_tools.generate_report_pdf(state)
-    assert Path(result["file_path"]).suffix == ".pdf"
-    assert Path(result["file_path"]).stat().st_size > 0
+    assert result["status"] == "blocked"
+    assert result["deliverable_type"] == "report_pdf"
+    assert not any(d.deliverable_type == "report_pdf" for d in store.list_deliverables("m-test"))
 
 
 def test_generate_exec_summary_and_data_book_write_non_empty_files(store: MissionStore, state: dict[str, str]):

@@ -124,14 +124,27 @@ export async function getMissionProgress(missionId: string): Promise<{
     id: string;
     client: string;
     target: string;
+    ic_question?: string | null;
     created_at: string;
     status: string;
   };
+  framing?: {
+    mission_id: string;
+    raw_brief: string;
+    ic_question: string;
+    mission_angle: string;
+    brief_summary: string;
+    workstream_plan_json: string;
+    created_at: string | null;
+    updated_at: string | null;
+  } | null;
   gates: Array<{
     id: string;
     gate_type: string;
     scheduled_day: number | null;
     status: string;
+    lifecycle_status: string;
+    is_open: boolean;
     format: string | null;
   }>;
   milestones: Array<{
@@ -142,10 +155,26 @@ export async function getMissionProgress(missionId: string): Promise<{
   }>;
   findings: Array<{
     id: string;
+    workstream_id?: string | null;
+    hypothesis_id?: string | null;
     source_id: string | null;
     confidence: string | null;
     claim_text: string;
     agent_id: string | null;
+  }>;
+  hypotheses?: Array<{ id: string; text: string; status: string }>;
+  deliverables?: Array<{
+    id: string;
+    deliverable_type: string;
+    status?: string;
+    file_path: string | null;
+    created_at: string | null;
+  }>;
+  workstreams?: Array<{
+    id: string;
+    label: string;
+    assigned_agent: string | null;
+    status: string;
   }>;
 }> {
   const response = await fetch(`${API_BASE}/missions/${missionId}/progress`);

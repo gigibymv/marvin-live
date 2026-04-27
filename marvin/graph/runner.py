@@ -10,6 +10,8 @@ Architecture:
 
 from __future__ import annotations
 
+import logging
+
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -22,6 +24,8 @@ from marvin.graph.subgraphs.orchestrator import orchestrator_agent_node
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore
 from marvin.runtime_debug import log_node_entry
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_gate_by_day(mission_id: str, day: int) -> str:
@@ -46,7 +50,7 @@ def phase_router(state: MarvinState) -> str | list[Send]:
     messages = state.get("messages", [])
 
     if phase == "setup":
-        return "papyrus_phase0"
+        return "framing"
 
     if phase == "framing":
         # framing_node handles this, route to it
@@ -149,19 +153,12 @@ def research_join(state: MarvinState) -> dict:
 
     from marvin.tools.papyrus_tools import _generate_workstream_report_impl
 
-    _generate_workstream_report_impl("W1", mission_id)
-    _generate_workstream_report_impl("W2", mission_id)
-    store.mark_workstream_delivered(mission_id, "W1")
-    store.mark_workstream_delivered(mission_id, "W2")
+    for workstream_id in ("W1", "W2"):
+        report = _generate_workstream_report_impl(workstream_id, mission_id)
+        if report.get("status") == "blocked":
+            continue
+        store.mark_workstream_delivered(mission_id, workstream_id)
     return {"phase": "research_done"}
-
-
-async def papyrus_phase0_node(state: MarvinState) -> dict:
-    """Generate engagement brief and move to framing phase."""
-    from marvin.tools.papyrus_tools import generate_engagement_brief
-
-    generate_engagement_brief(state)
-    return {"phase": "framing"}
 
 
 async def framing_node(state: MarvinState) -> dict:
@@ -169,10 +166,27 @@ async def framing_node(state: MarvinState) -> dict:
     mission_id = state.get("mission_id", "")
     messages = state.get("messages", [])
     
-    from marvin.tools.mission_tools import _generate_hypotheses_inline, generate_interview_guides
+    from marvin.tools.mission_tools import (
+        _generate_hypotheses_inline,
+        generate_interview_guides,
+        persist_framing_from_brief,
+    )
+    from marvin.tools.papyrus_tools import generate_engagement_brief
 
-    hypotheses = _generate_hypotheses_inline(mission_id)
+    raw_brief = ""
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            raw_brief = str(message.content)
+            break
+
+    if not raw_brief.strip():
+        logger.info("framing_node: waiting for a non-empty human brief")
+        return {"phase": "setup", "messages": messages}
+
+    persist_framing_from_brief(mission_id, raw_brief)
+    hypotheses = _generate_hypotheses_inline(mission_id, raw_brief)
     generate_interview_guides([hypothesis.id for hypothesis in hypotheses], state=state)
+    generate_engagement_brief(state)
     return {"phase": "awaiting_confirmation", "messages": messages}
 
 
@@ -289,7 +303,6 @@ def build_graph(checkpointer=None):
     builder = StateGraph(MarvinState)
     
     # Add all regular nodes (these return dict state updates)
-    builder.add_node("papyrus_phase0", papyrus_phase0_node)
     builder.add_node("framing", framing_node)
     builder.add_node("dora", dora_agent_node)
     builder.add_node("calculus", calculus_agent_node)
@@ -306,7 +319,6 @@ def build_graph(checkpointer=None):
         START,
         phase_router,
         {
-            "papyrus_phase0": "papyrus_phase0",
             "framing": "framing",
             "gate_entry": "gate_entry",
             "gate": "gate",
@@ -321,13 +333,6 @@ def build_graph(checkpointer=None):
     )
     
     # Each node returns to phase_router for next routing decision
-    builder.add_conditional_edges("papyrus_phase0", phase_router, {
-        "framing": "framing",
-        "gate": "gate",
-        "orchestrator": "orchestrator",
-        END: END,
-    })
-    
     builder.add_conditional_edges("framing", phase_router, {
         "gate_entry": "gate_entry",
         "gate": "gate",
@@ -382,7 +387,6 @@ def build_graph(checkpointer=None):
     })
     
     builder.add_conditional_edges("orchestrator", phase_router, {
-        "papyrus_phase0": "papyrus_phase0",
         "framing": "framing",
         "gate_entry": "gate_entry",
         "gate": "gate",

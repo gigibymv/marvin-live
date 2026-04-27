@@ -11,6 +11,7 @@ from marvin.mission.schema import (
     MerlinVerdict,
     Milestone,
     Mission,
+    MissionBrief,
     Source,
     Workstream,
 )
@@ -232,6 +233,46 @@ class MissionStore:
     def list_missions(self) -> list[Mission]:
         rows = self._execute("SELECT * FROM missions ORDER BY created_at, id").fetchall()
         return [Mission.model_validate(dict(row)) for row in rows]
+
+    def save_mission_brief(self, brief: MissionBrief) -> MissionBrief:
+        try:
+            self._conn.execute("BEGIN")
+            result = self._conn.execute(
+                "UPDATE missions SET ic_question = ?, updated_at = ? WHERE id = ?",
+                (brief.ic_question, brief.updated_at, brief.mission_id),
+            )
+            if result.rowcount == 0:
+                raise KeyError(f"mission not found: {brief.mission_id}")
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO mission_briefs
+                (mission_id, raw_brief, ic_question, mission_angle, brief_summary,
+                 workstream_plan_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    brief.mission_id,
+                    brief.raw_brief,
+                    brief.ic_question,
+                    brief.mission_angle,
+                    brief.brief_summary,
+                    brief.workstream_plan_json,
+                    brief.created_at,
+                    brief.updated_at,
+                ),
+            )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        return brief
+
+    def get_mission_brief(self, mission_id: str) -> MissionBrief | None:
+        row = self._execute(
+            "SELECT * FROM mission_briefs WHERE mission_id = ?",
+            (mission_id,),
+        ).fetchone()
+        return self._row_to_model(row, MissionBrief)
 
     def save_hypothesis(self, hypothesis: Hypothesis) -> Hypothesis:
         self._execute(

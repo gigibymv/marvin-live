@@ -32,6 +32,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 from pydantic import BaseModel
 
+from marvin.artifacts import artifact_file_is_ready
 from marvin.events import (
     register_deliverable_listener,
     register_finding_listener,
@@ -44,7 +45,7 @@ from marvin.graph.runner import build_graph
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools.common import slugify, short_id, utc_now_iso
-from marvin.mission.schema import Mission as MissionModel
+from marvin.mission.schema import Finding, Gate, Hypothesis, Mission as MissionModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -73,7 +74,6 @@ _DISPLAY_NAME = {
     "adversus": "Adversus",
     "merlin": "Merlin",
     "synthesis_critic": "Merlin",
-    "papyrus_phase0": "Papyrus",
     "papyrus_delivery": "Papyrus",
     "orchestrator": "MARVIN",
     "phase_router": None,
@@ -110,6 +110,49 @@ def _mission_exists(store: MissionStore, mission_id: str) -> bool:
         return True
     except KeyError:
         return False
+
+
+def _gate_lifecycle_status(
+    store: MissionStore,
+    mission_id: str,
+    gate: Gate,
+    hypotheses: list[Hypothesis],
+    findings: list[Finding],
+    has_framing: bool,
+) -> str:
+    """Separate scheduled gates from gates with real material to review."""
+    if gate.status != "pending":
+        return gate.status
+
+    if gate.gate_type == "hypothesis_confirmation":
+        return "open" if has_framing and hypotheses else "scheduled"
+
+    if gate.gate_type == "manager_review":
+        research_findings = [
+            finding for finding in findings
+            if (finding.agent_id or "").lower() != "adversus"
+        ]
+        return "open" if research_findings else "scheduled"
+
+    if gate.gate_type == "final_review":
+        redteam_findings = [
+            finding for finding in findings
+            if (finding.agent_id or "").lower() == "adversus"
+        ]
+        return "open" if store.get_latest_merlin_verdict(mission_id) and redteam_findings else "scheduled"
+
+    return "scheduled"
+
+
+def _deliverable_progress_payload(deliverable) -> dict:
+    is_ready = deliverable.status == "ready" and artifact_file_is_ready(deliverable.file_path)
+    return {
+        "id": deliverable.id,
+        "deliverable_type": deliverable.deliverable_type,
+        "status": "ready" if is_ready else "pending",
+        "file_path": deliverable.file_path if is_ready else None,
+        "created_at": deliverable.created_at,
+    }
 
 
 # =============================================================================
@@ -783,12 +826,17 @@ async def list_missions():
         progress = delivered / total if total > 0 else 0.0
         
         gates = store.list_gates(mission_id)
-        pending_gates = [g for g in gates if g.status == "pending"]
+        hypotheses = store.list_hypotheses(mission_id)
+        findings = store.list_findings(mission_id)
+        has_framing = store.get_mission_brief(mission_id) is not None
+        open_gates = [
+            g for g in gates
+            if _gate_lifecycle_status(store, mission_id, g, hypotheses, findings, has_framing) == "open"
+        ]
         next_checkpoint = None
-        if pending_gates:
-            pending_gates.sort(key=lambda g: g.scheduled_day)
-            next_gate = pending_gates[0]
-            next_checkpoint = next_gate.gate_type
+        if open_gates:
+            open_gates.sort(key=lambda g: g.scheduled_day)
+            next_checkpoint = open_gates[0].gate_type
         
         missions.append(MissionSummary(
             id=mission_id,
@@ -831,21 +879,30 @@ async def get_mission_progress(mission_id: str):
     hypotheses = store.list_hypotheses(mission_id)
     deliverables = store.list_deliverables(mission_id)
     workstreams = store.list_workstreams(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+    gate_states = {
+        g.id: _gate_lifecycle_status(store, mission_id, g, hypotheses, findings, mission_brief is not None)
+        for g in gates
+    }
     
     return {
         "mission": {
             "id": mission.id,
             "client": mission.client,
             "target": mission.target,
+            "ic_question": mission.ic_question,
             "created_at": mission.created_at or "",
             "status": mission.status,
         },
+        "framing": mission_brief.model_dump() if mission_brief else None,
         "gates": [
             {
                 "id": g.id,
                 "gate_type": g.gate_type,
                 "scheduled_day": g.scheduled_day,
                 "status": g.status,
+                "lifecycle_status": gate_states[g.id],
+                "is_open": gate_states[g.id] == "open",
                 "format": g.format,
             }
             for g in gates
@@ -878,15 +935,7 @@ async def get_mission_progress(mission_id: str):
             }
             for h in hypotheses
         ],
-        "deliverables": [
-            {
-                "id": d.id,
-                "deliverable_type": d.deliverable_type,
-                "file_path": d.file_path,
-                "created_at": d.created_at,
-            }
-            for d in deliverables
-        ],
+        "deliverables": [_deliverable_progress_payload(d) for d in deliverables],
         "workstreams": [
             {
                 "id": w.id,

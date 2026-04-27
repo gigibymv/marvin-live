@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from langchain_core.messages import HumanMessage
 
 from marvin.graph import gates, runner
 from marvin.mission.schema import Finding, MerlinVerdict, Mission
@@ -36,15 +37,46 @@ def graph_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore
     store.close()
 
 
-def test_phase_router_setup_routes_to_papyrus_phase0():
+def test_phase_router_setup_routes_to_framing():
     result = runner.phase_router({"phase": "setup", "mission_id": "m-test", "messages": []})
-    assert result == "papyrus_phase0"
+    assert result == "framing"
 
 
 def test_phase_router_framing_generates_hypotheses(graph_store: MissionStore):
-    result = asyncio.run(runner.framing_node({"phase": "framing", "mission_id": "m-test", "messages": []}))
+    result = asyncio.run(
+        runner.framing_node(
+            {
+                "phase": "framing",
+                "mission_id": "m-test",
+                "messages": [
+                    HumanMessage(
+                        content=(
+                            "Assess pricing power, retention, and whether Target can "
+                            "defend growth against larger competitors."
+                        )
+                    )
+                ],
+            }
+        )
+    )
     assert result["phase"] == "awaiting_confirmation"
     assert len(graph_store.list_hypotheses("m-test")) == 3
+    brief = graph_store.get_mission_brief("m-test")
+    assert brief is not None
+    assert "pricing power" in brief.raw_brief
+    deliverable = graph_store.list_deliverables("m-test")[0]
+    assert deliverable.deliverable_type == "engagement_brief"
+    content = Path(deliverable.file_path or "").read_text(encoding="utf-8")
+    assert "## Mission Angle" in content
+    assert "pricing power" in content
+    assert "## Workstream Plan" in content
+
+
+def test_framing_waits_for_non_empty_human_brief(graph_store: MissionStore):
+    result = asyncio.run(runner.framing_node({"phase": "framing", "mission_id": "m-test", "messages": []}))
+    assert result["phase"] == "setup"
+    assert graph_store.get_mission_brief("m-test") is None
+    assert graph_store.list_deliverables("m-test") == []
 
 
 def test_phase_router_confirmed_sends_dora_and_calculus(graph_store: MissionStore):
@@ -65,10 +97,12 @@ def test_research_join_advances_unconditionally(graph_store: MissionStore):
     # No milestone marked yet — join must still advance.
     result = runner.research_join({"mission_id": "m-test", "phase": "confirmed"})
     assert result["phase"] == "research_done"
-    assert any(
-        workstream.id == "W1" and workstream.status == "delivered"
-        for workstream in graph_store.list_workstreams("m-test")
-    )
+    milestones = {milestone.id: milestone.status for milestone in graph_store.list_milestones("m-test")}
+    assert milestones["W1.1"] == "delivered"
+    assert milestones["W2.1"] == "delivered"
+    workstreams = {workstream.id: workstream.status for workstream in graph_store.list_workstreams("m-test")}
+    assert workstreams["W1"] == "pending"
+    assert workstreams["W2"] == "pending"
 
 
 def test_papyrus_never_called_without_ship():
@@ -157,6 +191,7 @@ def test_merlin_node_advances_on_ship_verdict(graph_store: MissionStore):
 def test_build_graph_compiles():
     graph = runner.build_graph()
     assert graph is not None
+    assert "papyrus_phase0" not in graph.get_graph().nodes
 
 
 def test_phase_router_routes_gate_phases_through_gate_entry():

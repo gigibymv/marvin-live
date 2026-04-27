@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import date
 from typing import Any
 
 from langgraph.types import Command
 
 from marvin.events import emit_finding_persisted
-from marvin.mission.schema import Finding, Hypothesis, MerlinVerdict, Mission, Source
+from marvin.mission.schema import Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools.common import (
     InjectedStateArg,
@@ -20,6 +22,66 @@ from marvin.tools.common import (
 )
 
 _STORE_FACTORY = MissionStore
+
+
+def _clean_brief_text(raw_brief: str) -> str:
+    return " ".join(raw_brief.strip().split())
+
+
+def _derive_ic_question(mission: Mission, raw_brief: str) -> str:
+    if (mission.ic_question or "").strip():
+        return mission.ic_question.strip()
+
+    match = re.search(r"([^.!?\n]{20,180}\?)", raw_brief)
+    if match:
+        return match.group(1).strip()
+
+    return f"Should IC invest in {mission.target}?"
+
+
+def _derive_mission_angle(raw_brief: str) -> str:
+    lowered = raw_brief.lower()
+    if any(token in lowered for token in ("unit economics", "qoe", "margin", "revenue", "concentration")):
+        return "Financial quality and unit economics"
+    if any(token in lowered for token in ("market", "competitive", "competition", "moat", "positioning")):
+        return "Market position and competitive durability"
+    if any(token in lowered for token in ("risk", "red flag", "downside", "churn")):
+        return "Risk-adjusted investment case"
+    return "Commercial diligence of the investment thesis"
+
+
+def _brief_summary(raw_brief: str) -> str:
+    cleaned = _clean_brief_text(raw_brief)
+    return cleaned[:360] if cleaned else "Initial mission brief captured."
+
+
+def _workstream_plan(mission: Mission, mission_angle: str) -> list[dict[str, str]]:
+    return [
+        {
+            "id": "W1",
+            "label": "Market and competitive analysis",
+            "agent": "dora",
+            "focus": f"Test market position, competitive dynamics, and moat signals for {mission.target}.",
+        },
+        {
+            "id": "W2",
+            "label": "Financial analysis",
+            "agent": "calculus",
+            "focus": f"Test unit economics, quality of earnings, anomalies, and concentration for {mission.target}.",
+        },
+        {
+            "id": "W4",
+            "label": "Red-team and stress testing",
+            "agent": "adversus",
+            "focus": f"Challenge the {mission_angle.lower()} story and identify the weakest link.",
+        },
+        {
+            "id": "W3",
+            "label": "Storyline synthesis",
+            "agent": "merlin",
+            "focus": "Synthesize claims, gaps, and final readiness after research and red-team.",
+        },
+    ]
 
 
 def create_cdd_mission(
@@ -76,6 +138,14 @@ def get_workplan_for_mission(state: InjectedStateArg = None) -> dict[str, Any]:
         "milestones": serialize_models(milestones),
         "gates": serialize_models(gates),
     }
+
+
+def get_mission_brief(state: InjectedStateArg = None) -> dict[str, Any]:
+    """Retrieve the persisted mission brief/framing state."""
+    mission_id = require_mission_id(state)
+    store = get_store(_STORE_FACTORY)
+    brief = store.get_mission_brief(mission_id)
+    return {"mission_id": mission_id, "brief": brief.model_dump() if brief else None}
 
 
 def get_hypotheses(state: InjectedStateArg = None) -> dict[str, Any]:
@@ -277,31 +347,64 @@ def generate_interview_guides(
     return {"guides": guides}
 
 
-def _generate_hypotheses_inline(mission_id: str) -> list[Hypothesis]:
+def _generate_hypotheses_inline(mission_id: str, raw_brief: str | None = None) -> list[Hypothesis]:
     """Internal helper to generate hypotheses without state injection."""
     store = get_store(_STORE_FACTORY)
     mission = store.get_mission(mission_id)
-    # Generate 3 default hypotheses for CDD
+    existing = store.list_hypotheses(mission_id, status="active")
+    if existing:
+        return existing
+
+    brief = _clean_brief_text(raw_brief or "")
+    mission_angle = _derive_mission_angle(brief)
+    evidence_context = brief[:140] if brief else mission.ic_question or "the initial investment thesis"
     hypotheses = [
         Hypothesis(
             id=short_id("hyp"),
             mission_id=mission_id,
-            text=f"{mission.target} has a durable competitive advantage",
+            text=f"{mission.target}'s investment case depends on {mission_angle.lower()} holding under diligence.",
             created_at=utc_now_iso(),
         ),
         Hypothesis(
             id=short_id("hyp"),
             mission_id=mission_id,
-            text=f"{mission.target}'s unit economics are attractive at scale",
+            text=f"{mission.target} can support the thesis in the brief: {evidence_context}",
             created_at=utc_now_iso(),
         ),
         Hypothesis(
             id=short_id("hyp"),
             mission_id=mission_id,
-            text=f"{mission.target} faces execution risk in key growth markets",
+            text=f"The main diligence risk is that evidence from Dora, Calculus, or Adversus disproves the {mission_angle.lower()} story.",
             created_at=utc_now_iso(),
         ),
     ]
     for hyp in hypotheses:
         store.save_hypothesis(hyp)
     return hypotheses
+
+
+def persist_framing_from_brief(mission_id: str, raw_brief: str) -> MissionBrief:
+    """Persist the user's brief and deterministic framing scaffold."""
+    store = get_store(_STORE_FACTORY)
+    mission = store.get_mission(mission_id)
+    cleaned = _clean_brief_text(raw_brief)
+    if not cleaned:
+        raise ValueError("framing requires a non-empty brief")
+
+    ic_question = _derive_ic_question(mission, cleaned)
+    mission_angle = _derive_mission_angle(cleaned)
+    now = utc_now_iso()
+    existing = store.get_mission_brief(mission_id)
+    created_at = existing.created_at if existing else now
+    brief = MissionBrief(
+        mission_id=mission_id,
+        raw_brief=cleaned,
+        ic_question=ic_question,
+        mission_angle=mission_angle,
+        brief_summary=_brief_summary(cleaned),
+        workstream_plan_json=json.dumps(_workstream_plan(mission, mission_angle), ensure_ascii=True),
+        created_at=created_at,
+        updated_at=now,
+    )
+    store.save_mission_brief(brief)
+    return brief

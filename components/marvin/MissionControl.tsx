@@ -125,9 +125,19 @@ interface MissionControlViewProps {
     milestones: Array<{ id: string; label: string; status: string }>;
   }[];
   pendingGateBanner?: { onResume: () => void } | null;
+  nextCheckpointLabel?: string | null;
 }
 
 const MissionControlView = RawMissionControlView as unknown as ComponentType<MissionControlViewProps>;
+type MissionProgressSnapshot = Awaited<ReturnType<typeof getMissionProgress>>;
+
+function assertGateLifecycleContract(data: MissionProgressSnapshot): void {
+  for (const gate of data.gates ?? []) {
+    if (typeof gate.lifecycle_status !== "string" || typeof gate.is_open !== "boolean") {
+      throw new Error("Backend /progress gate payload is missing lifecycle_status/is_open");
+    }
+  }
+}
 
 export default function MissionControl({
   missionId,
@@ -149,18 +159,10 @@ export default function MissionControl({
   const [streamError, setStreamError] = useState<string | null>(null);
 
   // Progress state for real-time data from backend
-  const [progress, setProgress] = useState<{
-    gates: any[];
-    milestones: any[];
-    findings: any[];
-    hypotheses: any[];
-    deliverables: any[];
-    workstreams: any[];
-  } | null>(null);
+  const [progress, setProgress] = useState<MissionProgressSnapshot | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, "idle" | "active" | "done">>({});
   const [liveFindings, setLiveFindings] = useState<Array<{ id: string; claim_text: string; confidence?: string }>>([]);
-  const [liveDeliverables, setLiveDeliverables] = useState<Array<{ id: string; label: string }>>([]);
   const [milestoneStatusOverrides, setMilestoneStatusOverrides] = useState<Record<string, string>>({});
 
   const chatDraft = useMissionUiStore((state) => selectChatDraft(state, missionId));
@@ -177,7 +179,8 @@ export default function MissionControl({
     if (repository.kind !== "http") return;
     try {
       const data = await getMissionProgress(missionId);
-      setProgress(data as any);
+      assertGateLifecycleContract(data);
+      setProgress(data);
     } catch (error) {
       console.error("Failed to load mission progress:", error);
     }
@@ -305,7 +308,7 @@ export default function MissionControl({
             setActiveAgent(event.agent ?? null);
             setAgentStatuses((current) => ({
               ...current,
-              [event.agent ?? "unknown"]: "active",
+              [(event.agent ?? "unknown").toLowerCase()]: "active",
             }));
             break;
           case "agent_done":
@@ -337,16 +340,6 @@ export default function MissionControl({
             void refreshProgress();
             break;
           case "deliverable_ready":
-            if (event.deliverableId) {
-              setLiveDeliverables((current) =>
-                current.some((d) => d.id === event.deliverableId)
-                  ? current
-                  : current.concat({
-                      id: event.deliverableId as string,
-                      label: event.label ?? "deliverable",
-                    }),
-              );
-            }
             void refreshProgress();
             break;
           case "run_end":
@@ -528,7 +521,7 @@ export default function MissionControl({
   // Re-open a deferred gate from the checkpoint surface.
   const reopenGateFromCheckpoint = useCallback(() => {
     if (!progress) return;
-    const pending = (progress.gates ?? []).find((g) => g.status === "pending");
+    const pending = (progress.gates ?? []).find((g) => g.lifecycle_status === "open" || g.is_open);
     if (!pending) return;
     setGateModal((current) =>
       current ?? {
@@ -603,22 +596,42 @@ export default function MissionControl({
       const liveStatus = milestoneStatusOverrides[m.id];
       return (liveStatus ?? m.status) === "delivered";
     }).length;
+    const agentKey = ws.assigned_agent?.toLowerCase() ?? ws.id;
+    const liveStatus = agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
     return {
-      id: ws.assigned_agent?.toLowerCase() ?? ws.id,
+      id: agentKey,
       name: ws.assigned_agent ?? ws.id,
       role: ws.label,
-      status: agentStatuses[ws.assigned_agent?.toLowerCase() ?? ""] ?? (activeAgent === ws.assigned_agent?.toLowerCase() ? "active" : "idle"),
+      status: liveStatus,
+      state: liveStatus === "active" ? "running" : liveStatus === "done" ? "done" : "idle",
       milestonesTotal: wsMilestones.length,
       milestonesDelivered: delivered,
     };
   });
 
   // Compute checkpoints from gates
+  const gateStatusToCheckpoint = (g: any) => {
+    if (g.status === "completed") return "completed";
+    if (g.lifecycle_status === "open" || g.is_open) return "now";
+    return "later";
+  };
   const checkpoints = (progress?.gates ?? []).map(g => ({
     id: g.id,
-    label: g.gate_type,
-    status: g.status === "completed" ? "done" : g.status === "pending" ? "pending" : "pending",
+    label: String(g.gate_type ?? "").replace(/_/g, " "),
+    status: gateStatusToCheckpoint(g),
   }));
+  const nextCheckpointLabel =
+    checkpoints.find((cp) => cp.status === "now")?.label ?? null;
+  const deliveredMilestones = allMilestones.filter((m) => {
+    const liveStatus = milestoneStatusOverrides[m.id];
+    return (liveStatus ?? m.status) === "delivered";
+  }).length;
+  const progressRatio = allMilestones.length > 0 ? deliveredMilestones / allMilestones.length : 0;
+  const missionForView = {
+    ...mission,
+    progress: progressRatio,
+    checkpoint: nextCheckpointLabel ?? "No open checkpoint",
+  };
 
   // Compute hypotheses
   const hypotheses = progress?.hypotheses ?? [];
@@ -656,14 +669,10 @@ export default function MissionControl({
   const seedDeliverables = (progress?.deliverables ?? []).map((d) => ({
     id: d.id,
     label: humanizeDeliverableType(d.deliverable_type),
-    status: d.file_path ? "ready" : "pending",
-    href: d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
+    status: d.status === "ready" && d.file_path ? "ready" : "pending",
+    href: d.status === "ready" && d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
   }));
-  const seedIds = new Set(seedDeliverables.map((d) => d.id));
-  const liveOnlyDeliverables = liveDeliverables
-    .filter((d) => !seedIds.has(d.id))
-    .map((d) => ({ id: d.id, label: d.label, status: "ready", href: undefined as string | undefined }));
-  const deliverables = [...seedDeliverables, ...liveOnlyDeliverables];
+  const deliverables = seedDeliverables;
 
   // Build per-workstream content for the center tabs from real findings.
   const workstreamContent = (progress?.workstreams ?? []).map((ws) => ({
@@ -673,7 +682,7 @@ export default function MissionControl({
     milestones: (progress?.milestones ?? []).filter((m: any) => m.workstream_id === ws.id),
   }));
 
-  const hasPendingGate = (progress?.gates ?? []).some((g) => g.status === "pending");
+  const hasPendingGate = (progress?.gates ?? []).some((g) => g.lifecycle_status === "open" || g.is_open);
   const showDeferredBanner = hasPendingGate && !gateModal;
 
 
@@ -681,7 +690,7 @@ export default function MissionControl({
   return (
     <>
       <MissionControlView
-        mission={mission}
+        mission={missionForView}
         messages={messages}
         initialMessages={messages}
         chatDraft={chatDraft}
@@ -702,6 +711,7 @@ export default function MissionControl({
         activeAgent={activeAgent}
         workstreamContent={workstreamContent}
         pendingGateBanner={showDeferredBanner ? { onResume: reopenGateFromCheckpoint } : null}
+        nextCheckpointLabel={nextCheckpointLabel}
       />
 
       {/* Custom gate modal with approve/reject buttons */}

@@ -41,6 +41,53 @@ describe("mission control view", () => {
     expect(screen.getAllByText("Meridian Capital").length).toBeGreaterThan(0);
   });
 
+  it("does not show fallback ready deliverables or hardcoded checkpoint copy", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        deliverables: [],
+        checkpoints: [],
+        nextCheckpointLabel: null,
+      }),
+    );
+
+    expect(screen.queryByText("Engagement brief")).not.toBeInTheDocument();
+    expect(screen.queryByText("Review claims")).not.toBeInTheDocument();
+    expect(screen.getByText("No open checkpoint")).toBeInTheDocument();
+  });
+
+  it("does not render a pending deliverable as openable", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        deliverables: [{ id: "d1", label: "Engagement brief", status: "pending" }],
+      }),
+    );
+
+    expect(screen.getByText("Engagement brief")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Engagement brief/i })).not.toBeInTheDocument();
+  });
+
   it("sends chat through the provided handler", async () => {
     const onSendMessage = vi.fn();
     const user = userEvent.setup();

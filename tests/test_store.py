@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from marvin.mission.schema import Deliverable, Finding, Gate, Hypothesis, MerlinVerdict, Mission, Source
+from marvin.mission.schema import Deliverable, Finding, Gate, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 
 
@@ -54,6 +54,7 @@ def test_store_initializes_temp_db_file(tmp_path: Path):
         for row in store._execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
     }
     assert "missions" in tables
+    assert "mission_briefs" in tables
     assert "merlin_verdicts" in tables
     store.close()
 
@@ -85,6 +86,50 @@ def test_list_missions_returns_multiple_rows():
         )
     )
     assert [mission.id for mission in store.list_missions()] == ["m-test", "m-second"]
+    store.close()
+
+
+def test_save_and_get_mission_brief_updates_ic_question():
+    store = MissionStore(":memory:")
+    store.save_mission(_mission())
+    now = datetime.now(UTC).isoformat()
+    brief = MissionBrief(
+        mission_id="m-test",
+        raw_brief="We need to assess whether TargetCo can defend growth.",
+        ic_question="Can TargetCo defend growth?",
+        mission_angle="Growth durability",
+        brief_summary="Assess growth durability and risks.",
+        workstream_plan_json='[{"id":"W1","focus":"Market"}]',
+        created_at=now,
+        updated_at=now,
+    )
+
+    saved = store.save_mission_brief(brief)
+
+    assert saved.ic_question == "Can TargetCo defend growth?"
+    assert store.get_mission_brief("m-test") == brief
+    assert store.get_mission("m-test").ic_question == "Can TargetCo defend growth?"
+    store.close()
+
+
+def test_save_mission_brief_rolls_back_when_mission_missing():
+    store = MissionStore(":memory:")
+    now = datetime.now(UTC).isoformat()
+    brief = MissionBrief(
+        mission_id="missing",
+        raw_brief="Brief",
+        ic_question="Question?",
+        mission_angle="Angle",
+        brief_summary="Summary",
+        workstream_plan_json="[]",
+        created_at=now,
+        updated_at=now,
+    )
+
+    with pytest.raises(KeyError, match="mission not found"):
+        store.save_mission_brief(brief)
+
+    assert store.get_mission_brief("missing") is None
     store.close()
 
 

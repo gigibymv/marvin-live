@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
+from marvin.artifacts import artifact_body_has_placeholder, artifact_file_is_ready
 from marvin.events import emit_deliverable_persisted
 from marvin.mission.schema import Deliverable
 from marvin.mission.store import MissionStore
@@ -12,6 +14,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _STORE_FACTORY = MissionStore
 
 
+class BriefPrerequisiteNotMet(ValueError):
+    """Raised when framing material is insufficient for an engagement brief."""
+
+
+def _assert_artifact_can_be_ready(file_path: Path, deliverable_type: str) -> None:
+    """Fail closed before any artifact is announced as ready."""
+    if not artifact_file_is_ready(file_path):
+        if file_path.exists() and file_path.is_file():
+            body = file_path.read_bytes().decode("utf-8", errors="ignore")
+            if artifact_body_has_placeholder(body):
+                raise ValueError(f"{deliverable_type} contains placeholder content")
+        raise ValueError(f"{deliverable_type} is not ready")
+
+
 def _save_deliverable(
     store: MissionStore,
     mission_id: str,
@@ -19,12 +35,21 @@ def _save_deliverable(
     deliverable_type: str,
     file_path: Path,
 ) -> None:
+    try:
+        _assert_artifact_can_be_ready(file_path, deliverable_type)
+    except ValueError:
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
+        raise
     resolved = str(file_path.resolve())
     store.save_deliverable(
         Deliverable(
             id=deliverable_id,
             mission_id=mission_id,
             deliverable_type=deliverable_type,
+            status="ready",
             file_path=resolved,
             file_size_bytes=file_path.stat().st_size,
             created_at=utc_now_iso(),
@@ -44,32 +69,51 @@ def _generate_engagement_brief_impl(mission_id: str) -> dict[str, Any]:
     store = get_store(_STORE_FACTORY)
     mission = store.get_mission(mission_id)
     hypotheses = store.list_hypotheses(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+    if not (mission.ic_question or "").strip():
+        raise BriefPrerequisiteNotMet("engagement_brief requires an investment committee question")
+    if not hypotheses:
+        raise BriefPrerequisiteNotMet("engagement_brief requires framed hypotheses")
+    if mission_brief is None:
+        raise BriefPrerequisiteNotMet("engagement_brief requires persisted framing")
+
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / "engagement_brief.md"
     existed = path.exists()
-    if not existed:
-        lines = [
-            f"# Engagement Brief: {mission.target}",
-            "",
-            f"Client: {mission.client}",
-            f"Target: {mission.target}",
-            f"Mission Type: {mission.mission_type}",
-            f"IC Question: {mission.ic_question or 'N/A'}",
-            "",
-            "## Hypotheses",
-        ]
-        if hypotheses:
-            lines.extend([f"- {hypothesis.text}" for hypothesis in hypotheses])
-        else:
-            lines.append("- No hypotheses yet")
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    lines = [
+        f"# Engagement Brief: {mission.target}",
+        "",
+        f"Client: {mission.client}",
+        f"Target: {mission.target}",
+        f"Mission Type: {mission.mission_type}",
+        f"IC Question: {mission.ic_question}",
+        "",
+        "## Mission Angle",
+        mission_brief.mission_angle,
+        "",
+        "## Brief Summary",
+        mission_brief.brief_summary,
+        "",
+        "## Hypotheses",
+    ]
+    lines.extend([f"- {hypothesis.text}" for hypothesis in hypotheses])
+    lines.extend(["", "## Workstream Plan"])
+    for item in json.loads(mission_brief.workstream_plan_json):
+        lines.append(f"- {item['id']} - {item['label']}: {item['focus']}")
+    next_body = "\n".join(lines) + "\n"
+    status = "generated"
+    if existed:
+        current_body = path.read_text(encoding="utf-8")
+        status = "skipped" if current_body == next_body else "updated"
+    if status != "skipped":
+        path.write_text(next_body, encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-engagement-brief"
     deliverable_type = "engagement_brief"
     _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path)
     return {
         "mission_id": mission_id,
         "file_path": str(path.resolve()),
-        "status": "skipped" if existed else "generated",
+        "status": status,
         "deliverable_id": deliverable_id,
         "deliverable_type": deliverable_type,
     }
@@ -84,14 +128,19 @@ def generate_engagement_brief(state: InjectedStateArg = None) -> dict[str, Any]:
 def _generate_workstream_report_impl(workstream_id: str, mission_id: str) -> dict[str, Any]:
     store = get_store(_STORE_FACTORY)
     findings = [finding for finding in store.list_findings(mission_id) if finding.workstream_id == workstream_id]
+    if not findings:
+        return {
+            "mission_id": mission_id,
+            "workstream_id": workstream_id,
+            "status": "blocked",
+            "reason": "workstream_report requires at least one finding",
+        }
+
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / f"{workstream_id}_report.md"
     lines = [f"# {workstream_id} Report", ""]
-    if findings:
-        for finding in findings:
-            lines.append(f"- [{finding.confidence}] {finding.claim_text}")
-    else:
-        lines.append("- No findings yet")
+    for finding in findings:
+        lines.append(f"- [{finding.confidence}] {finding.claim_text}")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-{workstream_id.lower()}-report"
     deliverable_type = "workstream_report"
@@ -120,17 +169,11 @@ def _generate_report_pdf_impl(mission_id: str) -> dict[str, Any]:
     g3_completed = any(gate.scheduled_day == 10 and gate.status == "completed" for gate in store.list_gates(mission_id))
     if not ((verdict and verdict.verdict == "SHIP") or g3_completed):
         raise ValueError("generate_report_pdf requires SHIP verdict or completed G3 gate")
-    output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
-    path = output_dir / "cdd_report_v1.pdf"
-    path.write_bytes(b"%PDF-1.4\n% MARVIN generated placeholder report\n")
-    deliverable_id = f"deliverable-{mission_id}-report-pdf"
-    deliverable_type = "report_pdf"
-    _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path)
     return {
         "mission_id": mission_id,
-        "file_path": str(path.resolve()),
-        "deliverable_id": deliverable_id,
-        "deliverable_type": deliverable_type,
+        "deliverable_type": "report_pdf",
+        "status": "blocked",
+        "reason": "real PDF generation is not implemented; placeholder PDFs are not marked ready",
     }
 
 
@@ -144,6 +187,14 @@ def _generate_exec_summary_impl(mission_id: str) -> dict[str, Any]:
     store = get_store(_STORE_FACTORY)
     mission = store.get_mission(mission_id)
     findings = store.list_findings(mission_id)
+    if not findings:
+        return {
+            "mission_id": mission_id,
+            "deliverable_type": "exec_summary",
+            "status": "blocked",
+            "reason": "exec_summary requires at least one finding",
+        }
+
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / "exec_summary.md"
     lines = [
@@ -153,7 +204,7 @@ def _generate_exec_summary_impl(mission_id: str) -> dict[str, Any]:
         "",
         "## Key Findings",
     ]
-    lines.extend([f"- {finding.claim_text}" for finding in findings[:10]] or ["- No findings yet"])
+    lines.extend([f"- {finding.claim_text}" for finding in findings[:10]])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-exec-summary"
     deliverable_type = "exec_summary"
@@ -175,13 +226,19 @@ def generate_exec_summary(state: InjectedStateArg = None) -> dict[str, Any]:
 def _generate_data_book_impl(mission_id: str) -> dict[str, Any]:
     store = get_store(_STORE_FACTORY)
     findings = store.list_findings(mission_id)
+    if not findings:
+        return {
+            "mission_id": mission_id,
+            "deliverable_type": "data_book",
+            "status": "blocked",
+            "reason": "data_book requires at least one finding",
+        }
+
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / "data_book.md"
     lines = ["# Data Book", "", "## Findings"]
     for finding in findings:
         lines.append(f"- {finding.id}: {finding.claim_text} [{finding.confidence}]")
-    if not findings:
-        lines.append("- No findings yet")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-data-book"
     deliverable_type = "data_book"

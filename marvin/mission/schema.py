@@ -29,6 +29,17 @@ class Mission(MarvinModel):
     updated_at: str | None = None
 
 
+class MissionBrief(MarvinModel):
+    mission_id: str
+    raw_brief: str
+    ic_question: str
+    mission_angle: str
+    brief_summary: str
+    workstream_plan_json: str
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
 class Hypothesis(MarvinModel):
     id: str
     mission_id: str

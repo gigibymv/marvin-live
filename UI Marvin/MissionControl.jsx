@@ -40,24 +40,11 @@ textarea::placeholder{color:var(--muted)}
 @keyframes blink{0%,100%{opacity:.15}50%{opacity:1}}
 `;
 
-const CHECKPOINTS = [
-  { id: "c1", label: "Hypothesis confirmation", status: "pending" },
-  { id: "c2", label: "Review claims", status: "pending" },
-  { id: "c3", label: "Defend storyline", status: "pending" },
-  { id: "c4", label: "Red-team review", status: "pending" },
-  { id: "c5", label: "Final delivery", status: "pending" },
-];
+const CHECKPOINTS = [];
 
 const HYP = [];
 
-const AGENTS = [
-  { id: "marvin", name: "MARVIN", role: "Orchestration", state: "idle" },
-  { id: "dora", name: "Dora", role: "Market research", state: "idle" },
-  { id: "calculus", name: "Calculus", role: "Financials", state: "idle" },
-  { id: "adversus", name: "Adversus", role: "Red-team", state: "idle" },
-  { id: "merlin", name: "Merlin", role: "Synthesis", state: "idle" },
-  { id: "papyrus", name: "Papyrus", role: "Deliverables", state: "idle" },
-];
+const AGENTS = [];
 
 const WS = [
   { id: "ws1", label: "Competitive" },
@@ -71,14 +58,7 @@ const LIVE = [];
 
 const DONE = [];
 
-const DELIVERABLES = [
-  { id: "dv1", label: "Engagement brief", status: "ready" },
-  { id: "dv2", label: "Competitive analysis", status: "ready" },
-  { id: "dv3", label: "Market analysis", status: "pending" },
-  { id: "dv4", label: "Financial analysis", status: "pending" },
-  { id: "dv5", label: "Risk / Red-team", status: "pending" },
-  { id: "dv6", label: "Investment memo", status: "pending" },
-];
+const DELIVERABLES = [];
 
 function Icon({ id, size }) {
   var s = size || 13;
@@ -104,7 +84,7 @@ function Conf({ v }) {
 }
 
 function StateTag({ state }) {
-  var color = state === "running" ? "var(--green)" : state === "waiting" ? "var(--amber)" : "var(--muted)";
+  var color = state === "running" || state === "done" ? "var(--green)" : state === "waiting" ? "var(--amber)" : "var(--muted)";
   var weight = state === "running" ? 600 : 400;
   return React.createElement("span", {
     style: { fontFamily: "var(--m)", fontSize: "9px", letterSpacing: ".1em", textTransform: "uppercase", color: color, fontWeight: weight }
@@ -159,7 +139,7 @@ function Feed({ feedRef, ...props }) {
     // NEXT CHECKPOINT
     React.createElement("div", { style: { padding: "8px 24px", borderBottom: "1px solid var(--rule)", display: "flex", alignItems: "center", gap: "10px" } },
       React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)" } }, "Next"),
-      React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600, letterSpacing: ".06em", color: "var(--ink)" } }, "Review claims")
+      React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600, letterSpacing: ".06em", color: "var(--ink)" } }, props.nextCheckpointLabel || "No open checkpoint")
     ),
 
     // COMPLETED — strict 3-col grid
@@ -214,6 +194,11 @@ export default function MissionControl(props) {
   var onGateClose = props.onGateClose || function () { };
   var backendState = props.backendState || "local";
   var pendingGateBanner = props.pendingGateBanner || null;
+  var workstreamTabs = props.workstreamContent && props.workstreamContent.length
+    ? props.workstreamContent.map(function (w) {
+      return { id: "ws" + String(w.id || "").replace(/^W/i, ""), label: w.label || w.id };
+    })
+    : WS;
   var feedRef = useRef(null);
   var chatRef = useRef(null);
 
@@ -259,7 +244,7 @@ export default function MissionControl(props) {
             var dotBorder = cp.status === "later" ? "var(--ruleh)" : cp.status === "now" ? "var(--ink)" : "var(--muted)";
             var labelColor = cp.status === "now" ? "var(--ink)" : "var(--muted)";
             var labelWeight = cp.status === "now" ? 600 : 400;
-            var stateLabel = { completed: "Completed", now: "Now", next: "Next", later: "Later" }[cp.status];
+            var stateLabel = { completed: "Completed", now: "Now", next: "Next", later: "Later", pending: "Later", done: "Completed" }[cp.status] || cp.status;
             return React.createElement("div", { key: cp.id, style: { display: "flex", alignItems: "center", gap: "8px", padding: "4px 0", borderBottom: cp.id === "c5" ? "none" : "1px solid var(--rule)" } },
               React.createElement("div", { style: { width: "5px", height: "5px", borderRadius: "50%", flexShrink: 0, background: dotBg, border: "1px solid " + dotBorder } }),
               React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9.5px", letterSpacing: ".06em", color: labelColor, fontWeight: labelWeight, flex: 1 } }, cp.label),
@@ -274,20 +259,21 @@ export default function MissionControl(props) {
             React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Agents")
           ),
           (props.agents || AGENTS).map(function (a) {
+            var agentState = a.state || (a.status === "active" ? "running" : a.status === "done" ? "done" : "idle");
             var msTotal = a.milestonesTotal || 0;
             var msDone = a.milestonesDelivered || 0;
             var msColor = msTotal > 0 && msDone === msTotal ? "var(--green)" : "var(--muted)";
-            return React.createElement("div", { key: a.id, className: "ag", style: { opacity: a.state === "idle" ? 0.35 : 1 } },
-              React.createElement("div", { style: { color: a.state === "idle" ? "var(--muted)" : "var(--ink)", flexShrink: 0 } }, React.createElement(Icon, { id: a.id })),
+            return React.createElement("div", { key: a.id, className: "ag", style: { opacity: agentState === "idle" ? 0.35 : 1 } },
+              React.createElement("div", { style: { color: agentState === "idle" ? "var(--muted)" : "var(--ink)", flexShrink: 0 } }, React.createElement(Icon, { id: a.id })),
               React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                React.createElement("div", { style: { fontSize: "12px", fontWeight: a.state === "running" ? 500 : 400 } }, a.name),
+                React.createElement("div", { style: { fontSize: "12px", fontWeight: agentState === "running" ? 500 : 400 } }, a.name),
                 React.createElement("div", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, a.role)
               ),
               msTotal > 0 ? React.createElement("span", {
                 "data-testid": "milestone-counter-" + a.id,
                 style: { fontFamily: "var(--m)", fontSize: "9px", letterSpacing: ".06em", color: msColor, marginRight: "6px", fontVariantNumeric: "tabular-nums" }
               }, msDone + "/" + msTotal) : null,
-              React.createElement(StateTag, { state: a.state })
+              React.createElement(StateTag, { state: agentState })
             );
           })
         ),
@@ -336,7 +322,7 @@ export default function MissionControl(props) {
           // Tabs
           React.createElement("div", { style: { display: "flex", overflowX: "auto", scrollbarWidth: "none" } },
             React.createElement("span", { className: "tab done", style: { cursor: "default" } }, "\u2713 Brief"),
-            WS.map(function (w) {
+            workstreamTabs.map(function (w) {
               return React.createElement("button", { key: w.id, className: "tab" + (selectedTab === w.id ? " on" : ""), onClick: function () { onSelectTab(w.id); } }, w.label);
             })
           )
@@ -366,7 +352,7 @@ export default function MissionControl(props) {
             }
           }, "Review now")
         ) : null,
-        React.createElement(Feed, { feedRef: feedRef, findings: props.findings })
+        React.createElement(Feed, { feedRef: feedRef, findings: props.findings, nextCheckpointLabel: props.nextCheckpointLabel })
       ),
 
       // RIGHT RAIL
