@@ -238,13 +238,22 @@ async def respond_qa(mission_id: str, user_text: str) -> str:
         return _deterministic_response(state, user_text)
 
 
-def _enforce_sentence_cap(text: str, *, max_sentences: int = 4) -> str:
-    """Trim text to at most `max_sentences` sentences. Preserves trailing
-    punctuation. Pure: no side effects, no mutation."""
+def _enforce_sentence_cap(
+    text: str, *, max_sentences: int = 4, max_chars: int = 350
+) -> str:
+    """Trim text to at most `max_sentences` sentences AND `max_chars`.
+    Preserves sentence boundaries. Pure: no side effects, no mutation."""
     import re
 
     parts = re.split(r"(?<=[.!?])\s+", text.strip())
     parts = [p for p in parts if p]
-    if len(parts) <= max_sentences:
-        return text.strip()
-    return " ".join(parts[:max_sentences]).strip()
+    capped = (
+        text.strip() if len(parts) <= max_sentences else " ".join(parts[:max_sentences]).strip()
+    )
+    if len(capped) <= max_chars:
+        return capped
+    truncated = capped[:max_chars]
+    last_end = max(truncated.rfind(". "), truncated.rfind("! "), truncated.rfind("? "))
+    if last_end > 0:
+        return truncated[: last_end + 1].strip()
+    return truncated.rstrip(" .,;:").strip() + "."
