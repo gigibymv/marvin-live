@@ -60,7 +60,14 @@ def test_phase_router_framing_generates_hypotheses(graph_store: MissionStore):
         )
     )
     assert result["phase"] == "awaiting_confirmation"
-    assert len(graph_store.list_hypotheses("m-test")) == 3
+    # Framing now goes through the framing LLM (or its deterministic fallback
+    # if no API key). Both paths are contracted to produce 3 to 5 hypotheses.
+    hypothesis_count = len(graph_store.list_hypotheses("m-test"))
+    assert 3 <= hypothesis_count <= 5
+    # framing_node must surface a conversational AIMessage so the chat is not
+    # silent after the user submits a brief.
+    from langchain_core.messages import AIMessage
+    assert any(isinstance(msg, AIMessage) and (msg.content or "").strip() for msg in result["messages"])
     brief = graph_store.get_mission_brief("m-test")
     assert brief is not None
     assert "pricing power" in brief.raw_brief

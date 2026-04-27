@@ -4,15 +4,23 @@ from marvin.graph.subgraphs.common import build_agent
 from marvin.runtime_debug import log_agent_io
 from marvin.tools.adversus_tools import attack_hypothesis, generate_stress_scenarios, identify_weakest_link, run_ansoff
 from marvin.tools.dora_tools import run_pestel
-from marvin.tools.mission_tools import add_finding_to_mission
+from marvin.tools.mission_tools import (
+    add_finding_to_mission,
+    get_findings,
+    get_hypotheses,
+    mark_milestone_delivered,
+)
 
 _tools = [
+    get_findings,
+    get_hypotheses,
     attack_hypothesis,
     generate_stress_scenarios,
     identify_weakest_link,
     run_ansoff,
     run_pestel,
     add_finding_to_mission,
+    mark_milestone_delivered,
 ]
 _agent_factory = build_agent("adversus", _tools)
 

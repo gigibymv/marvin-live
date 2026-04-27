@@ -83,6 +83,26 @@ function Conf({ v }) {
   }, v);
 }
 
+// Visual taxonomy for the live rail. Each entry kind maps to a glyph + colour
+// so the user can scan the feed and instantly tell a finding from a tool call
+// from a phase change. Colours come from the existing palette to avoid a
+// separate stylesheet.
+var KIND_VISUALS = {
+  finding:       { glyph: "◆", color: "var(--green)", label: "Finding" },
+  milestone:     { glyph: "✓", color: "var(--ink)",   label: "Milestone" },
+  deliverable:   { glyph: "▤", color: "var(--ink2)",  label: "Deliverable" },
+  gate:          { glyph: "◧", color: "var(--amber)", label: "Gate" },
+  phase:         { glyph: "—", color: "var(--ink3)",  label: "Phase" },
+  agent:         { glyph: "●", color: "var(--ink2)",  label: "Agent" },
+  agent_message: { glyph: "“", color: "var(--ink3)",  label: "Reasoning" },
+  tool_call:     { glyph: "→", color: "var(--muted)", label: "Tool" },
+  tool_result:   { glyph: "←", color: "var(--muted)", label: "Result" },
+};
+
+function kindVisual(kind) {
+  return KIND_VISUALS[kind] || KIND_VISUALS.finding;
+}
+
 function StateTag({ state }) {
   var color = state === "running" || state === "done" ? "var(--green)" : state === "waiting" ? "var(--amber)" : "var(--muted)";
   var weight = state === "running" ? 600 : 400;
@@ -123,17 +143,40 @@ function Feed({ feedRef, ...props }) {
         React.createElement("span", { style: { color: "var(--amber)", animation: "pulse 1.4s ease-in-out infinite", fontSize: "8px" } }, "\u25cf")
       ),
       activity.map(function (e, i) {
+        var visual = kindVisual(e.kind);
+        var isPhase = e.kind === "phase";
+        // Phase markers render as a full-width separator line with the phase
+        // label, distinct from regular rail entries to break the timeline.
+        if (isPhase) {
+          return React.createElement("div", {
+            key: e.id,
+            style: {
+              display: "flex", alignItems: "center", gap: "8px",
+              padding: "10px 0", margin: "4px 0",
+              borderTop: "1px dashed " + visual.color + "55",
+              borderBottom: "1px dashed " + visual.color + "55",
+            }
+          },
+            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: visual.color } }, "Phase"),
+            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600, letterSpacing: ".06em", color: "var(--ink)" } }, e.text)
+          );
+        }
         return React.createElement("div", {
           key: e.id, style: {
-            display: "grid", gridTemplateColumns: COL_AG + " 1fr",
+            display: "grid",
+            gridTemplateColumns: "14px " + COL_AG + " 1fr",
             gap: "0 10px", alignItems: "baseline",
             paddingBottom: i < activity.length - 1 ? "8px" : "0",
             marginBottom: i < activity.length - 1 ? "8px" : "0",
             borderBottom: i < activity.length - 1 ? "1px solid rgba(139,98,0,.12)" : "none"
-          }
+          },
+          title: visual.label
         },
-          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--amber)", alignSelf: "start", paddingTop: "2px" } }, e.ag),
-          React.createElement("span", { style: { fontSize: "13px", lineHeight: 1.5, color: "var(--ink2)", fontWeight: 500 } }, e.text)
+          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "11px", color: visual.color, lineHeight: 1.4, alignSelf: "start", paddingTop: "1px", textAlign: "center" } }, visual.glyph),
+          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: visual.color, alignSelf: "start", paddingTop: "2px" } }, e.ag || visual.label),
+          e.href
+            ? React.createElement("a", { href: e.href, target: "_blank", rel: "noreferrer", style: { fontSize: "13px", lineHeight: 1.5, color: "var(--ink2)", fontWeight: 500, textDecoration: "underline" } }, e.text)
+            : React.createElement("span", { style: { fontSize: "13px", lineHeight: 1.5, color: "var(--ink2)", fontWeight: 500 } }, e.text)
         );
       })
     ),

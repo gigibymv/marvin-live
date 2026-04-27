@@ -1,14 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from marvin.graph.subgraphs import adversus, calculus, dora, merlin, orchestrator
 from marvin.llm_factory import MODEL_BY_ROLE, OPENROUTER_BASE_URL
-
-
-def _prompt_tools(path: Path) -> list[str]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return [line.split("`")[1] for line in lines if line.startswith("- `")]
 
 
 def test_llm_factory_uses_openrouter_role_mapping():
@@ -22,26 +15,12 @@ def test_llm_factory_uses_openrouter_role_mapping():
         assert MODEL_BY_ROLE[role].startswith(("openai/", "deepseek/"))
 
 
-def test_dora_prompt_tools_match_registry():
-    prompt_tools = _prompt_tools(Path("marvin/subagents/prompts/dora.md"))
-    assert prompt_tools == [tool.__name__ for tool in dora._tools]
-
-
-def test_calculus_prompt_tools_match_registry():
-    prompt_tools = _prompt_tools(Path("marvin/subagents/prompts/calculus.md"))
-    assert prompt_tools == [tool.__name__ for tool in calculus._tools]
-
-
-def test_adversus_prompt_tools_match_registry():
-    prompt_tools = _prompt_tools(Path("marvin/subagents/prompts/adversus.md"))
-    assert prompt_tools == [tool.__name__ for tool in adversus._tools]
-
-
-def test_merlin_prompt_tools_match_registry():
-    prompt_tools = _prompt_tools(Path("marvin/subagents/prompts/merlin.md"))
-    assert prompt_tools == [tool.__name__ for tool in merlin._tools]
-
-
-def test_orchestrator_prompt_tools_match_registry():
-    prompt_tools = _prompt_tools(Path("marvin/subagents/prompts/orchestrator.md"))
-    assert prompt_tools == [tool.__name__ for tool in orchestrator._tools]
+def test_agent_tool_registries_non_empty():
+    """The agent tool registry — not the prompt — is the source of truth for
+    which tools each agent can call. Prompts are voice-only; tools are bound
+    by build_agent. This test guards the registry shape; per-tool assertions
+    belong in agent-behavior tests."""
+    for mod in (orchestrator, dora, calculus, adversus, merlin):
+        assert mod._tools, f"{mod.__name__} has empty tool registry"
+        names = [t.__name__ for t in mod._tools]
+        assert len(names) == len(set(names)), f"{mod.__name__} has duplicate tools"

@@ -27,6 +27,8 @@ class Mission(MarvinModel):
     active_agent: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+    clarification_rounds_used: int = 0
+    clarification_answers: list[str] = Field(default_factory=list)
 
 
 class MissionBrief(MarvinModel):
@@ -103,6 +105,7 @@ class Gate(MarvinModel):
     status: GateStatus = "pending"
     completion_notes: str | None = None
     format: str | None = None
+    questions: list[str] | None = None
 
 
 class Deliverable(MarvinModel):

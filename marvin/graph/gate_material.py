@@ -141,6 +141,23 @@ def evaluate_gate_material(
             }
         )
 
+    elif gate.gate_type == "clarification_request":
+        if not gate.questions:
+            missing_material.append("clarification_questions")
+        payload.update(
+            {
+                "questions": list(gate.questions or []),
+                "round": _clarification_rounds(store, mission_id),
+                "max_rounds": 3,
+                "title": "Clarification needed",
+                "stage": "Framing",
+                "summary": (
+                    "MARVIN needs more context before framing the mission. "
+                    "Answer the questions below to continue."
+                ),
+            }
+        )
+
     elif gate.gate_type == "final_review":
         if merlin_verdict is None:
             missing_material.append("merlin_verdict")
@@ -181,6 +198,13 @@ def evaluate_gate_material(
         missing_material=tuple(missing_material),
         review_payload=payload,
     )
+
+
+def _clarification_rounds(store: MissionStore, mission_id: str) -> int:
+    try:
+        return store.get_clarification_state(mission_id)["rounds"]
+    except KeyError:
+        return 0
 
 
 def _hypothesis_payload(hypothesis: Hypothesis) -> dict[str, Any]:

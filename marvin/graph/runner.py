@@ -20,6 +20,10 @@ from langgraph.types import Send
 from marvin.graph.gates import gate_node
 from marvin.graph.subgraphs.calculus import calculus_agent_node
 from marvin.graph.subgraphs.dora import dora_agent_node
+from marvin.graph.subgraphs.framing_orchestrator import (
+    framing_orchestrator_node,
+    reset_clarification_state,
+)
 from marvin.graph.subgraphs.orchestrator import orchestrator_agent_node
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore
@@ -53,8 +57,21 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         return "framing"
 
     if phase == "framing":
-        # framing_node handles this, route to it
+        # Two-step framing:
+        #   - framing_orchestrator first evaluates whether the brief is
+        #     substantial enough; asks clarification questions if not.
+        #   - Only when framing_complete=True does framing_node generate
+        #     hypotheses, the engagement brief, and the framing memo.
+        if not state.get("framing_complete"):
+            return "framing_orchestrator"
         return "framing"
+
+    if phase == "awaiting_clarification":
+        # Orchestrator just opened a clarification gate and set
+        # pending_gate_id. Route directly to gate_node; gate_node will
+        # dispatch gate_pending over SSE and interrupt for the user's
+        # answers.
+        return "gate"
 
     if phase == "awaiting_confirmation":
         return "gate_entry"
@@ -114,7 +131,12 @@ def phase_router(state: MarvinState) -> str | list[Send]:
     if phase == "done":
         return END
 
-    return "orchestrator"
+    # Default: do NOT route to orchestrator. Orchestrator is reserved for
+    # explicit free-form user questions, not as a fallback for unknown phases.
+    # An unknown/idle phase means the graph has nothing to do — terminate the
+    # run and wait for the next user input. This prevents the infinite
+    # orchestrator self-loop that occurs when gate_node returns phase="idle".
+    return END
 
 
 def _log_join(state: MarvinState) -> None:
@@ -162,16 +184,22 @@ def research_join(state: MarvinState) -> dict:
 
 
 async def framing_node(state: MarvinState) -> dict:
-    """Generate hypotheses and move to awaiting confirmation."""
+    """Generate hypotheses through the framing LLM and surface a
+    conversational reply in chat. Then move to awaiting confirmation."""
+    from langchain_core.messages import AIMessage
+
     mission_id = state.get("mission_id", "")
     messages = state.get("messages", [])
-    
+
     from marvin.tools.mission_tools import (
-        _generate_hypotheses_inline,
+        generate_framing_with_reply,
         generate_interview_guides,
         persist_framing_from_brief,
     )
-    from marvin.tools.papyrus_tools import generate_engagement_brief
+    from marvin.tools.papyrus_tools import (
+        _generate_framing_memo_impl,
+        generate_engagement_brief,
+    )
 
     raw_brief = ""
     for message in reversed(messages):
@@ -180,14 +208,39 @@ async def framing_node(state: MarvinState) -> dict:
             break
 
     if not raw_brief.strip():
-        logger.info("framing_node: waiting for a non-empty human brief")
-        return {"phase": "setup", "messages": messages}
+        # The framing orchestrator may have already persisted a brief from
+        # earlier turns. Use that as the source of truth before giving up.
+        from marvin.mission.store import MissionStore
+
+        existing_brief = MissionStore().get_mission_brief(mission_id)
+        if existing_brief and (existing_brief.raw_brief or "").strip():
+            raw_brief = existing_brief.raw_brief
+        else:
+            logger.info("framing_node: waiting for a non-empty human brief")
+            return {"phase": "setup", "messages": messages}
 
     persist_framing_from_brief(mission_id, raw_brief)
-    hypotheses = _generate_hypotheses_inline(mission_id, raw_brief)
+    hypotheses, reply_prose = generate_framing_with_reply(mission_id, raw_brief)
     generate_interview_guides([hypothesis.id for hypothesis in hypotheses], state=state)
     generate_engagement_brief(state)
-    return {"phase": "awaiting_confirmation", "messages": messages}
+    # Framing memo: a one-page record of the brief plus any clarifications
+    # collected during the orchestrator's question-and-answer rounds.
+    from marvin.graph.subgraphs.framing_orchestrator import get_clarification_answers
+
+    try:
+        _generate_framing_memo_impl(
+            mission_id,
+            clarifications=get_clarification_answers(mission_id),
+        )
+    except Exception as exc:  # noqa: BLE001 — never block framing on memo write
+        logger.warning("framing_node: framing_memo generation failed: %s", exc)
+
+    reset_clarification_state(mission_id)
+    return {
+        "phase": "awaiting_confirmation",
+        "messages": messages + [AIMessage(content=reply_prose)],
+        "framing_complete": True,
+    }
 
 
 async def gate_entry_node(state: MarvinState) -> dict:
@@ -304,6 +357,7 @@ def build_graph(checkpointer=None):
     
     # Add all regular nodes (these return dict state updates)
     builder.add_node("framing", framing_node)
+    builder.add_node("framing_orchestrator", framing_orchestrator_node)
     builder.add_node("dora", dora_agent_node)
     builder.add_node("calculus", calculus_agent_node)
     builder.add_node("research_join", research_join)
@@ -320,6 +374,7 @@ def build_graph(checkpointer=None):
         phase_router,
         {
             "framing": "framing",
+            "framing_orchestrator": "framing_orchestrator",
             "gate_entry": "gate_entry",
             "gate": "gate",
             "dora": "dora",
@@ -331,12 +386,21 @@ def build_graph(checkpointer=None):
             END: END,
         }
     )
-    
+
     # Each node returns to phase_router for next routing decision
     builder.add_conditional_edges("framing", phase_router, {
         "gate_entry": "gate_entry",
         "gate": "gate",
         "orchestrator": "orchestrator",
+        END: END,
+    })
+
+    # framing_orchestrator either advances to framing (when ready) or opens
+    # a clarification gate that routes through the standard gate node.
+    builder.add_conditional_edges("framing_orchestrator", phase_router, {
+        "framing": "framing",
+        "framing_orchestrator": "framing_orchestrator",
+        "gate": "gate",
         END: END,
     })
 
@@ -350,6 +414,12 @@ def build_graph(checkpointer=None):
         "merlin": "merlin",
         "papyrus_delivery": "papyrus_delivery",
         "orchestrator": "orchestrator",
+        # After a clarification gate completes, gate_node returns
+        # phase=framing → router routes to framing_orchestrator (since
+        # framing_complete is still False) for re-evaluation with the
+        # newly-recorded answer.
+        "framing": "framing",
+        "framing_orchestrator": "framing_orchestrator",
         END: END,
     })
     

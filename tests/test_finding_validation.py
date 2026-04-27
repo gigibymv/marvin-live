@@ -214,3 +214,66 @@ def test_same_claim_can_exist_in_different_workstreams(store: MissionStore):
     )
 
     assert len(store.list_findings("m-fv")) == 2
+
+
+def test_hallucinated_agent_id_falls_back_to_workstream_map(store: MissionStore):
+    """LLM passing a manager name (e.g. 'MV' from 'Manager: MV.' in the brief)
+    must NOT be persisted; agent_id must resolve to the workstream's owner."""
+    result = mission_tools.add_finding_to_mission(
+        claim_text="Some W1 claim from a confused agent",
+        confidence="REASONED",
+        agent_id="MV",
+        workstream_id="W1",
+        hypothesis_id="hyp-real-1",
+        state=_state(),
+    )
+    assert result["status"] == "saved"
+    findings = store.list_findings("m-fv")
+    assert findings[0].agent_id == "dora"
+
+
+def test_w3_workstream_maps_to_merlin_and_hits_zero_cap(store: MissionStore):
+    """Merlin synthesizes, never persists findings — its cap is 0. A W3 save
+    attempt must resolve agent_id to 'merlin' and hit the cap immediately."""
+    result = mission_tools.add_finding_to_mission(
+        claim_text="W3 synthesis claim",
+        confidence="REASONED",
+        agent_id=None,
+        workstream_id="W3",
+        state=_state(),
+    )
+    assert result["status"] == "cap_reached"
+    assert result["agent_id"] == "merlin"
+    assert store.list_findings("m-fv") == []
+
+
+def test_finding_cap_blocks_overage_per_agent(store: MissionStore):
+    """Adversus has a 12-finding cap. The 13th call must raise with a
+    cap-reached message instead of silently piling on."""
+    cap = mission_tools.MAX_FINDINGS_PER_AGENT_PER_MISSION["adversus"]
+    for i in range(cap):
+        mission_tools.add_finding_to_mission(
+            claim_text=f"Adversus attack #{i} — distinct counter-argument body",
+            confidence="REASONED",
+            agent_id="adversus",
+            workstream_id="W4",
+            state=_state(),
+        )
+    assert len(
+        [f for f in store.list_findings("m-fv") if f.agent_id == "adversus"]
+    ) == cap
+
+    overflow = mission_tools.add_finding_to_mission(
+        claim_text="One attack too many",
+        confidence="REASONED",
+        agent_id="adversus",
+        workstream_id="W4",
+        state=_state(),
+    )
+    assert overflow["status"] == "cap_reached"
+    assert overflow["agent_id"] == "adversus"
+    assert overflow["existing"] == cap
+    # Cap blocks the insert: still exactly `cap` findings for adversus.
+    assert len(
+        [f for f in store.list_findings("m-fv") if f.agent_id == "adversus"]
+    ) == cap

@@ -89,5 +89,13 @@ export function mapGateReviewPayloadToModal(
         : undefined,
     openRisks: asStringArray(payload.open_risks) ?? asStringArray(payload.openRisks),
     missingMaterial: asStringArray(payload.missing_material) ?? asStringArray(payload.missingMaterial),
+    format: asString(payload.format),
+    questions: asStringArray(payload.questions),
+    round: typeof payload.round === "number" ? payload.round : undefined,
+    maxRounds: typeof payload.max_rounds === "number"
+      ? payload.max_rounds
+      : typeof payload.maxRounds === "number"
+        ? payload.maxRounds
+        : undefined,
   };
 }

@@ -18,3 +18,7 @@ class MarvinState(TypedDict, total=False):
     pending_gate_id: Annotated[Optional[str], last_value]
     gate_passed: Annotated[Optional[bool], last_value]
     synthesis_retry_count: Annotated[int, last_value]
+    framing_complete: Annotated[bool, last_value]
+    clarification_questions_asked: Annotated[int, last_value]
+    pivot_required: Annotated[bool, last_value]
+    pivot_reason: Annotated[Optional[str], last_value]

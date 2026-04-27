@@ -194,6 +194,47 @@ export async function getMissionProgress(missionId: string): Promise<{
 }
 
 /**
+ * Persisted event log for refresh-survival of the live rail.
+ * Reconstructed server-side from store (findings/milestones/deliverables/gates).
+ */
+export interface PersistedRailEvent {
+  type: "finding_added" | "milestone_done" | "deliverable_ready" | "gate_resolved";
+  ts?: string;
+  findingId?: string;
+  milestoneId?: string;
+  deliverableId?: string;
+  gateId?: string;
+  text?: string;
+  label?: string;
+  confidence?: string;
+  agent?: string | null;
+  workstreamId?: string | null;
+  hypothesisId?: string | null;
+  sourceId?: string | null;
+  deliverableType?: string;
+  filePath?: string | null;
+  fileSizeBytes?: number | null;
+  status?: string;
+  resultSummary?: string | null;
+  gateType?: string;
+  completionNotes?: string | null;
+}
+
+export async function getMissionEvents(missionId: string): Promise<{
+  mission_id: string;
+  events: PersistedRailEvent[];
+}> {
+  const response = await fetch(`${API_BASE}/missions/${missionId}/events`);
+  if (!response.ok) {
+    if (response.status === 0) {
+      throw new BackendOfflineError();
+    }
+    throw new Error(`Failed to get mission events: ${response.status}`);
+  }
+  return response.json();
+}
+
+/**
  * Base SSE event type
  */
 interface SSEEventBase {
@@ -330,6 +371,38 @@ export async function validateGate(
     throw new Error(`Failed to validate gate: ${response.status}`);
   }
 
+  return response.json();
+}
+
+/**
+ * Submit clarification answers for a clarification_request gate.
+ * Same endpoint as validateGate, but with `answers` instead of `verdict`.
+ */
+export async function submitClarificationAnswers(
+  missionId: string,
+  gateId: string,
+  answers: string[],
+  notes = "",
+): Promise<{
+  status: string;
+  mission_id: string;
+  gate_id: string;
+  resume_id: string;
+}> {
+  const response = await fetch(
+    `${API_BASE}/missions/${missionId}/gates/${gateId}/validate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answers, notes }),
+    },
+  );
+  if (!response.ok) {
+    if (response.status === 0) {
+      throw new BackendOfflineError();
+    }
+    throw new Error(`Failed to submit clarification answers: ${response.status}`);
+  }
   return response.json();
 }
 

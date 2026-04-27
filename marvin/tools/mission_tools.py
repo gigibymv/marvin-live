@@ -23,6 +23,20 @@ from marvin.tools.common import (
 
 _STORE_FACTORY = MissionStore
 
+# Hard cap on findings persisted per agent per mission. The cap holds at the
+# tool layer because soft caps in prompts do not survive adversarial agents
+# (Adversus interprets "more attacks = better defense"). Once an agent is at
+# cap, save_finding returns a tool-level error so the LLM stops and marks the
+# milestone delivered. Caps are inclusive — the Nth call succeeds; the N+1th fails.
+MAX_FINDINGS_PER_AGENT_PER_MISSION = {
+    "dora": 15,
+    "calculus": 15,
+    "adversus": 12,
+    "merlin": 0,
+    "papyrus": 0,
+    "orchestrator": 0,
+}
+
 
 def _clean_brief_text(raw_brief: str) -> str:
     return " ".join(raw_brief.strip().split())
@@ -146,6 +160,43 @@ def get_mission_brief(state: InjectedStateArg = None) -> dict[str, Any]:
     store = get_store(_STORE_FACTORY)
     brief = store.get_mission_brief(mission_id)
     return {"mission_id": mission_id, "brief": brief.model_dump() if brief else None}
+
+
+def get_findings(
+    state: InjectedStateArg = None,
+    agent_filter: str | None = None,
+    confidence_filter: str | None = None,
+) -> dict[str, Any]:
+    """Read findings from current mission. Optional filters by agent or confidence.
+
+    Adversus and Merlin call this before producing their own work, so they
+    attack/judge what was actually surfaced rather than hypothetical claims.
+    """
+    mission_id = require_mission_id(state)
+    store = get_store(_STORE_FACTORY)
+    findings = store.list_findings(mission_id)
+
+    if agent_filter:
+        findings = [f for f in findings if f.agent_id == agent_filter]
+    if confidence_filter:
+        findings = [f for f in findings if f.confidence == confidence_filter]
+
+    return {
+        "mission_id": mission_id,
+        "findings": [
+            {
+                "id": f.id,
+                "claim_text": f.claim_text,
+                "agent_id": f.agent_id,
+                "workstream_id": f.workstream_id,
+                "confidence": f.confidence,
+                "hypothesis_id": f.hypothesis_id,
+                "supports": getattr(f, "supports", None),
+                "contradicts": getattr(f, "contradicts", False),
+            }
+            for f in findings
+        ],
+    }
 
 
 def get_hypotheses(state: InjectedStateArg = None) -> dict[str, Any]:
@@ -289,6 +340,42 @@ def add_finding_to_mission(
             "status": "duplicate",
         }
 
+    # Validate / derive agent_id. The LLM frequently hallucinates this field
+    # from brief context (e.g. "MV" pulled from "Manager: MV"), so reject any
+    # value outside the known agent set and fall back to workstream→agent.
+    _VALID_AGENTS = {"dora", "calculus", "adversus", "merlin", "papyrus", "orchestrator"}
+    _WS_TO_AGENT = {
+        "W1": "dora",
+        "W2": "calculus",
+        "W3": "merlin",
+        "W4": "adversus",
+    }
+    if agent_id not in _VALID_AGENTS:
+        agent_id = _WS_TO_AGENT.get(workstream_id) if workstream_id else None
+
+    if agent_id is not None:
+        cap = MAX_FINDINGS_PER_AGENT_PER_MISSION.get(agent_id)
+        if cap is not None:
+            existing = sum(
+                1 for f in store.list_findings(mission_id) if f.agent_id == agent_id
+            )
+            if existing >= cap:
+                # Return a soft error so the LLM tool-loop surfaces it as a
+                # tool result and the agent stops cleanly. Raising here would
+                # bubble up through LangGraph and abort the entire run on
+                # synthesis_retry passes (cap is per-mission, not per-pass).
+                return {
+                    "status": "cap_reached",
+                    "agent_id": agent_id,
+                    "cap": cap,
+                    "existing": existing,
+                    "message": (
+                        f"Finding cap reached for {agent_id} ({existing}/{cap}). "
+                        "Mark milestone delivered. Quality over quantity — the "
+                        "team needs your top findings, not all angles."
+                    ),
+                }
+
     finding = Finding(
         id=short_id("f"),
         mission_id=mission_id,
@@ -310,6 +397,8 @@ def add_finding_to_mission(
             "agent_id": agent_id,
             "workstream_id": workstream_id,
             "hypothesis_id": hypothesis_id,
+            "source_id": source_id,
+            "created_at": finding.created_at,
         },
     )
     return {
@@ -399,39 +488,128 @@ def generate_interview_guides(
     return {"guides": guides}
 
 
-def _generate_hypotheses_inline(mission_id: str, raw_brief: str | None = None) -> list[Hypothesis]:
-    """Internal helper to generate hypotheses without state injection."""
-    store = get_store(_STORE_FACTORY)
-    mission = store.get_mission(mission_id)
-    existing = store.list_hypotheses(mission_id, status="active")
-    if existing:
-        return existing
-
+def _fallback_hypotheses(mission: Mission, raw_brief: str) -> list[str]:
+    """Deterministic safety net used when no LLM is available (no API key)
+    or the LLM output cannot be parsed. Kept narrow on purpose: real framing
+    is the LLM's job — this only prevents a fully empty mission."""
     brief = _clean_brief_text(raw_brief or "")
     mission_angle = _derive_mission_angle(brief)
     evidence_context = brief[:140] if brief else mission.ic_question or "the initial investment thesis"
-    hypotheses = [
-        Hypothesis(
-            id=short_id("hyp"),
-            mission_id=mission_id,
-            text=f"{mission.target}'s investment case depends on {mission_angle.lower()} holding under diligence.",
-            created_at=utc_now_iso(),
-        ),
-        Hypothesis(
-            id=short_id("hyp"),
-            mission_id=mission_id,
-            text=f"{mission.target} can support the thesis in the brief: {evidence_context}",
-            created_at=utc_now_iso(),
-        ),
-        Hypothesis(
-            id=short_id("hyp"),
-            mission_id=mission_id,
-            text=f"The main diligence risk is that evidence from Dora, Calculus, or Adversus disproves the {mission_angle.lower()} story.",
-            created_at=utc_now_iso(),
-        ),
+    return [
+        f"{mission.target}'s investment case depends on {mission_angle.lower()} holding under diligence.",
+        f"{mission.target} can support the thesis in the brief: {evidence_context}",
+        f"The main diligence risk is that evidence from Dora, Calculus, or Adversus disproves the {mission_angle.lower()} story.",
     ]
-    for hyp in hypotheses:
+
+
+def _llm_frame_brief(mission: Mission, raw_brief: str) -> tuple[list[str], str]:
+    """Ask the framing LLM to read the brief and produce hypotheses + a short
+    conversational reply. Returns ([hypothesis_texts], reply_prose).
+
+    Raises RuntimeError if no API key (caller falls back to deterministic).
+    Returns the deterministic fallback if the LLM output is malformed — we
+    never block framing on a bad LLM response, but we never silently use
+    the fallback as if the LLM had been called either: caller decides."""
+    from pathlib import Path
+
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from marvin.llm_factory import get_chat_llm
+
+    llm = get_chat_llm("framing")
+    prompt_path = Path(__file__).resolve().parents[1] / "subagents" / "prompts" / "framing.md"
+    system_prompt = prompt_path.read_text(encoding="utf-8")
+
+    context = (
+        f"Mission target: {mission.target}\n"
+        f"Client: {mission.client}\n"
+        f"IC question (if any): {mission.ic_question or '(none provided)'}\n\n"
+        f"Brief from user:\n{raw_brief}"
+    )
+
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=context),
+    ])
+    raw = (response.content or "").strip()
+
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.MULTILINE).strip()
+
+    parsed = json.loads(raw)
+    hypotheses_raw = parsed.get("hypotheses") or []
+    reply = str(parsed.get("reply") or "").strip()
+
+    hypotheses: list[str] = []
+    for item in hypotheses_raw:
+        text = str(item).strip()
+        if text:
+            hypotheses.append(text)
+    if not hypotheses or not reply:
+        raise ValueError("framing LLM returned empty hypotheses or reply")
+    return hypotheses, reply
+
+
+def generate_framing_with_reply(
+    mission_id: str, raw_brief: str | None = None
+) -> tuple[list[Hypothesis], str]:
+    """Drive framing through the LLM. Returns (persisted_hypotheses, reply_prose).
+
+    If hypotheses already exist for the mission, reuse them and return a
+    short re-acknowledgement reply. If no API key is configured or the LLM
+    response is malformed, fall back to deterministic hypotheses with a
+    transparent reply that names the degradation — we surface the truth
+    rather than masking it (CLAUDE.md "no silent degradation")."""
+    store = get_store(_STORE_FACTORY)
+    mission = store.get_mission(mission_id)
+    brief = _clean_brief_text(raw_brief or "")
+
+    existing = store.list_hypotheses(mission_id, status="active")
+    if existing:
+        reply = (
+            f"Hypotheses for {mission.target} are already framed. "
+            "Open the hypothesis review gate to validate or revise them."
+        )
+        return existing, reply
+
+    hypothesis_texts: list[str]
+    reply: str
+    try:
+        hypothesis_texts, reply = _llm_frame_brief(mission, brief)
+    except RuntimeError as exc:
+        # No API key — surface the degradation, don't hide it.
+        if "OPENROUTER_API_KEY" not in str(exc):
+            raise
+        hypothesis_texts = _fallback_hypotheses(mission, brief)
+        reply = (
+            "Framing ran without an LLM (OPENROUTER_API_KEY not set). "
+            "Hypotheses below are deterministic placeholders — review them carefully."
+        )
+    except (json.JSONDecodeError, ValueError, KeyError):
+        hypothesis_texts = _fallback_hypotheses(mission, brief)
+        reply = (
+            "Framing LLM returned a malformed response. "
+            "Hypotheses below are deterministic fallbacks — review them carefully."
+        )
+
+    persisted: list[Hypothesis] = []
+    for text in hypothesis_texts:
+        hyp = Hypothesis(
+            id=short_id("hyp"),
+            mission_id=mission_id,
+            text=text,
+            created_at=utc_now_iso(),
+        )
         store.save_hypothesis(hyp)
+        persisted.append(hyp)
+    return persisted, reply
+
+
+def _generate_hypotheses_inline(mission_id: str, raw_brief: str | None = None) -> list[Hypothesis]:
+    """Backward-compatible entrypoint used by tests and tools that only need
+    the hypothesis list. Routes through the LLM framing path and discards
+    the conversational reply."""
+    hypotheses, _ = generate_framing_with_reply(mission_id, raw_brief)
     return hypotheses
 
 

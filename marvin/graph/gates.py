@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from langchain_core.messages import HumanMessage
 from langgraph.types import interrupt
 
 from marvin.graph.gate_material import evaluate_gate_material, human_gate_copy
@@ -72,6 +73,29 @@ async def gate_node(state: MarvinState, config=None) -> dict:
         await asyncio.sleep(0.1)
 
     decision = interrupt(payload)
+
+    # Clarification gate: the decision payload carries `answers`, not a
+    # verdict. Persist each answer to the mission, mark the gate completed
+    # for audit, and route back to framing for re-evaluation by the
+    # orchestrator with the new context appended.
+    if gate.format == "clarification_questions":
+        answers = decision.get("answers")
+        if not isinstance(answers, list):
+            answers = []
+        joined = "; ".join(str(a).strip() for a in answers if str(a).strip())
+        if joined:
+            store.append_clarification_answer(mission_id, joined)
+        store.update_gate_status(
+            gate_id,
+            "completed",
+            notes=decision.get("notes") or (joined or "no answers provided"),
+        )
+        return {
+            "pending_gate_id": None,
+            "phase": "framing",
+            "messages": [HumanMessage(content=joined)] if joined else [],
+        }
+
     approved = decision.get("approved", False) or decision.get("verdict") == "APPROVED"
     store.update_gate_status(gate_id, "completed" if approved else "failed", notes=decision.get("notes", ""))
 

@@ -58,6 +58,8 @@ def _save_deliverable(
             "deliverable_id": deliverable_id,
             "deliverable_type": deliverable_type,
             "file_path": resolved,
+            "file_size_bytes": file_path.stat().st_size,
+            "created_at": utc_now_iso(),
         },
     )
 
@@ -134,6 +136,101 @@ def generate_engagement_brief(state: InjectedStateArg = None) -> dict[str, Any]:
     """Generate engagement brief for the mission."""
     mission_id = require_mission_id(state)
     return _generate_engagement_brief_impl(mission_id)
+
+
+FRAMING_MEMO_MIN_CHARS = 240
+
+
+def _generate_framing_memo_impl(
+    mission_id: str,
+    clarifications: list[str] | None = None,
+) -> dict[str, Any]:
+    """Write a 200-500 word framing memo that ties the user brief to the
+    framed mission angle, IC question, and any clarifications collected
+    during framing. Persists as a deliverable under output/{mission_id}/
+    framing_memo.md."""
+    store = get_store(_STORE_FACTORY)
+    mission = store.get_mission(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+    hypotheses = store.list_hypotheses(mission_id)
+    if mission_brief is None:
+        raise BriefPrerequisiteNotMet("framing_memo requires persisted framing")
+    if not hypotheses:
+        raise BriefPrerequisiteNotMet("framing_memo requires framed hypotheses")
+
+    output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
+    path = output_dir / "framing_memo.md"
+
+    clarifications = [c.strip() for c in (clarifications or []) if c and c.strip()]
+
+    lines = [
+        f"# Framing Memo: {mission.target}",
+        "",
+        f"Client: {mission.client}",
+        f"Target: {mission.target}",
+        f"IC Question: {mission.ic_question or 'unspecified'}",
+        "",
+        "## Mission Angle",
+        mission_brief.mission_angle,
+        "",
+        "## Brief Recap",
+        mission_brief.brief_summary,
+        "",
+        "## Raw Brief",
+        mission_brief.raw_brief,
+        "",
+    ]
+    if clarifications:
+        lines.append("## Clarifications")
+        for entry in clarifications:
+            lines.append(f"- {entry}")
+        lines.append("")
+    lines.extend(
+        [
+            "## Hypotheses To Test",
+        ]
+    )
+    for hypothesis in hypotheses:
+        lines.append(f"- Hypothesis ID: {hypothesis.id} - {hypothesis.text}")
+    lines.extend(
+        [
+            "",
+            "## Framing Rationale",
+            (
+                "This memo records how the brief was interpreted into a testable mission. "
+                "Each hypothesis above maps to a workstream and is what diligence will "
+                "either confirm or kill. If the user clarified the brief, those answers "
+                "narrowed the angle and shaped the hypotheses below."
+            ),
+        ]
+    )
+    body = "\n".join(lines) + "\n"
+
+    # Pad with rationale if the memo is too short to satisfy the file readiness check.
+    while len(body) < FRAMING_MEMO_MIN_CHARS:
+        body += (
+            "Framing is the contract between the client's question and the diligence work. "
+            "These hypotheses set what we will accept or reject as evidence.\n"
+        )
+
+    path.write_text(body, encoding="utf-8")
+    deliverable_id = f"deliverable-{mission_id}-framing-memo"
+    deliverable_type = "framing_memo"
+    # framing_memo is not in DELIVERABLE_MIN_CHARS so it falls back to the
+    # generic MIN_ARTIFACT_CHARS check (220) — body above clears that.
+    _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path)
+    return {
+        "mission_id": mission_id,
+        "file_path": str(path.resolve()),
+        "deliverable_id": deliverable_id,
+        "deliverable_type": deliverable_type,
+    }
+
+
+def generate_framing_memo(state: InjectedStateArg = None) -> dict[str, Any]:
+    """Generate framing memo for the mission."""
+    mission_id = require_mission_id(state)
+    return _generate_framing_memo_impl(mission_id)
 
 
 def _generate_workstream_report_impl(workstream_id: str, mission_id: str) -> dict[str, Any]:

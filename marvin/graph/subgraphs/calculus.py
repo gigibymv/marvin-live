@@ -10,9 +10,15 @@ from marvin.tools.calculus_tools import (
     quality_of_earnings,
     search_sec_filings,
 )
-from marvin.tools.mission_tools import add_finding_to_mission, mark_milestone_delivered, persist_source_for_mission
+from marvin.tools.mission_tools import (
+    add_finding_to_mission,
+    get_hypotheses,
+    mark_milestone_delivered,
+    persist_source_for_mission,
+)
 
 _tools = [
+    get_hypotheses,
     parse_data_room,
     quality_of_earnings,
     cohort_analysis,

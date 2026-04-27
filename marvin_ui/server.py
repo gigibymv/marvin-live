@@ -77,11 +77,19 @@ _DISPLAY_NAME = {
     "synthesis_critic": "Merlin",
     "papyrus_delivery": "Papyrus",
     "orchestrator": "MARVIN",
+    "framing": "MARVIN",
+    "framing_orchestrator": "MARVIN",
     "phase_router": None,
     "research_join": None,
     "gate": None,
     "gate_entry": None,
 }
+
+# Nodes whose AIMessage content speaks to the user as Marvin's voice in the
+# chat. Sub-agents (dora/calculus/adversus/merlin) are doing work, not
+# conversing — their content streams to the live rail as agent_message
+# entries instead of polluting the chat with verbose reasoning.
+_CHAT_VOICE_NODES = {"framing", "framing_orchestrator", "orchestrator"}
 
 # Tool result summaries for user-friendly display
 _TOOL_SUMMARIES: dict[str, callable] = {
@@ -270,8 +278,11 @@ class ChatRequest(BaseModel):
 
 
 class GateValidateRequest(BaseModel):
-    verdict: str
+    # Approval gates supply verdict + optional notes; clarification gates
+    # supply answers (one per question). Both shapes share the endpoint.
+    verdict: str | None = None
     notes: str = ""
+    answers: list[str] | None = None
 
 
 class GateValidateResponse(BaseModel):
@@ -353,16 +364,24 @@ def _build_finding_added(result: dict) -> dict | None:
 def _build_finding_added_from_emit(payload: dict) -> dict:
     """Shape the finding_added SSE payload from a marvin.events emission.
 
-    The emission carries the canonical fields (claim_text, confidence,
-    finding_id, ...) — this helper renames them to the wire format the UI
-    consumes (text, badge)."""
+    Propagates full context (agent, workstream, hypothesis, source, timestamp)
+    so the rail can render typed entries instead of opaque text+badge."""
     out: dict = {"text": str(payload.get("claim_text", ""))}
     confidence = payload.get("confidence")
     if confidence:
         out["badge"] = str(confidence)
-    finding_id = payload.get("finding_id")
-    if finding_id:
-        out["findingId"] = str(finding_id)
+        out["confidence"] = str(confidence)
+    for src_key, wire_key in (
+        ("finding_id", "findingId"),
+        ("agent_id", "agent"),
+        ("workstream_id", "workstreamId"),
+        ("hypothesis_id", "hypothesisId"),
+        ("source_id", "sourceId"),
+        ("created_at", "ts"),
+    ):
+        value = payload.get(src_key)
+        if value:
+            out[wire_key] = str(value)
     return out
 
 
@@ -379,17 +398,30 @@ def _build_milestone_done(result: dict) -> dict | None:
 
 def _build_deliverable_ready_from_emit(payload: dict) -> dict:
     out: dict = {"deliverableId": str(payload.get("deliverable_id", ""))}
-    label = payload.get("deliverable_type")
-    if label:
-        out["label"] = str(label)
+    for src_key, wire_key in (
+        ("deliverable_type", "label"),
+        ("deliverable_type", "deliverableType"),
+        ("file_path", "filePath"),
+        ("file_size_bytes", "fileSizeBytes"),
+        ("created_at", "ts"),
+    ):
+        value = payload.get(src_key)
+        if value is not None and value != "":
+            out[wire_key] = value if isinstance(value, int) else str(value)
     return out
 
 
 def _build_milestone_done_from_emit(payload: dict) -> dict:
     out: dict = {"milestoneId": str(payload.get("milestone_id", ""))}
-    label = payload.get("label")
-    if label:
-        out["label"] = str(label)
+    for src_key, wire_key in (
+        ("label", "label"),
+        ("workstream_id", "workstreamId"),
+        ("status", "status"),
+        ("result_summary", "resultSummary"),
+    ):
+        value = payload.get(src_key)
+        if value:
+            out[wire_key] = str(value)
     return out
 
 
@@ -458,8 +490,39 @@ async def _emit_agent_done(agent: str) -> str:
     return _sse_event("agent_done", {"agent": display})
 
 
+async def _emit_agent_message(agent: str, text: str) -> str:
+    """Sub-agent prose for the live rail (not chat). Used when a working
+    agent like Dora/Calculus emits AIMessage content — the user sees what
+    the agent is reasoning about in the rail without flooding the chat."""
+    display = _DISPLAY_NAME.get(agent, agent)
+    if display is None:
+        return ""
+    return _sse_event("agent_message", {"agent": display, "text": text})
+
+
 async def _emit_run_end() -> str:
     return _sse_event("run_end", {})
+
+
+_PHASE_LABELS: dict[str, str] = {
+    "setup": "Setup",
+    "framing": "Framing",
+    "awaiting_clarification": "Awaiting clarification",
+    "awaiting_confirmation": "Hypothesis review pending",
+    "confirmed": "Research kickoff",
+    "research_done": "Research complete",
+    "gate_g1_passed": "Manager review passed",
+    "redteam_done": "Red-team complete",
+    "synthesis_retry": "Synthesis retry",
+    "synthesis_done": "Synthesis complete",
+    "gate_g3_passed": "Final review passed",
+    "done": "Mission complete",
+}
+
+
+async def _emit_phase_changed(phase: str) -> str:
+    payload = {"phase": phase, "label": _PHASE_LABELS.get(phase, phase)}
+    return _sse_event("phase_changed", payload)
 
 
 async def _emit_error(message: str) -> str:
@@ -473,36 +536,71 @@ async def _emit_error(message: str) -> str:
 async def _emit_for_update(
     event: dict,
     current_agent: str | None,
-) -> tuple[list[str], str | None, bool]:
+    current_phase: str | None,
+) -> tuple[list[str], str | None, str | None, bool]:
     """Translate one graph.astream update into SSE strings.
 
-    Returns (sse_strings, new_current_agent, is_interrupt).
+    Returns (sse_strings, new_current_agent, new_current_phase, is_interrupt).
     """
     out: list[str] = []
     if "__interrupt__" in event:
+        # When the graph parks at a gate, no further node updates will arrive
+        # until the user resumes. Close out the currently-active agent so the
+        # left rail doesn't show e.g. "Calculus RUNNING" indefinitely.
+        if current_agent is not None:
+            out.append(await _emit_agent_done(current_agent))
+            current_agent = None
         interrupts = event["__interrupt__"]
         if isinstance(interrupts, tuple) and interrupts:
             interrupt_value = getattr(interrupts[0], "value", None)
             if isinstance(interrupt_value, dict):
                 out.append(await _emit_gate_pending(interrupt_value))
-        return out, current_agent, True
+        return out, current_agent, current_phase, True
 
     for node_name, output in event.items():
+        if not isinstance(output, dict):
+            continue
+
+        new_phase = output.get("phase")
+        if isinstance(new_phase, str) and new_phase and new_phase != current_phase:
+            out.append(await _emit_phase_changed(new_phase))
+            current_phase = new_phase
+
         display = _DISPLAY_NAME.get(node_name)
         if display is None:
             continue
-        if not isinstance(output, dict):
-            continue
+
+        # Emit agent_active/agent_done as soon as a node with a display name
+        # produces ANY output update — not gated on whether the node happened
+        # to emit an AIMessage. This is what makes the agents panel reflect
+        # real activity (Bug C). Without this, a node that only persists
+        # findings via tools never flips to "running".
+        if node_name != current_agent:
+            if current_agent is not None:
+                out.append(await _emit_agent_done(current_agent))
+            current_agent = node_name
+            out.append(await _emit_agent_active(node_name))
 
         for msg in output.get("messages", []):
             if isinstance(msg, AIMessage):
                 if msg.content:
-                    if node_name != current_agent:
-                        if current_agent is not None:
-                            out.append(await _emit_agent_done(current_agent))
-                        current_agent = node_name
-                        out.append(await _emit_agent_active(node_name))
-                    out.append(await _emit_text(node_name, msg.content))
+                    if node_name in _CHAT_VOICE_NODES:
+                        # Marvin's voice — host nodes speak to the user in chat.
+                        out.append(await _emit_text(node_name, msg.content))
+                    else:
+                        # Working sub-agent reasoning — surface in rail only,
+                        # keep chat clean. Mission events (findings/milestones)
+                        # still flow through their own persistence-driven SSE
+                        # events; this is purely the prose stream.
+                        out.append(await _emit_agent_message(node_name, msg.content))
+                # AIMessage may carry pending tool_calls before the matching
+                # ToolMessage is appended. Surface them in the rail so the user
+                # sees who's about to call which tool.
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                for call in tool_calls:
+                    name = call.get("name") if isinstance(call, dict) else getattr(call, "name", None)
+                    if name:
+                        out.append(await _emit_tool_call(node_name, str(name)))
             elif isinstance(msg, ToolMessage):
                 tool_name = getattr(msg, "name", "tool")
                 summary = _get_tool_summary(tool_name, {"result": msg.content})
@@ -524,7 +622,7 @@ async def _emit_for_update(
         if "gate_pending" in output:
             out.append(await _emit_gate_pending(output["gate_pending"]))
 
-    return out, current_agent, False
+    return out, current_agent, current_phase, False
 
 
 async def _stream_chat(
@@ -590,6 +688,7 @@ async def _stream_chat(
         }
         
         current_agent = None
+        current_phase: str | None = None
         heartbeat_counter = 0
         next_input: Any = initial_state
         resume_payload_to_clear: dict[str, Any] | None = None
@@ -654,7 +753,9 @@ async def _stream_chat(
                     if not isinstance(event, dict):
                         continue
 
-                    sse_strings, current_agent, is_interrupt = await _emit_for_update(event, current_agent)
+                    sse_strings, current_agent, current_phase, is_interrupt = await _emit_for_update(
+                        event, current_agent, current_phase
+                    )
                     for s in sse_strings:
                         if s:
                             yield s
@@ -693,8 +794,14 @@ async def _stream_chat(
         yield await _emit_run_end()
     
     except Exception as e:
+        import traceback as _tb
+        tb_text = _tb.format_exc()
         logger.exception(f"Error in chat stream: {e}")
-        yield await _emit_error(str(e))
+        # Surface traceback frames in the SSE error event so silent runtime
+        # failures can be diagnosed from client-side capture (no log file
+        # access required). Truncate to keep payload small.
+        last_frames = "\n".join(tb_text.splitlines()[-12:])
+        yield await _emit_error(f"{type(e).__name__}: {e}\n{last_frames}")
     
     finally:
         try:
@@ -984,6 +1091,82 @@ async def get_mission_progress(mission_id: str):
     }
 
 
+@app.get("/api/v1/missions/{mission_id}/events")
+async def get_mission_events(mission_id: str):
+    """Chronological event log reconstructed from persisted state.
+
+    The live SSE rail is volatile (in-memory queue per chat session). This
+    endpoint exposes the same events derived from the store, so the UI can
+    hydrate after refresh and stay aligned with backend truth (CLAUDE.md
+    invariant: "what is displayed corresponds exactly to mission state")."""
+    store = get_store()
+
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    findings = store.list_findings(mission_id)
+    milestones = store.list_milestones(mission_id)
+    deliverables = store.list_deliverables(mission_id)
+    gates = store.list_gates(mission_id)
+
+    events: list[dict] = []
+
+    for finding in findings:
+        events.append({
+            "type": "finding_added",
+            "ts": finding.created_at or "",
+            "findingId": finding.id,
+            "text": finding.claim_text,
+            "confidence": finding.confidence,
+            "agent": finding.agent_id,
+            "workstreamId": finding.workstream_id,
+            "hypothesisId": finding.hypothesis_id,
+            "sourceId": finding.source_id,
+        })
+
+    for milestone in milestones:
+        if milestone.status != "delivered":
+            continue
+        events.append({
+            "type": "milestone_done",
+            "ts": "",
+            "milestoneId": milestone.id,
+            "label": milestone.label,
+            "workstreamId": milestone.workstream_id,
+            "status": milestone.status,
+            "resultSummary": milestone.result_summary,
+        })
+
+    for deliverable in deliverables:
+        if deliverable.status != "ready":
+            continue
+        events.append({
+            "type": "deliverable_ready",
+            "ts": deliverable.created_at or "",
+            "deliverableId": deliverable.id,
+            "label": deliverable.deliverable_type,
+            "deliverableType": deliverable.deliverable_type,
+            "filePath": deliverable.file_path,
+            "fileSizeBytes": deliverable.file_size_bytes,
+        })
+
+    for gate in gates:
+        if gate.status == "pending":
+            continue
+        events.append({
+            "type": "gate_resolved",
+            "ts": "",
+            "gateId": gate.id,
+            "gateType": gate.gate_type,
+            "status": gate.status,
+            "completionNotes": gate.completion_notes,
+        })
+
+    events.sort(key=lambda evt: (evt.get("ts") or "", evt.get("type", "")))
+
+    return {"mission_id": mission_id, "events": events}
+
+
 # =============================================================================
 # CHAT ENDPOINT (SSE STREAMING)
 # =============================================================================
@@ -1062,11 +1245,22 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
     
     if not gate:
         raise HTTPException(status_code=404, detail="Gate not found")
-    
-    if body.verdict not in ("APPROVED", "REJECTED"):
-        raise HTTPException(status_code=400, detail="Verdict must be APPROVED or REJECTED")
-    
-    expected_status = "completed" if body.verdict == "APPROVED" else "failed"
+
+    is_clarification = gate.format == "clarification_questions"
+
+    if is_clarification:
+        if body.answers is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Clarification gate requires `answers`",
+            )
+        # A clarification gate always resolves as completed (we record the
+        # answers regardless of how thin they are).
+        expected_status = "completed"
+    else:
+        if body.verdict not in ("APPROVED", "REJECTED"):
+            raise HTTPException(status_code=400, detail="Verdict must be APPROVED or REJECTED")
+        expected_status = "completed" if body.verdict == "APPROVED" else "failed"
     if gate.status == expected_status:
         _clear_gate_decision_in_flight(gate_id)
         resume_id = f"resume-{uuid.uuid4().hex[:8]}"
@@ -1136,18 +1330,27 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
         )
     
     resume_id = f"resume-{uuid.uuid4().hex[:8]}"
-    approved = body.verdict == "APPROVED"
-    resume_payload = {
-        "approved": approved,
-        "verdict": body.verdict,
-        "notes": body.notes,
-        "gate_id": gate_id,
-    }
+    if is_clarification:
+        resume_payload = {
+            "answers": list(body.answers or []),
+            "notes": body.notes,
+            "gate_id": gate_id,
+        }
+        verdict_label = "ANSWERED"
+    else:
+        approved = body.verdict == "APPROVED"
+        resume_payload = {
+            "approved": approved,
+            "verdict": body.verdict,
+            "notes": body.notes,
+            "gate_id": gate_id,
+        }
+        verdict_label = body.verdict or ""
     _mark_gate_decision_in_flight(
         mission_id,
         gate_id,
         expected_status=expected_status,
-        verdict=body.verdict,
+        verdict=verdict_label,
         resume_id=resume_id,
     )
     delivered = _deliver_resume(mission_id, resume_payload)
@@ -1159,7 +1362,19 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
         status = "resumed"
     else:
         try:
-            store.update_gate_status(gate_id, expected_status, notes=body.notes)
+            if is_clarification:
+                joined = "; ".join(
+                    str(a).strip() for a in (body.answers or []) if str(a).strip()
+                )
+                if joined:
+                    store.append_clarification_answer(mission_id, joined)
+                store.update_gate_status(
+                    gate_id,
+                    expected_status,
+                    notes=body.notes or joined or "no answers provided",
+                )
+            else:
+                store.update_gate_status(gate_id, expected_status, notes=body.notes)
         finally:
             _clear_gate_decision_in_flight(gate_id)
         # No stream is parked on this mission. The DB has been updated, but

@@ -90,6 +90,7 @@ export interface MissionGateMerlinVerdict {
 export interface MissionGateModalState {
   gateId: string;
   gateType?: string;
+  format?: string;
   title: string;
   stage?: string;
   summary?: string;
@@ -106,6 +107,9 @@ export interface MissionGateModalState {
   weakestLinks?: MissionGateFinding[];
   openRisks?: string[];
   missingMaterial?: string[];
+  questions?: string[];
+  round?: number;
+  maxRounds?: number;
 }
 
 export interface DashboardActiveMission {

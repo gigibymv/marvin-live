@@ -1,8 +1,30 @@
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from pathlib import Path
+
+
+def _decode_json_list(value: object) -> list[str]:
+    """Decode a JSON-encoded TEXT column into a list of strings, defensively."""
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode("utf-8", errors="ignore")
+        except Exception:  # noqa: BLE001
+            return []
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        if isinstance(decoded, list):
+            return [str(item) for item in decoded]
+    return []
 
 from marvin.mission.schema import (
     Deliverable,
@@ -181,6 +203,17 @@ class MissionStore:
         for table, column, ddl in (
             ("missions", "active_agent", "ALTER TABLE missions ADD COLUMN active_agent TEXT"),
             ("deliverables", "status", "ALTER TABLE deliverables ADD COLUMN status TEXT DEFAULT 'pending'"),
+            (
+                "missions",
+                "clarification_rounds_used",
+                "ALTER TABLE missions ADD COLUMN clarification_rounds_used INTEGER DEFAULT 0",
+            ),
+            (
+                "missions",
+                "clarification_answers",
+                "ALTER TABLE missions ADD COLUMN clarification_answers TEXT DEFAULT '[]'",
+            ),
+            ("gates", "questions", "ALTER TABLE gates ADD COLUMN questions TEXT"),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
@@ -196,14 +229,22 @@ class MissionStore:
     def _row_to_model(row: sqlite3.Row | None, model_cls):
         if row is None:
             return None
-        return model_cls.model_validate(dict(row))
+        data = dict(row)
+        if model_cls is Mission:
+            raw = data.get("clarification_answers")
+            data["clarification_answers"] = _decode_json_list(raw)
+        if model_cls is Gate:
+            raw = data.get("questions")
+            data["questions"] = _decode_json_list(raw) or None
+        return model_cls.model_validate(data)
 
     def save_mission(self, mission: Mission) -> Mission:
         self._execute(
             """
             INSERT OR REPLACE INTO missions
-            (id, client, target, mission_type, ic_question, status, active_agent, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, client, target, mission_type, ic_question, status, active_agent, created_at, updated_at,
+             clarification_rounds_used, clarification_answers)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 mission.id,
@@ -215,6 +256,8 @@ class MissionStore:
                 mission.active_agent,
                 mission.created_at,
                 mission.updated_at,
+                int(mission.clarification_rounds_used or 0),
+                json.dumps(list(mission.clarification_answers or [])),
             ),
         )
         return mission
@@ -235,7 +278,7 @@ class MissionStore:
 
     def list_missions(self) -> list[Mission]:
         rows = self._execute("SELECT * FROM missions ORDER BY created_at, id").fetchall()
-        return [Mission.model_validate(dict(row)) for row in rows]
+        return [self._row_to_model(row, Mission) for row in rows]
 
     def save_mission_brief(self, brief: MissionBrief) -> MissionBrief:
         try:
@@ -430,6 +473,8 @@ class MissionStore:
                 "milestone_id": milestone.id,
                 "label": milestone.label,
                 "status": milestone.status,
+                "workstream_id": milestone.workstream_id,
+                "result_summary": milestone.result_summary,
             },
         )
         return milestone
@@ -491,11 +536,12 @@ class MissionStore:
         return [Source.model_validate(dict(row)) for row in rows]
 
     def save_gate(self, gate: Gate) -> Gate:
+        questions_json = json.dumps(gate.questions) if gate.questions else None
         self._execute(
             """
             INSERT OR REPLACE INTO gates
-            (id, mission_id, gate_type, scheduled_day, validator_role, status, completion_notes, format)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (id, mission_id, gate_type, scheduled_day, validator_role, status, completion_notes, format, questions)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 gate.id,
@@ -506,6 +552,7 @@ class MissionStore:
                 gate.status,
                 gate.completion_notes,
                 gate.format,
+                questions_json,
             ),
         )
         return gate
@@ -515,7 +562,7 @@ class MissionStore:
             "SELECT * FROM gates WHERE mission_id = ? ORDER BY scheduled_day, id",
             (mission_id,),
         ).fetchall()
-        return [Gate.model_validate(dict(row)) for row in rows]
+        return [self._row_to_model(row, Gate) for row in rows]
 
     def update_gate_status(self, gate_id: str, status: str, notes: str | None = None) -> Gate:
         result = self._execute(
@@ -525,7 +572,57 @@ class MissionStore:
         if result.rowcount == 0:
             raise KeyError(f"gate not found: {gate_id}")
         row = self._execute("SELECT * FROM gates WHERE id = ?", (gate_id,)).fetchone()
-        return Gate.model_validate(dict(row))
+        return self._row_to_model(row, Gate)
+
+    # ------------------------------------------------------------------
+    # Clarification state — persisted on the mission row so the framing
+    # clarification flow survives uvicorn restarts and multi-worker setups.
+    # ------------------------------------------------------------------
+    def get_clarification_state(self, mission_id: str) -> dict:
+        row = self._execute(
+            "SELECT clarification_rounds_used, clarification_answers FROM missions WHERE id = ?",
+            (mission_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"mission not found: {mission_id}")
+        rounds = int(row["clarification_rounds_used"] or 0)
+        answers = _decode_json_list(row["clarification_answers"])
+        return {"rounds": rounds, "answers": answers}
+
+    def increment_clarification_rounds(self, mission_id: str) -> int:
+        existing = self.get_clarification_state(mission_id)
+        new_rounds = existing["rounds"] + 1
+        self._execute(
+            "UPDATE missions SET clarification_rounds_used = ? WHERE id = ?",
+            (new_rounds, mission_id),
+        )
+        return new_rounds
+
+    def append_clarification_answer(self, mission_id: str, answer: str) -> list[str]:
+        existing = self.get_clarification_state(mission_id)
+        answers = list(existing["answers"])
+        cleaned = (answer or "").strip()
+        if cleaned:
+            answers.append(cleaned)
+        self._execute(
+            "UPDATE missions SET clarification_answers = ? WHERE id = ?",
+            (json.dumps(answers), mission_id),
+        )
+        return answers
+
+    def reset_clarification_state(self, mission_id: str) -> None:
+        self._execute(
+            "UPDATE missions SET clarification_rounds_used = 0, clarification_answers = '[]' WHERE id = ?",
+            (mission_id,),
+        )
+
+    def update_mission_status(self, mission_id: str, status: str) -> None:
+        result = self._execute(
+            "UPDATE missions SET status = ? WHERE id = ?",
+            (status, mission_id),
+        )
+        if result.rowcount == 0:
+            raise KeyError(f"mission not found: {mission_id}")
 
     def save_deliverable(self, deliverable: Deliverable) -> Deliverable:
         self._execute(

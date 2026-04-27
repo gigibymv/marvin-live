@@ -15,6 +15,7 @@ MODEL_BY_ROLE = {
     "adversus": "openai/gpt-5.4-nano",
     "merlin": "openai/gpt-5.4-nano",
     "orchestrator": "openai/gpt-5.4-nano",
+    "framing": "openai/gpt-5.4-nano",
 }
 
 

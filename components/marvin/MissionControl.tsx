@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import Link from "next/link";
 import RawMissionControlView from "../../UI Marvin/MissionControl.jsx";
@@ -36,7 +36,9 @@ import type {
 } from "@/lib/missions/types";
 import {
   validateGate as apiValidateGate,
+  submitClarificationAnswers as apiSubmitClarificationAnswers,
   getMissionProgress,
+  getMissionEvents,
   getDeliverableDownloadUrl,
 } from "@/lib/missions/api";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
@@ -48,25 +50,23 @@ function makeMessageId(missionId: string, suffix: string): string {
   return `${missionId}-${Date.now()}-${_msgCounter}-${rand}-${suffix}`;
 }
 
-const TOOL_LABELS: Record<string, string> = {
-  add_finding_to_mission: "recording finding",
-  mark_milestone_delivered: "completing milestone",
-  list_hypotheses: "loading hypotheses",
-  list_findings: "loading findings",
-  generate_market_brief: "drafting market brief",
-  generate_competitive_brief: "drafting competitive brief",
-  generate_financial_brief: "drafting financial brief",
-  generate_risk_brief: "drafting risk brief",
-  generate_investment_memo: "drafting investment memo",
-  check_internal_consistency: "checking consistency",
-  web_search: "searching the web",
-};
+function humanizeToolName(raw: unknown): string {
+  const name = String(raw ?? "tool").trim();
+  if (!name) return "tool";
+  return name.replace(/_/g, " ");
+}
 
-function humanizeToolCall(agent: unknown, text: unknown): string {
-  const agentName = agent ? String(agent) : "Agent";
-  const raw = String(text ?? "");
-  const label = TOOL_LABELS[raw] ?? raw.replace(/_/g, " ");
-  return `${agentName} — ${label}`;
+function humanizeToolResultText(raw: unknown): string {
+  const text = String(raw ?? "").trim();
+  if (!text) return "step complete";
+  if (text.startsWith("{") || text.startsWith("[")) return "step complete";
+  return text.length > 200 ? text.slice(0, 200).trimEnd() + "…" : text;
+}
+
+function shortenAgentMessage(raw: unknown): string {
+  const text = String(raw ?? "").trim();
+  if (!text) return "(empty)";
+  return text.length > 220 ? text.slice(0, 220).trimEnd() + "…" : text;
 }
 
 const DELIVERABLE_LABELS: Record<string, string> = {
@@ -81,19 +81,6 @@ const DELIVERABLE_LABELS: Record<string, string> = {
 function humanizeDeliverableType(t: unknown): string {
   const raw = String(t ?? "deliverable");
   return DELIVERABLE_LABELS[raw] ?? raw.replace(/_/g, " ");
-}
-
-function humanizeToolResult(text: unknown): string {
-  const raw = String(text ?? "");
-  if (!raw) return "step complete";
-  // Strip raw JSON dumps from chat surface
-  if (raw.startsWith("{") || raw.startsWith("[")) {
-    return "step complete";
-  }
-  if (raw.length > 240) {
-    return raw.slice(0, 240).trim() + "…";
-  }
-  return raw;
 }
 
 // Extended view props that include gate validation handlers
@@ -160,15 +147,41 @@ export default function MissionControl({
   );
   const [isOffline, setIsOffline] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [isStalled, setIsStalled] = useState(false);
+  const lastEventAtRef = useRef<number>(Date.now());
 
   // Progress state for real-time data from backend
   const [progress, setProgress] = useState<MissionProgressSnapshot | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, "idle" | "active" | "done">>({});
-  const [liveFindings, setLiveFindings] = useState<Array<{ id: string; claim_text: string; confidence?: string }>>([]);
+  const [liveFindings, setLiveFindings] = useState<
+    Array<{
+      id: string;
+      kind:
+        | "finding"
+        | "milestone"
+        | "deliverable"
+        | "gate"
+        | "phase"
+        | "agent"
+        | "agent_message"
+        | "tool_call"
+        | "tool_result";
+      claim_text: string;
+      confidence?: string;
+      agent?: string;
+      workstreamId?: string;
+      hypothesisId?: string;
+      ts?: string;
+      href?: string;
+    }>
+  >([]);
   const [milestoneStatusOverrides, setMilestoneStatusOverrides] = useState<Record<string, string>>({});
   const [gatePayloads, setGatePayloads] = useState<Record<string, MissionGateModalState>>({});
   const [pausedForGate, setPausedForGate] = useState(false);
+  const [clarificationGate, setClarificationGate] = useState<MissionGateModalState | null>(null);
+  const [clarificationAnswers, setClarificationAnswers] = useState<string[]>([]);
+  const [clarificationSubmitting, setClarificationSubmitting] = useState(false);
 
   const chatDraft = useMissionUiStore((state) => selectChatDraft(state, missionId));
   const selectedTab = useMissionUiStore((state) => selectWorkspaceTab(state, missionId));
@@ -194,6 +207,75 @@ export default function MissionControl({
   useEffect(() => {
     void refreshProgress();
   }, [refreshProgress]);
+
+  // Hydrate the live rail from persisted events so a refresh restores the
+  // chronology instead of starting empty (CLAUDE.md invariant: UI reflects
+  // backend truth — the rail is a view onto persisted state, not session-only).
+  useEffect(() => {
+    if (repository.kind !== "http") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { events } = await getMissionEvents(missionId);
+        if (cancelled) return;
+        const hydrated = events.map((evt) => {
+          if (evt.type === "finding_added") {
+            return {
+              id: evt.findingId ?? `${missionId}-${evt.ts ?? ""}-finding`,
+              kind: "finding" as const,
+              claim_text: evt.text ?? "",
+              confidence: evt.confidence ?? undefined,
+              agent: evt.agent ?? undefined,
+              workstreamId: evt.workstreamId ?? undefined,
+              hypothesisId: evt.hypothesisId ?? undefined,
+              ts: evt.ts,
+            };
+          }
+          if (evt.type === "milestone_done") {
+            return {
+              id: evt.milestoneId ?? `${missionId}-${evt.ts ?? ""}-milestone`,
+              kind: "milestone" as const,
+              claim_text: evt.label
+                ? `Milestone complete · ${evt.label}`
+                : `Milestone complete · ${evt.milestoneId ?? "step"}`,
+              confidence: "done",
+              workstreamId: evt.workstreamId ?? undefined,
+              ts: evt.ts,
+            };
+          }
+          if (evt.type === "deliverable_ready") {
+            return {
+              id: evt.deliverableId ?? `${missionId}-${evt.ts ?? ""}-deliverable`,
+              kind: "deliverable" as const,
+              claim_text: `Deliverable ready · ${humanizeDeliverableType(
+                evt.deliverableType ?? evt.label,
+              )}`,
+              confidence: "ready",
+              ts: evt.ts,
+              href: evt.filePath
+                ? getDeliverableDownloadUrl(evt.filePath)
+                : undefined,
+            };
+          }
+          // gate_resolved
+          return {
+            id: evt.gateId ?? `${missionId}-${evt.ts ?? ""}-gate`,
+            kind: "gate" as const,
+            claim_text: `Gate ${evt.status ?? "resolved"} · ${evt.gateType ?? evt.gateId ?? ""}`,
+            confidence: evt.status ?? "gate",
+            ts: evt.ts,
+          };
+        });
+        // Replace rather than append: this is the source-of-truth snapshot.
+        setLiveFindings(hydrated);
+      } catch (error) {
+        console.error("Failed to hydrate mission events:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [missionId, repository.kind]);
 
   // Load mission on mount
   useEffect(() => {
@@ -258,6 +340,8 @@ export default function MissionControl({
         }
       },
       onEvent: (event) => {
+        lastEventAtRef.current = Date.now();
+        if (isStalled) setIsStalled(false);
         switch (event.type) {
           case "text":
             setMessages((current) =>
@@ -269,11 +353,14 @@ export default function MissionControl({
             );
             break;
           case "tool_call":
+            // Tool plumbing belongs in the rail (transparency on agent
+            // activity), never in chat. Chat is reserved for Marvin's voice.
             setLiveFindings((current) =>
               current.concat({
                 id: makeMessageId(missionId, "tool"),
-                claim_text: humanizeToolCall(event.agent, event.text),
-                confidence: "step",
+                kind: "tool_call",
+                claim_text: `${event.agent ?? "Agent"} → ${humanizeToolName(event.text)}`,
+                agent: event.agent,
               }),
             );
             break;
@@ -281,8 +368,22 @@ export default function MissionControl({
             setLiveFindings((current) =>
               current.concat({
                 id: makeMessageId(missionId, "result"),
-                claim_text: humanizeToolResult(event.text),
-                confidence: "done",
+                kind: "tool_result",
+                claim_text: humanizeToolResultText(event.text),
+                agent: event.agent,
+              }),
+            );
+            break;
+          case "agent_message":
+            // Sub-agent prose (Dora/Calculus/Adversus/Merlin reasoning) goes
+            // to the rail, not chat — keeps chat focused on Marvin's voice
+            // while still showing what working agents are thinking.
+            setLiveFindings((current) =>
+              current.concat({
+                id: makeMessageId(missionId, "agent-msg"),
+                kind: "agent_message",
+                claim_text: shortenAgentMessage(event.text),
+                agent: event.agent,
               }),
             );
             break;
@@ -293,6 +394,30 @@ export default function MissionControl({
             // point that opens the detailed review surface on user action.
             // Source of truth for gate state remains the backend gate row.
             const modalPayload = mapGateReviewPayloadToModal(event);
+
+            if (modalPayload.format === "clarification_questions") {
+              // Inline clarification flow — render a panel above the chat
+              // composer instead of routing through the gate modal pathway.
+              const questions = modalPayload.questions ?? [];
+              setClarificationGate(modalPayload);
+              setClarificationAnswers(questions.map(() => ""));
+              setClarificationSubmitting(false);
+              setLiveFindings((current) =>
+                current.concat({
+                  id: makeMessageId(missionId, "clarif-signal"),
+                  kind: "gate",
+                  claim_text: `Clarification round ${modalPayload.round ?? 1} of ${
+                    modalPayload.maxRounds ?? 3
+                  } — ${questions.length} question${questions.length === 1 ? "" : "s"}`,
+                  confidence: "gate",
+                }),
+              );
+              setPausedForGate(true);
+              setRunState(missionId, { isStreaming: false });
+              void refreshProgress();
+              break;
+            }
+
             setGatePayloads((current) => ({
               ...current,
               [modalPayload.gateId]: modalPayload,
@@ -307,6 +432,7 @@ export default function MissionControl({
             setLiveFindings((current) =>
               current.concat({
                 id: makeMessageId(missionId, "gate-signal"),
+                kind: "gate",
                 claim_text: formatGatePendingFeedSignal(event),
                 confidence: "gate",
               }),
@@ -325,26 +451,52 @@ export default function MissionControl({
             setLiveFindings((current) =>
               current.concat({
                 id: makeMessageId(missionId, "agent-active"),
+                kind: "agent",
                 claim_text: `${event.agent ?? "Agent"} started`,
                 confidence: "active",
+                agent: event.agent,
               }),
             );
             break;
           case "agent_done":
+            setActiveAgent(null);
+            if (event.label) {
+              setAgentStatuses((current) => ({
+                ...current,
+                [event.label!.toLowerCase()]: "done",
+              }));
+            }
             setLiveFindings((current) =>
               current.concat({
-                id: makeMessageId(missionId, "done"),
+                id: makeMessageId(missionId, "agent-done"),
+                kind: "agent",
                 claim_text: `${event.label ?? "Agent"} finished`,
                 confidence: "done",
+                agent: event.label,
+              }),
+            );
+            break;
+          case "phase_changed":
+            setLiveFindings((current) =>
+              current.concat({
+                id: makeMessageId(missionId, "phase"),
+                kind: "phase",
+                claim_text: `Phase · ${event.label ?? event.phase}`,
+                confidence: "phase",
               }),
             );
             break;
           case "finding_added":
             setLiveFindings((current) =>
               current.concat({
-                id: makeMessageId(missionId, "finding"),
+                id: event.findingId ?? makeMessageId(missionId, "finding"),
+                kind: "finding",
                 claim_text: event.text,
-                confidence: event.badge,
+                confidence: event.confidence ?? event.badge,
+                agent: event.agent,
+                workstreamId: event.workstreamId,
+                hypothesisId: event.hypothesisId,
+                ts: event.ts,
               }),
             );
             break;
@@ -357,11 +509,13 @@ export default function MissionControl({
             }
             setLiveFindings((current) =>
               current.concat({
-                id: makeMessageId(missionId, "milestone"),
+                id: event.milestoneId ?? makeMessageId(missionId, "milestone"),
+                kind: "milestone",
                 claim_text: event.label
                   ? `Milestone complete · ${event.label}`
                   : `Milestone complete · ${event.milestoneId ?? "mission step"}`,
                 confidence: "done",
+                workstreamId: event.workstreamId,
               }),
             );
             void refreshProgress();
@@ -369,11 +523,16 @@ export default function MissionControl({
           case "deliverable_ready":
             setLiveFindings((current) =>
               current.concat({
-                id: makeMessageId(missionId, "deliverable"),
+                id: event.deliverableId ?? makeMessageId(missionId, "deliverable"),
+                kind: "deliverable",
                 claim_text: event.label
-                  ? `Deliverable ready · ${event.label}`
+                  ? `Deliverable ready · ${humanizeDeliverableType(event.deliverableType ?? event.label)}`
                   : "Deliverable ready",
                 confidence: "ready",
+                ts: event.ts,
+                href: event.filePath
+                  ? getDeliverableDownloadUrl(event.filePath)
+                  : undefined,
               }),
             );
             void refreshProgress();
@@ -490,7 +649,7 @@ export default function MissionControl({
             current.concat({
               id: makeMessageId(mission.id, "resumed"),
               from: "m",
-              text: `Gate validated. Resuming execution... (${result.resume_id})`,
+              text: `Approved. Launching the next phase.`,
             }),
           );
 
@@ -557,6 +716,45 @@ export default function MissionControl({
     [mission, repository.kind, setRunState]
   );
 
+  // Submit clarification answers for a clarification_request gate.
+  // Validates that every question has at least an empty string slot, sends
+  // the answers via the standard validate endpoint, and clears local state
+  // so the next gate_pending event (or framing memo) can take over.
+  const handleClarificationSubmit = useCallback(async () => {
+    if (!mission || !clarificationGate) return;
+    const questions = clarificationGate.questions ?? [];
+    const answers = questions.map((_, idx) => (clarificationAnswers[idx] ?? "").trim());
+    setClarificationSubmitting(true);
+    setRunState(mission.id, { isStreaming: true });
+    try {
+      const result = await apiSubmitClarificationAnswers(
+        mission.id,
+        clarificationGate.gateId,
+        answers,
+      );
+      setMessages((current) =>
+        current.concat({
+          id: makeMessageId(mission.id, "clarif-answer"),
+          from: "u",
+          text: answers.filter((a) => a.length > 0).join(" · ") || "(skipped)",
+        }),
+      );
+      setClarificationGate(null);
+      setClarificationAnswers([]);
+      setPausedForGate(false);
+      if (result.status !== "resumed" && result.status !== "resume_pending") {
+        setRunState(mission.id, { isStreaming: false });
+      }
+    } catch (error) {
+      setStreamError(
+        error instanceof Error ? error.message : "Failed to submit clarification answers",
+      );
+      setRunState(mission.id, { isStreaming: false });
+    } finally {
+      setClarificationSubmitting(false);
+    }
+  }, [mission, clarificationGate, clarificationAnswers, setRunState]);
+
   // Deferring closes the modal but does NOT call the validate API.
   // The pending gate state is preserved server-side in the LangGraph checkpoint
   // and will re-interrupt on the next chat turn or page reload.
@@ -589,6 +787,19 @@ export default function MissionControl({
       current ?? modalPayload,
     );
   }, [gatePayloads, progress]);
+
+  useEffect(() => {
+    if (!runState.isStreaming || pausedForGate) {
+      if (isStalled) setIsStalled(false);
+      return;
+    }
+    const handle = window.setInterval(() => {
+      if (Date.now() - lastEventAtRef.current > 30_000) {
+        setIsStalled(true);
+      }
+    }, 5_000);
+    return () => window.clearInterval(handle);
+  }, [runState.isStreaming, pausedForGate, isStalled]);
 
   if (!hasLoaded) {
     return null;
@@ -699,16 +910,21 @@ export default function MissionControl({
   // ({ id, ag, text, ts }), so progress + SSE rows render correctly.
   const normalizeFinding = (f: any) => ({
     id: f.id,
-    ag: (f.agent_id ?? f.ag ?? "agent").toString().toUpperCase(),
+    ag: (f.agent ?? f.agent_id ?? f.ag ?? "agent").toString().toUpperCase(),
     text: f.claim_text ?? f.text ?? "",
     ts: f.ts ?? "",
     confidence: f.confidence,
-    workstream_id: f.workstream_id,
-    agent_id: f.agent_id,
+    workstream_id: f.workstream_id ?? f.workstreamId,
+    agent_id: f.agent ?? f.agent_id,
     claim_text: f.claim_text,
+    kind: f.kind ?? "finding",
+    href: f.href,
   });
   const allFindings = (progress?.findings ?? []).map(normalizeFinding);
-  const activity = liveFindings.map(normalizeFinding);
+  // Newest-on-top: the rail is a live feed; users want the most recent event
+  // visible without scrolling. liveFindings is appended in arrival order;
+  // reverse for display.
+  const activity = liveFindings.slice().reverse().map(normalizeFinding);
   // Tab id "ws1" maps to backend workstream id "W1", etc.
   // Strict filter: only show findings tagged to the selected workstream.
   // Untagged findings are intentionally excluded so per-tab content stays
@@ -788,6 +1004,109 @@ export default function MissionControl({
         briefStatus={briefStatus}
         nextCheckpointLabel={nextCheckpointLabel}
       />
+
+      {/* Inline clarification panel (does not block other UI like the modal does). */}
+      {clarificationGate && (
+        <div
+          role="dialog"
+          aria-modal="false"
+          aria-label="Clarification needed"
+          style={{
+            position: "fixed",
+            left: "50%",
+            transform: "translateX(-50%)",
+            bottom: "24px",
+            width: "min(640px, calc(100vw - 32px))",
+            background: "#fffaf2",
+            border: "1px solid #e5dccd",
+            borderRadius: "12px",
+            boxShadow: "0 18px 48px rgba(26,24,20,.18)",
+            padding: "18px 20px",
+            zIndex: 900,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              justifyContent: "space-between",
+              marginBottom: "10px",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: "system-ui",
+                fontSize: "11px",
+                fontWeight: 600,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                color: "#8a8784",
+              }}
+            >
+              MARVIN needs context · Round {clarificationGate.round ?? 1} of{" "}
+              {clarificationGate.maxRounds ?? 3}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {(clarificationGate.questions ?? []).map((q, idx) => (
+              <div key={`${clarificationGate.gateId}-q-${idx}`}>
+                <label
+                  style={{
+                    display: "block",
+                    fontFamily: "Georgia, serif",
+                    fontSize: "14px",
+                    color: "#3a362f",
+                    marginBottom: "6px",
+                  }}
+                >
+                  {q}
+                </label>
+                <textarea
+                  value={clarificationAnswers[idx] ?? ""}
+                  onChange={(e) => {
+                    const next = [...clarificationAnswers];
+                    next[idx] = e.target.value;
+                    setClarificationAnswers(next);
+                  }}
+                  rows={2}
+                  placeholder="Your answer..."
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "8px 10px",
+                    fontFamily: "system-ui",
+                    fontSize: "13px",
+                    border: "1px solid #ddd2bd",
+                    borderRadius: "8px",
+                    resize: "vertical",
+                    background: "#fffefb",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "14px" }}>
+            <button
+              type="button"
+              onClick={handleClarificationSubmit}
+              disabled={clarificationSubmitting}
+              style={{
+                background: "#1f3b2c",
+                color: "#fffefb",
+                border: "none",
+                borderRadius: "8px",
+                padding: "9px 16px",
+                fontFamily: "system-ui",
+                fontSize: "13px",
+                cursor: clarificationSubmitting ? "wait" : "pointer",
+                opacity: clarificationSubmitting ? 0.7 : 1,
+              }}
+            >
+              {clarificationSubmitting ? "Submitting…" : "Submit answers"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Custom gate modal with approve/reject buttons */}
       {gateModal && (
