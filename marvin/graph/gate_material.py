@@ -141,6 +141,49 @@ def evaluate_gate_material(
             }
         )
 
+    elif gate.gate_type == "data_availability":
+        # Bug 3 (chantier 2.6): pre-flight data check; the gate is open as
+        # soon as it is created, no upstream material required. Surfaces the
+        # 3 user options inline so the frontend can render decision buttons.
+        if not gate.questions:
+            missing_material.append("data_decision_question")
+        payload.update(
+            {
+                "questions": list(gate.questions or []),
+                "title": "Data availability check",
+                "stage": "Pre-flight",
+                "summary": (
+                    "Calculus cannot run financial analysis on this target. "
+                    "Choose how to proceed."
+                ),
+                "options": [
+                    {
+                        "value": "skip_calculus",
+                        "label": "Skip W2 — qualitative analysis only",
+                        "consequence": (
+                            "Calculus is not run. W2 findings panel stays empty. "
+                            "Diligence focuses on market and competitive analysis."
+                        ),
+                    },
+                    {
+                        "value": "proceed_low_confidence",
+                        "label": "Proceed — accept LOW_CONFIDENCE only",
+                        "consequence": (
+                            "Calculus runs but cannot produce KNOWN findings. "
+                            "All financial claims will be LOW_CONFIDENCE."
+                        ),
+                    },
+                    {
+                        "value": "request_data_room",
+                        "label": "Pause — I'll provide a data room",
+                        "consequence": (
+                            "Mission pauses. Add data room files via UI, then resume."
+                        ),
+                    },
+                ],
+            }
+        )
+
     elif gate.gate_type == "clarification_request":
         if not gate.questions:
             missing_material.append("clarification_questions")

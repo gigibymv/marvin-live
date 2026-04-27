@@ -29,6 +29,7 @@ class Mission(MarvinModel):
     updated_at: str | None = None
     clarification_rounds_used: int = 0
     clarification_answers: list[str] = Field(default_factory=list)
+    data_room_path: str | None = None  # Bug 3 (chantier 2.6): user-provided primary data room
 
 
 class MissionBrief(MarvinModel):

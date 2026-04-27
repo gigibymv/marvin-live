@@ -215,6 +215,7 @@ class MissionStore:
             ),
             ("gates", "questions", "ALTER TABLE gates ADD COLUMN questions TEXT"),
             ("hypotheses", "label", "ALTER TABLE hypotheses ADD COLUMN label TEXT"),
+            ("missions", "data_room_path", "ALTER TABLE missions ADD COLUMN data_room_path TEXT"),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
@@ -244,8 +245,8 @@ class MissionStore:
             """
             INSERT OR REPLACE INTO missions
             (id, client, target, mission_type, ic_question, status, active_agent, created_at, updated_at,
-             clarification_rounds_used, clarification_answers)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             clarification_rounds_used, clarification_answers, data_room_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 mission.id,
@@ -259,6 +260,7 @@ class MissionStore:
                 mission.updated_at,
                 int(mission.clarification_rounds_used or 0),
                 json.dumps(list(mission.clarification_answers or [])),
+                mission.data_room_path,
             ),
         )
         return mission

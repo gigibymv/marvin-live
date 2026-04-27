@@ -32,6 +32,52 @@ from marvin.runtime_debug import log_node_entry
 logger = logging.getLogger(__name__)
 
 
+# Bug 3 (chantier 2.6): pre-flight check before launching W2 financial agent.
+# Heuristic stand-in for a proper SEC EDGAR check; the spec lists the same set.
+_KNOWN_PRIVATE_TARGETS: tuple[str, ...] = (
+    "mistral", "cursor", "anthropic", "openai", "perplexity",
+    "vinted", "doctolib", "exotec", "stripe", "spacex",
+)
+
+
+def _check_data_availability(mission_id: str) -> dict:
+    """Pre-flight check before launching Calculus.
+
+    Returns dict with calculus_viable: bool, reason: str, recommendation: str.
+    A target marked private with no data_room_path is not viable; the user
+    must decide whether to skip W2, proceed in LOW_CONFIDENCE only, or pause
+    and supply a data room.
+    """
+    store = MissionStore()
+    mission = store.get_mission(mission_id)
+    target = (mission.target or "").lower().strip()
+    if not target:
+        return {
+            "calculus_viable": False,
+            "reason": "no target specified",
+            "recommendation": "Cannot run financial analysis without target.",
+        }
+    is_private = any(kw in target for kw in _KNOWN_PRIVATE_TARGETS)
+    has_data_room = bool(mission.data_room_path)
+    if is_private and not has_data_room:
+        return {
+            "calculus_viable": False,
+            "reason": (
+                f"{mission.target} appears private/non-US — SEC filings unlikely "
+                "to have material content"
+            ),
+            "recommendation": (
+                "Skip W2 financial analysis or request data room. Calculus would "
+                "produce only LOW_CONFIDENCE findings."
+            ),
+        }
+    return {
+        "calculus_viable": True,
+        "reason": "data sources available",
+        "recommendation": "proceed",
+    }
+
+
 def _resolve_gate_by_day(mission_id: str, day: int) -> str:
     store = MissionStore()
     for gate in store.list_gates(mission_id):
@@ -77,7 +123,37 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         return "gate_entry"
 
     if phase == "confirmed":
-        # Fan-out to dora and calculus in parallel
+        # Bug 3 (chantier 2.6): pre-flight data availability check before
+        # launching Calculus. A private/non-US target with no data room
+        # cannot produce KNOWN findings — fire a 3-option gate so the user
+        # decides upfront instead of discovering empty findings at G1.
+        data_decision = state.get("data_decision")
+        if not data_decision:
+            check = _check_data_availability(mission_id)
+            if not check["calculus_viable"]:
+                # Persist a data-availability gate row so the gate machinery
+                # can surface it via SSE and resume on user decision.
+                store = MissionStore()
+                gate_id = f"gate-{mission_id}-data-availability"
+                from marvin.mission.schema import Gate
+                existing = next((g for g in store.list_gates(mission_id) if g.id == gate_id), None)
+                if existing is None:
+                    store.save_gate(Gate(
+                        id=gate_id,
+                        mission_id=mission_id,
+                        gate_type="data_availability",
+                        scheduled_day=2,
+                        validator_role="manager",
+                        status="pending",
+                        format="data_decision",
+                        questions=[(
+                            f"Calculus cannot run financial analysis: {check['reason']}. "
+                            "How should we proceed? Options: skip_calculus | "
+                            "proceed_low_confidence | request_data_room."
+                        )],
+                    ))
+                return [Send("gate", {**state, "pending_gate_id": gate_id, "phase": "awaiting_data_decision"})]
+
         store = MissionStore()
         mission = store.get_mission(mission_id)
         hypotheses = store.list_hypotheses(mission_id)
@@ -92,11 +168,23 @@ def phase_router(state: MarvinState) -> str | list[Send]:
                 "Deliver each milestone via mark_milestone_delivered()."
             )
         )
+        if data_decision == "skip_calculus":
+            # Run W1 only; research_join still advances to research_done.
+            return [Send("dora", {**state, "messages": messages + [w1_msg]})]
+
+        caveat = ""
+        if data_decision == "proceed_low_confidence":
+            caveat = (
+                "\nDATA CAVEAT: target is private and no data room is available. "
+                "Findings must be LOW_CONFIDENCE; do not fabricate KNOWN/REASONED "
+                "claims from missing data."
+            )
         w2_msg = HumanMessage(
             content=(
                 f"Mission: {mission.client} - {mission.target}\n"
                 "Task: W2 Financial Analysis (W2.1 unit economics, QoE, anomalies)\n"
-                "No data room yet: use search_sec_filings for public data.\n"
+                "No data room yet: use search_sec_filings for public data."
+                f"{caveat}\n"
                 f"Hypotheses to test (use the bracketed id verbatim for any tool that takes hypothesis_id):\n{hyp_text}"
             )
         )
@@ -104,6 +192,12 @@ def phase_router(state: MarvinState) -> str | list[Send]:
             Send("dora", {**state, "messages": messages + [w1_msg]}),
             Send("calculus", {**state, "messages": messages + [w2_msg]}),
         ]
+
+    if phase == "awaiting_data_decision":
+        return "gate"
+
+    if phase == "awaiting_data_room":
+        return END
 
     if phase == "research_done":
         return "gate_entry"

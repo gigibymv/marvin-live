@@ -78,6 +78,31 @@ async def gate_node(state: MarvinState, config=None) -> dict:
     # verdict. Persist each answer to the mission, mark the gate completed
     # for audit, and route back to framing for re-evaluation by the
     # orchestrator with the new context appended.
+    # Bug 3 (chantier 2.6): data-availability gate carries the user's
+    # decision (skip_calculus / proceed_low_confidence / request_data_room)
+    # in the answers payload. Persist the gate as completed and write the
+    # decision back to graph state so phase_router can re-fan-out research.
+    if gate.format == "data_decision":
+        decision_value = decision.get("decision") or decision.get("verdict") or ""
+        decision_value = str(decision_value).strip().lower()
+        valid = {"skip_calculus", "proceed_low_confidence", "request_data_room"}
+        if decision_value not in valid:
+            decision_value = "proceed_low_confidence"
+        store.update_gate_status(
+            gate_id, "completed", notes=f"data_decision={decision_value}",
+        )
+        if decision_value == "request_data_room":
+            return {
+                "pending_gate_id": None,
+                "data_decision": decision_value,
+                "phase": "awaiting_data_room",
+            }
+        return {
+            "pending_gate_id": None,
+            "data_decision": decision_value,
+            "phase": "confirmed",
+        }
+
     if gate.format == "clarification_questions":
         answers = decision.get("answers")
         if not isinstance(answers, list):
