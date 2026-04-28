@@ -465,13 +465,14 @@ export default function MissionControl(props) {
           ),
           (props.deliverables || DELIVERABLES).map(function (d) {
             var isReady = d.status === "ready";
-            var canOpen = isReady && d.href;
-            return React.createElement(canOpen ? "a" : "div", {
+            var canOpen = isReady && (d.onOpen || d.href);
+            // Chantier 4 CP3: prefer onOpen (preview modal) over plain href
+            // navigation. Falls back to <a href> if no onOpen handler.
+            var asAnchor = canOpen && !d.onOpen && d.href;
+            var tag = asAnchor ? "a" : "div";
+            var elProps = {
               key: d.id,
               className: "dl",
-              href: canOpen ? d.href : undefined,
-              target: canOpen ? "_blank" : undefined,
-              rel: canOpen ? "noopener noreferrer" : undefined,
               style: {
                 opacity: isReady ? 1 : 0.4,
                 textDecoration: "none",
@@ -482,10 +483,23 @@ export default function MissionControl(props) {
                 justifyContent: "space-between",
                 padding: "5px 0",
                 borderBottom: "1px solid var(--rule)",
-              }
-            },
+              },
+            };
+            if (asAnchor) {
+              elProps.href = d.href;
+              elProps.target = "_blank";
+              elProps.rel = "noopener noreferrer";
+            } else if (canOpen && d.onOpen) {
+              elProps.role = "button";
+              elProps.tabIndex = 0;
+              elProps.onClick = d.onOpen;
+              elProps.onKeyDown = function (ev) {
+                if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); d.onOpen(); }
+              };
+            }
+            return React.createElement(tag, elProps,
               React.createElement("span", { style: { fontSize: "11.5px", fontWeight: isReady ? 500 : 400 } }, d.label),
-              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: isReady ? "var(--green)" : "var(--muted)" } }, canOpen ? "Open \u2193" : isReady ? "\u2193" : "\u2014")
+              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: isReady ? "var(--green)" : "var(--muted)" } }, canOpen ? "Open \u2192" : isReady ? "\u2193" : "\u2014")
             );
           })
         )

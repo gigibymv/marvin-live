@@ -44,6 +44,7 @@ import {
 } from "@/lib/missions/api";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
 import { normalizeAgentName } from "@/lib/missions/agent-display";
+import { DeliverablePreview } from "./DeliverablePreview";
 
 let _msgCounter = 0;
 function makeMessageId(missionId: string, suffix: string): string {
@@ -134,7 +135,7 @@ interface MissionControlViewProps {
     source_id?: string | null;
     impact?: "load_bearing" | "supporting" | "color" | null;
   }>;
-  deliverables: { id: string; label: string; status: string; href?: string }[];
+  deliverables: { id: string; label: string; status: string; href?: string; onOpen?: () => void }[];
   activeAgent: string | null;
   workstreamContent?: {
     id: string;
@@ -210,6 +211,8 @@ export default function MissionControl({
   const [pausedForGate, setPausedForGate] = useState(false);
   const [clarificationGate, setClarificationGate] = useState<MissionGateModalState | null>(null);
   const [clarificationAnswers, setClarificationAnswers] = useState<string[]>([]);
+  // Chantier 4 CP3: deliverable inline preview modal state.
+  const [previewDeliverableId, setPreviewDeliverableId] = useState<string | null>(null);
   const [clarificationSubmitting, setClarificationSubmitting] = useState(false);
 
   const chatDraft = useMissionUiStore((state) => selectChatDraft(state, missionId));
@@ -1085,6 +1088,12 @@ export default function MissionControl({
     label: humanizeDeliverableType(d.deliverable_type),
     status: d.status === "ready" && d.file_path ? "ready" : "pending",
     href: d.status === "ready" && d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
+    // Chantier 4 CP3: ready deliverables open the preview modal instead of
+    // forcing a download. The download link is still available inside.
+    onOpen:
+      d.status === "ready" && d.file_path
+        ? () => setPreviewDeliverableId(d.id)
+        : undefined,
   }));
   const deliverables = seedDeliverables;
 
@@ -1157,6 +1166,12 @@ export default function MissionControl({
         }
         briefStatus={briefStatus}
         nextCheckpointLabel={nextCheckpointLabel}
+      />
+
+      {/* Chantier 4 CP3: deliverable preview modal. */}
+      <DeliverablePreview
+        deliverableId={previewDeliverableId}
+        onClose={() => setPreviewDeliverableId(null)}
       />
 
       {/* Inline clarification panel (does not block other UI like the modal does). */}

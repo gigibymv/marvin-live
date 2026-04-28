@@ -1584,6 +1584,82 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
 # DELIVERABLE DOWNLOAD ENDPOINT
 # =============================================================================
 
+@app.get("/api/v1/deliverables/{deliverable_id}/preview")
+async def get_deliverable_preview(deliverable_id: str):
+    """Chantier 4 CP3: inline preview content + linked findings.
+
+    Returns:
+        - content: file contents as text (markdown / plain)
+        - content_type: "markdown" | "pdf" | "text"
+        - linked_findings: findings whose claims were used by Papyrus
+          (heuristic: same mission, ordered by created_at)
+        - file_path: absolute path (still useful for the download fallback)
+
+    Path traversal is enforced: resolved_path must stay under output_dir.
+    PDFs are not embedded inline; the modal falls back to the download URL.
+    """
+    store = get_store()
+    deliverable = None
+    for m in store.list_missions():
+        for d in store.list_deliverables(m.id):
+            if d.id == deliverable_id:
+                deliverable = d
+                mission_id = m.id
+                break
+        if deliverable:
+            break
+    if deliverable is None:
+        raise HTTPException(status_code=404, detail="Deliverable not found")
+    if not deliverable.file_path:
+        raise HTTPException(status_code=409, detail="Deliverable not yet generated")
+
+    output_dir = (PROJECT_ROOT / "output").resolve()
+    from pathlib import Path as _Path
+    resolved = _Path(deliverable.file_path).resolve()
+    try:
+        resolved.relative_to(output_dir)
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Path escapes allowed directory")
+    if not resolved.exists() or not resolved.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    suffix = resolved.suffix.lower()
+    if suffix == ".md":
+        content_type = "markdown"
+        content = resolved.read_text(encoding="utf-8", errors="replace")
+    elif suffix == ".pdf":
+        content_type = "pdf"
+        content = ""  # Caller embeds the download URL.
+    else:
+        content_type = "text"
+        try:
+            content = resolved.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            content = ""
+
+    findings = store.list_findings(mission_id)
+    label_by_id = {h.id: (h.label or "") for h in store.list_hypotheses(mission_id)}
+    return {
+        "deliverable_id": deliverable.id,
+        "deliverable_type": deliverable.deliverable_type,
+        "mission_id": mission_id,
+        "file_path": str(resolved),
+        "content_type": content_type,
+        "content": content,
+        "linked_findings": [
+            {
+                "id": f.id,
+                "claim_text": f.claim_text,
+                "agent_id": f.agent_id,
+                "confidence": f.confidence,
+                "hypothesis_label": label_by_id.get(f.hypothesis_id or ""),
+                "impact": f.impact,
+            }
+            for f in findings
+        ],
+    }
+
+
 @app.get("/api/v1/deliverables/download")
 async def download_deliverable(rel_path: str = Query(...)):
     """Download deliverable file.
