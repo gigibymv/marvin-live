@@ -822,13 +822,13 @@ async def _stream_chat(
                     verdict="APPROVED",
                     resume_id=resume_id,
                 )
-                # Persist the verdict before driving the graph so the gate
-                # row reflects truth even if the resume crashes mid-flight.
-                store.update_gate_status(
-                    pending_gate.id,
-                    "completed",
-                    notes=text.strip() or "approved via chat",
-                )
+                # Do NOT pre-write status="completed" here. gate_node re-runs
+                # from the top on Command(resume=...); if the gate row is
+                # already completed, evaluate_gate_material() returns
+                # is_open=False and the node bails to phase="idle" instead of
+                # routing to adversus/merlin. Let gate_node own the verdict
+                # persistence + routing on the post-interrupt branch — the
+                # same path used by /gates/{id}/validate.
                 logger.info(
                     "Chat-driven gate approval: mission=%s gate=%s",
                     mission_id, pending_gate.id,
