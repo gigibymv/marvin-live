@@ -291,6 +291,17 @@ function Feed({ feedRef, ...props }) {
   var _s = useState(null);
   var expanded = _s[0];
   var setExpanded = _s[1];
+
+  var _tp = useState(60);
+  var topPct = _tp[0];
+  var setTopPct = _tp[1];
+
+  var _fc = useState(false);
+  var feedCollapsed = _fc[0];
+  var setFeedCollapsed = _fc[1];
+
+  var containerRef = useRef(null);
+
   var activity = props.activity || LIVE;
   var completed = props.findings || DONE;
 
@@ -307,73 +318,150 @@ function Feed({ feedRef, ...props }) {
     });
   }
 
-  return React.createElement("div", { ref: feedRef, style: { flex: 1, overflowY: "auto" } },
+  function onDragHandleMouseDown(e) {
+    e.preventDefault();
+    var container = containerRef.current;
+    if (!container) return;
 
-    // IN PROGRESS
-    React.createElement("div", { style: { padding: "12px 24px", background: "rgba(139,98,0,.05)", borderBottom: "1px solid rgba(139,98,0,.2)" } },
-      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px" } },
-        React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--amber)" } }, "In progress"),
-        React.createElement("span", { style: { color: "var(--amber)", animation: "pulse 1.4s ease-in-out infinite", fontSize: "8px" } }, "\u25cf")
+    function onMouseMove(ev) {
+      var rect = container.getBoundingClientRect();
+      var pct = ((ev.clientY - rect.top) / rect.height) * 100;
+      if (pct < 20) pct = 20;
+      if (pct > 80) pct = 80;
+      setTopPct(pct);
+    }
+
+    function onMouseUp() {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    }
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
+  var topBasis = feedCollapsed ? "calc(100% - 32px)" : topPct + "%";
+  var bottomBasis = feedCollapsed ? "32px" : (100 - topPct) + "%";
+  var chevron = feedCollapsed ? "\u25b8" : "\u25be";
+
+  return React.createElement("div", {
+    ref: function (el) {
+      containerRef.current = el;
+      if (feedRef) {
+        if (typeof feedRef === "function") feedRef(el);
+        else feedRef.current = el;
+      }
+    },
+    style: { flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }
+  },
+
+    // TOP PANE — completed outputs
+    React.createElement("div", { style: { flexBasis: topBasis, flexShrink: 0, flexGrow: 0, overflowY: "auto", minHeight: 0 } },
+
+      // NEXT CHECKPOINT
+      React.createElement("div", { style: { padding: "8px 24px", borderBottom: "1px solid var(--rule)", display: "flex", alignItems: "center", gap: "10px" } },
+        React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)" } }, "Next"),
+        React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600, letterSpacing: ".06em", color: "var(--ink)" } }, props.nextCheckpointLabel || "No open checkpoint")
       ),
-      activity.map(function (e, i) {
-        var visual = kindVisual(e.kind);
-        var isPhase = e.kind === "phase";
-        // Phase markers render as a full-width separator line with the phase
-        // label, distinct from regular rail entries to break the timeline.
-        if (isPhase) {
-          return React.createElement("div", {
+
+      // COMPLETED — strict 3-col grid
+      React.createElement("div", { style: { padding: "0 24px" } },
+        React.createElement("div", { style: { padding: "9px 0 8px", borderBottom: "1px solid var(--ink)" } },
+          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Completed")
+        ),
+        completed.map(function (e) {
+          var open = expanded === e.id;
+          return React.createElement(FindingCard, {
             key: e.id,
-            style: {
-              display: "flex", alignItems: "center", gap: "8px",
-              padding: "10px 0", margin: "4px 0",
-              borderTop: "1px dashed " + visual.color + "55",
-              borderBottom: "1px dashed " + visual.color + "55",
-            }
-          },
-            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: visual.color } }, "Phase"),
-            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600, letterSpacing: ".06em", color: "var(--ink)" } }, e.text)
-          );
+            finding: e,
+            isOpen: open,
+            onToggle: function () { setExpanded(open ? null : e.id); },
+          });
+        })
+      )
+    ),
+
+    // DRAG HANDLE
+    feedCollapsed ? null : React.createElement("div", {
+      onMouseDown: onDragHandleMouseDown,
+      style: {
+        height: "6px", flexShrink: 0, cursor: "row-resize",
+        background: "var(--rule)",
+        transition: "background 0.15s"
+      },
+      onMouseEnter: function (e) { e.currentTarget.style.background = "var(--ruleh)"; },
+      onMouseLeave: function (e) { e.currentTarget.style.background = "var(--rule)"; }
+    }),
+
+    // BOTTOM PANE — in progress activity
+    React.createElement("div", {
+      style: {
+        flexBasis: bottomBasis, flexShrink: 0, flexGrow: 0,
+        display: "flex", flexDirection: "column",
+        minHeight: 0, overflow: "hidden",
+        background: "rgba(139,98,0,.05)",
+        borderTop: feedCollapsed ? "1px solid rgba(139,98,0,.2)" : "none"
+      }
+    },
+
+      // Bottom pane header row (eyebrow + chevron)
+      React.createElement("div", {
+        style: {
+          display: "flex", alignItems: "center", gap: "6px",
+          padding: "0 24px", height: "32px", flexShrink: 0,
+          borderBottom: feedCollapsed ? "none" : "1px solid rgba(139,98,0,.2)"
         }
-        return React.createElement("div", {
-          key: e.id, style: {
-            display: "grid",
-            gridTemplateColumns: "14px " + COL_AG + " 1fr",
-            gap: "0 10px", alignItems: "baseline",
-            paddingBottom: i < activity.length - 1 ? "8px" : "0",
-            marginBottom: i < activity.length - 1 ? "8px" : "0",
-            borderBottom: i < activity.length - 1 ? "1px solid rgba(139,98,0,.12)" : "none"
+      },
+        React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--amber)" } }, "In progress"),
+        React.createElement("span", { style: { color: "var(--amber)", animation: "pulse 1.4s ease-in-out infinite", fontSize: "8px" } }, "\u25cf"),
+        React.createElement("button", {
+          onClick: function () { setFeedCollapsed(function (v) { return !v; }); },
+          style: {
+            marginLeft: "auto", background: "none", border: "none", cursor: "pointer",
+            color: "var(--amber)", fontSize: "11px", padding: "2px 4px", lineHeight: 1
           },
-          title: visual.label
-        },
-          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "11px", color: visual.color, lineHeight: 1.4, alignSelf: "start", paddingTop: "1px", textAlign: "center" } }, visual.glyph),
-          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: visual.color, alignSelf: "start", paddingTop: "2px" } }, e.ag || visual.label),
-          e.href
-            ? React.createElement("a", { href: e.href, target: "_blank", rel: "noreferrer", style: { fontSize: "13px", lineHeight: 1.5, color: "var(--ink2)", fontWeight: 500, textDecoration: "underline" } }, e.text)
-            : React.createElement("span", { style: { fontSize: "13px", lineHeight: 1.5, color: "var(--ink2)", fontWeight: 500 } }, e.text)
-        );
-      })
-    ),
-
-    // NEXT CHECKPOINT
-    React.createElement("div", { style: { padding: "8px 24px", borderBottom: "1px solid var(--rule)", display: "flex", alignItems: "center", gap: "10px" } },
-      React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", letterSpacing: ".14em", textTransform: "uppercase", color: "var(--muted)" } }, "Next"),
-      React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600, letterSpacing: ".06em", color: "var(--ink)" } }, props.nextCheckpointLabel || "No open checkpoint")
-    ),
-
-    // COMPLETED — strict 3-col grid
-    React.createElement("div", { style: { padding: "0 24px" } },
-      React.createElement("div", { style: { padding: "9px 0 8px", borderBottom: "1px solid var(--ink)" } },
-        React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Completed")
+          title: feedCollapsed ? "Expand" : "Collapse"
+        }, chevron)
       ),
-      completed.map(function (e) {
-        var open = expanded === e.id;
-        return React.createElement(FindingCard, {
-          key: e.id,
-          finding: e,
-          isOpen: open,
-          onToggle: function () { setExpanded(open ? null : e.id); },
-        });
-      })
+
+      // Scrollable activity list (hidden when collapsed)
+      feedCollapsed ? null : React.createElement("div", { style: { flex: 1, overflowY: "auto", padding: "10px 24px 12px" } },
+        activity.map(function (e, i) {
+          var visual = kindVisual(e.kind);
+          var isPhase = e.kind === "phase";
+          if (isPhase) {
+            return React.createElement("div", {
+              key: e.id,
+              style: {
+                display: "flex", alignItems: "center", gap: "8px",
+                padding: "10px 0", margin: "4px 0",
+                borderTop: "1px dashed " + visual.color + "55",
+                borderBottom: "1px dashed " + visual.color + "55",
+              }
+            },
+              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: visual.color } }, "Phase"),
+              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600, letterSpacing: ".06em", color: "var(--ink)" } }, e.text)
+            );
+          }
+          return React.createElement("div", {
+            key: e.id, style: {
+              display: "grid",
+              gridTemplateColumns: "14px " + COL_AG + " 1fr",
+              gap: "0 10px", alignItems: "baseline",
+              paddingBottom: i < activity.length - 1 ? "8px" : "0",
+              marginBottom: i < activity.length - 1 ? "8px" : "0",
+              borderBottom: i < activity.length - 1 ? "1px solid rgba(139,98,0,.12)" : "none"
+            },
+            title: visual.label
+          },
+            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "11px", color: visual.color, lineHeight: 1.4, alignSelf: "start", paddingTop: "1px", textAlign: "center" } }, visual.glyph),
+            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: visual.color, alignSelf: "start", paddingTop: "2px" } }, e.ag || visual.label),
+            e.href
+              ? React.createElement("a", { href: e.href, target: "_blank", rel: "noreferrer", style: { fontSize: "13px", lineHeight: 1.5, color: "var(--ink2)", fontWeight: 500, textDecoration: "underline" } }, e.text)
+              : React.createElement("span", { style: { fontSize: "13px", lineHeight: 1.5, color: "var(--ink2)", fontWeight: 500 } }, e.text)
+          );
+        })
+      )
     )
   );
 }
