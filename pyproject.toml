@@ -15,11 +15,13 @@ dependencies = [
     "langgraph>=1,<2",
     "langchain-core>=1,<2",
     "langchain-openai>=1,<2",
+    "aiosqlite>=0.19,<1",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8,<10",
+    "pytest-asyncio>=0.23,<1",
 ]
 
 [project.scripts]
@@ -31,3 +33,4 @@ exclude = ["tests*", "output*", "node_modules*", "app*", "lib*", "components*", 
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
