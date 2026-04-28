@@ -204,6 +204,20 @@ _pending_resumes: dict[str, asyncio.Future[dict]] = {}
 _gate_decisions_in_flight: dict[str, dict[str, str]] = {}
 _gate_decision_by_mission: dict[str, str] = {}
 
+# Chantier 2.7 FIX 3 — chat-driven gate approval. Matches messages like
+# "approved", "yes", "ok", "go ahead", "proceed", "lgtm". Conservative on
+# purpose: anything ambiguous routes to QA with a "graph paused" hint.
+_APPROVAL_RE = re.compile(
+    r"^\s*(approved?|yes|y|ok|okay|go\s+ahead|proceed|lgtm|confirm(ed)?|sure)\b\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_approval_text(text: str) -> bool:
+    if not text:
+        return False
+    return bool(_APPROVAL_RE.match(text.strip()))
+
 # Bounded wait so a forgotten gate doesn't pin the per-mission lock forever.
 _RESUME_TIMEOUT_SECONDS = 600
 
@@ -762,20 +776,81 @@ async def _stream_chat(
         has_brief = bool(existing_brief and (existing_brief.raw_brief or "").strip())
         is_initial_brief = (not has_brief) and len(text.strip()) >= 50
 
-        if has_brief or not is_initial_brief:
-            from marvin.graph.subgraphs.orchestrator_qa import respond_qa
-
-            try:
-                reply = await respond_qa(mission_id, text)
-            except Exception as exc:  # noqa: BLE001 - defensive: never crash the SSE stream
-                logger.warning("orchestrator_qa failed: %s", exc)
-                reply = "Mission paused. Use the gate panel to continue."
-            if reply:
-                yield await _emit_text("orchestrator", reply)
-            yield await _emit_run_end()
-            return
-
         graph = await get_graph()
+        chat_resume_payload: dict[str, Any] | None = None
+        chat_resume_gate_id: str | None = None
+
+        if has_brief or not is_initial_brief:
+            # Chantier 2.7 FIX 3 — chat-driven gate approval.
+            # If the graph is parked at a standard verdict gate AND the user
+            # message is approval-like, validate the gate in-line and resume.
+            # Anything ambiguous (questions, multi-sentence prose, rejections)
+            # falls through to orchestrator_qa with the gate as context.
+            config_check = {"configurable": {"thread_id": mission_id}}
+            try:
+                snapshot = await graph.aget_state(config_check)
+            except Exception as exc:  # noqa: BLE001 - defensive: missing aget_state in tests
+                logger.debug("aget_state unavailable: %s", exc)
+                snapshot = None
+            is_interrupted = bool(snapshot and snapshot.next)
+            pending_gate = None
+            if is_interrupted:
+                for g in store.list_gates(mission_id):
+                    if g.status != "pending":
+                        continue
+                    # Approval shortcut applies only to gates that take a
+                    # boolean verdict. Clarifications need answers; data
+                    # decisions need a discrete option — both must use the UI.
+                    if g.format in ("clarification_questions", "data_decision"):
+                        continue
+                    pending_gate = g
+                    break
+
+            if pending_gate is not None and _is_approval_text(text):
+                resume_id = f"resume-{uuid.uuid4().hex[:8]}"
+                chat_resume_payload = {
+                    "approved": True,
+                    "verdict": "APPROVED",
+                    "notes": text.strip(),
+                    "gate_id": pending_gate.id,
+                }
+                chat_resume_gate_id = pending_gate.id
+                _mark_gate_decision_in_flight(
+                    mission_id,
+                    pending_gate.id,
+                    expected_status="completed",
+                    verdict="APPROVED",
+                    resume_id=resume_id,
+                )
+                # Persist the verdict before driving the graph so the gate
+                # row reflects truth even if the resume crashes mid-flight.
+                store.update_gate_status(
+                    pending_gate.id,
+                    "completed",
+                    notes=text.strip() or "approved via chat",
+                )
+                logger.info(
+                    "Chat-driven gate approval: mission=%s gate=%s",
+                    mission_id, pending_gate.id,
+                )
+            else:
+                from marvin.graph.subgraphs.orchestrator_qa import respond_qa
+
+                qa_input = text
+                if pending_gate is not None:
+                    qa_input = (
+                        f"[graph paused at gate {pending_gate.gate_type or pending_gate.id} "
+                        f"— reply 'approve' to proceed or click Review] {text}"
+                    )
+                try:
+                    reply = await respond_qa(mission_id, qa_input)
+                except Exception as exc:  # noqa: BLE001 - defensive: never crash the SSE stream
+                    logger.warning("orchestrator_qa failed: %s", exc)
+                    reply = "Mission paused. Use the gate panel to continue."
+                if reply:
+                    yield await _emit_text("orchestrator", reply)
+                yield await _emit_run_end()
+                return
 
         # Build initial state
         initial_state: MarvinState = {
@@ -801,8 +876,15 @@ async def _stream_chat(
         current_agent = None
         current_phase: str | None = None
         heartbeat_counter = 0
-        next_input: Any = initial_state
-        resume_payload_to_clear: dict[str, Any] | None = None
+        # Chat-driven approval (FIX 3) bypasses the initial-brief state and
+        # drives the parked checkpoint forward via Command(resume=...). The
+        # gate_id clear runs in the same cleanup path as a UI-driven resume.
+        if chat_resume_payload is not None:
+            next_input: Any = Command(resume=chat_resume_payload)
+            resume_payload_to_clear: dict[str, Any] | None = chat_resume_payload
+        else:
+            next_input = initial_state
+            resume_payload_to_clear = None
 
         # Side channel for finding_added events. The listener fires from
         # whichever thread the persistence call runs on (LangGraph tools run
