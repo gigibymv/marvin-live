@@ -930,6 +930,180 @@ async def _stream_chat(
         mission_lock.release()
 
 
+async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
+    """Re-attach to a checkpointed mission and continue streaming.
+
+    Chantier 2.7 FIX 2. Used when the client lost the SSE connection (tab
+    close, network blip, process restart). Reads the LangGraph checkpoint:
+
+    - Terminal: emit phase + run_end so the UI flips to done.
+    - Interrupted: replay astream(None) so the parked interrupt frame fires
+      again, then enter the same park/resume loop as _stream_chat.
+    - No checkpoint: emit error — initial brief still flows through /chat.
+    """
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        yield await _emit_error(f"Mission not found: {mission_id}")
+        return
+
+    mission = store.get_mission(mission_id)
+    if mission.status != "active":
+        # Done/archived missions need no live stream.
+        yield await _emit_run_end()
+        return
+
+    mission_lock = _get_mission_lock(mission_id)
+    try:
+        await asyncio.wait_for(mission_lock.acquire(), timeout=5.0)
+    except asyncio.TimeoutError:
+        yield await _emit_error("Mission is active in another stream — close the other tab")
+        return
+
+    try:
+        graph = await get_graph()
+        thread_id = mission_id
+        config = {"configurable": {"thread_id": thread_id}}
+
+        snapshot = await graph.aget_state(config)
+        # No checkpoint at all → nothing to replay. Don't surface as an error;
+        # this is the legitimate state right after mission creation, before the
+        # user sends the brief via /chat. The UI calls /resume on mount
+        # unconditionally, so silent run_end is the right answer.
+        if snapshot is None or not (snapshot.values or {}):
+            yield await _emit_run_end()
+            return
+
+        # Terminal state: graph completed cleanly.
+        if not snapshot.next:
+            phase = (snapshot.values or {}).get("phase")
+            if isinstance(phase, str) and phase:
+                yield await _emit_phase_changed(phase)
+            yield await _emit_run_end()
+            return
+
+        yield await _emit_run_start()
+        yield _sse_heartbeat()
+
+        finding_q: "queue.Queue[dict]" = queue.Queue()
+        deliverable_q: "queue.Queue[dict]" = queue.Queue()
+        milestone_q: "queue.Queue[dict]" = queue.Queue()
+
+        def _on_finding(payload: dict) -> None:
+            finding_q.put_nowait(payload)
+
+        def _on_deliverable(payload: dict) -> None:
+            deliverable_q.put_nowait(payload)
+
+        def _on_milestone(payload: dict) -> None:
+            milestone_q.put_nowait(payload)
+
+        register_finding_listener(mission_id, _on_finding)
+        register_deliverable_listener(mission_id, _on_deliverable)
+        register_milestone_listener(mission_id, _on_milestone)
+
+        def _drain_events() -> list[str]:
+            out: list[str] = []
+            while True:
+                try:
+                    payload = finding_q.get_nowait()
+                except queue.Empty:
+                    break
+                out.append(_sse_event("finding_added", _build_finding_added_from_emit(payload)))
+            while True:
+                try:
+                    payload = deliverable_q.get_nowait()
+                except queue.Empty:
+                    break
+                out.append(_sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload)))
+            while True:
+                try:
+                    payload = milestone_q.get_nowait()
+                except queue.Empty:
+                    break
+                out.append(_sse_event("milestone_done", _build_milestone_done_from_emit(payload)))
+            return out
+
+        current_agent: str | None = None
+        current_phase: str | None = (snapshot.values or {}).get("phase") if isinstance((snapshot.values or {}).get("phase"), str) else None
+        heartbeat_counter = 0
+        # First iteration: None drives astream from the existing checkpoint.
+        # Subsequent iterations use Command(resume=payload) after a gate decision.
+        next_input: Any = None
+        resume_payload_to_clear: dict[str, Any] | None = None
+
+        while True:
+            interrupted = False
+            clearing_resume_payload = resume_payload_to_clear
+            resume_payload_to_clear = None
+            try:
+                async for event in graph.astream(next_input, config, stream_mode="updates"):
+                    heartbeat_counter += 1
+                    if heartbeat_counter % 10 == 0:
+                        yield _sse_heartbeat()
+                    if not isinstance(event, dict):
+                        continue
+                    sse_strings, current_agent, current_phase, is_interrupt = await _emit_for_update(
+                        event, current_agent, current_phase
+                    )
+                    for s in sse_strings:
+                        if s:
+                            yield s
+                    for s in _drain_events():
+                        yield s
+                    if is_interrupt:
+                        interrupted = True
+            finally:
+                if clearing_resume_payload is not None:
+                    _clear_gate_decision_in_flight(clearing_resume_payload.get("gate_id"))
+
+            for s in _drain_events():
+                yield s
+
+            if not interrupted:
+                break
+
+            fut = _register_pending_resume(mission_id)
+            try:
+                resume_payload = await asyncio.wait_for(fut, timeout=_RESUME_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                yield await _emit_error("Gate approval timed out")
+                break
+            except asyncio.CancelledError:
+                _clear_gate_decision_for_mission(mission_id)
+                raise
+            finally:
+                _clear_pending_resume(mission_id, fut)
+
+            resume_payload_to_clear = resume_payload
+            next_input = Command(resume=resume_payload)
+
+        if current_agent is not None:
+            yield await _emit_agent_done(current_agent)
+        yield await _emit_run_end()
+
+    except Exception as e:
+        import traceback as _tb
+        tb_text = _tb.format_exc()
+        logger.exception(f"Error in resume stream: {e}")
+        last_frames = "\n".join(tb_text.splitlines()[-12:])
+        yield await _emit_error(f"{type(e).__name__}: {e}\n{last_frames}")
+
+    finally:
+        try:
+            unregister_finding_listener(mission_id, _on_finding)
+        except (NameError, UnboundLocalError):
+            pass
+        try:
+            unregister_deliverable_listener(mission_id, _on_deliverable)
+        except (NameError, UnboundLocalError):
+            pass
+        try:
+            unregister_milestone_listener(mission_id, _on_milestone)
+        except (NameError, UnboundLocalError):
+            pass
+        mission_lock.release()
+
+
 # =============================================================================
 # LIFESPAN
 # =============================================================================
@@ -1388,6 +1562,29 @@ async def chat_mission_get(
     
     return StreamingResponse(
         _stream_chat(mission_id, text, reset=reset),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# =============================================================================
+# RESUME ENDPOINT (SSE STREAMING)
+# =============================================================================
+
+@app.post("/api/v1/missions/{mission_id}/resume")
+@app.get("/api/v1/missions/{mission_id}/resume")
+async def resume_mission(mission_id: str):
+    """Re-attach to a checkpointed mission and stream events.
+
+    Chantier 2.7 FIX 2. Allows the client to recover after tab close, network
+    blip, or uvicorn restart. Returns the same SSE event vocabulary as /chat.
+    """
+    return StreamingResponse(
+        _stream_resume(mission_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

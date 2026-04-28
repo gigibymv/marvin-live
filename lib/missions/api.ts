@@ -332,6 +332,55 @@ export async function* sendChatMessage(
 }
 
 /**
+ * Re-attach to a checkpointed mission. Chantier 2.7 FIX 2.
+ * Streams the same SSE event vocabulary as sendChatMessage but does not
+ * require a text input — backend reads checkpoint state and either replays
+ * the parked interrupt frame or emits run_end for terminal missions.
+ */
+export async function* streamResume(
+  missionId: string,
+  signal?: AbortSignal
+): AsyncGenerator<SSEEvent> {
+  const url = `${API_BASE}/missions/${missionId}/resume`;
+  const response = await fetch(url, { method: "POST", signal });
+
+  if (!response.ok) {
+    if (response.status === 0) {
+      throw new BackendOfflineError();
+    }
+    throw new Error(`Resume request failed: ${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error("No response body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim() || line.startsWith(":")) continue;
+        const event = parseSSEEvent(line);
+        if (event) yield event;
+      }
+    }
+    if (buffer.trim() && !buffer.startsWith(":")) {
+      const event = parseSSEEvent(buffer);
+      if (event) yield event;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+
+/**
  * Parse a single SSE event
  */
 function parseSSEEvent(raw: string): SSEEvent | null {

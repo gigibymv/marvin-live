@@ -1,5 +1,5 @@
 import type { BackendConnectionState, MissionGateModalState } from "@/lib/missions/types";
-import { sendChatMessage, type SSEEvent, isBackendOfflineError } from "@/lib/missions/api";
+import { sendChatMessage, streamResume, type SSEEvent, isBackendOfflineError } from "@/lib/missions/api";
 
 export type MissionStreamEvent =
   | { type: "text"; text: string }
@@ -74,6 +74,8 @@ export interface MissionEventStream {
   }): MissionEventStreamSubscription;
   /** Send a chat message and stream the response */
   sendMessage?(text: string, reset?: boolean): Promise<void>;
+  /** Re-attach to a checkpointed mission and stream events. Chantier 2.7 FIX 2. */
+  resume?(): Promise<void>;
 }
 
 export function createLocalMissionEventStream(): MissionEventStream {
@@ -206,7 +208,10 @@ export function createEventSourceMissionEventStream(basePath = "/api/v1"): Missi
  * Fetch-based SSE stream that POSTs messages and consumes SSE response.
  * This is the preferred method for real backend integration.
  */
-export function createFetchMissionEventStream(): MissionEventStream & { sendMessage: (text: string, reset?: boolean) => Promise<void> } {
+export function createFetchMissionEventStream(): MissionEventStream & {
+  sendMessage: (text: string, reset?: boolean) => Promise<void>;
+  resume: () => Promise<void>;
+} {
   let abortController: AbortController | null = null;
   let currentMissionId: string | null = null;
   let currentOnEvent: ((event: MissionStreamEvent) => void) | null = null;
@@ -277,6 +282,35 @@ export function createFetchMissionEventStream(): MissionEventStream & { sendMess
     },
     async sendMessage(text: string, reset = false) {
       await handleStream(text, reset);
+    },
+    async resume() {
+      if (!currentMissionId || !currentOnEvent) return;
+      if (isStreaming && abortController) {
+        abortController.abort();
+      }
+      abortController = new AbortController();
+      isStreaming = true;
+      try {
+        currentOnStatusChange?.("connecting");
+        for await (const event of streamResume(currentMissionId, abortController.signal)) {
+          const mappedEvent = mapSSEToStreamEvent(event);
+          if (mappedEvent) {
+            currentOnEvent(mappedEvent);
+          }
+        }
+        currentOnStatusChange?.("ready");
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
+        if (isBackendOfflineError(error)) {
+          currentOnStatusChange?.("offline");
+          currentOnError?.(error);
+        } else {
+          currentOnError?.(error);
+        }
+      } finally {
+        isStreaming = false;
+        currentOnStatusChange?.("ready");
+      }
     },
   };
 }

@@ -594,6 +594,18 @@ export default function MissionControl({
     };
   }, [eventStream, missionId, setRunState, refreshProgress]);
 
+  // Chantier 2.7 FIX 2 — re-attach to checkpointed mission on mount.
+  // Recovers tab close, network blip, and uvicorn restart. Backend emits
+  // run_end when there's no checkpoint, so this is safe for fresh missions.
+  useEffect(() => {
+    if (!hasLoaded) return;
+    if (eventStream.kind !== "fetch") return;
+    const stream = eventStream as MissionEventStream & { resume?: () => Promise<void> };
+    if (typeof stream.resume !== "function") return;
+    if (!mission || mission.status !== "active") return;
+    void stream.resume();
+  }, [eventStream, hasLoaded, mission, missionId]);
+
   useEffect(() => {
     setRunState(missionId, { isStreaming: false });
   }, [missionId, setRunState]);
