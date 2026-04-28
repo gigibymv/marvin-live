@@ -36,3 +36,9 @@ output/
 *.db-shm
 *.db-wal
 node_modules
+
+# Playwright / E2E test artifacts
+test-results/
+e2e/results/
+e2e-test/test-results/
+playwright-report/
