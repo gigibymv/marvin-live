@@ -114,6 +114,84 @@ function StateTag({ state }) {
   );
 }
 
+// Chantier 4 CP1: first-class hypothesis panel with computed status,
+// finding counts, and click-to-expand. Reads computed{} block from backend.
+function HypothesisPanel({ hypotheses, findings }) {
+  var _s = useState(null);
+  var expandedId = _s[0];
+  var setExpandedId = _s[1];
+
+  function statusColor(s) {
+    if (s === "SUPPORTED") return "var(--green)";
+    if (s === "WEAKENED") return "var(--red, #c43)";
+    if (s === "TESTING") return "var(--amber)";
+    return "var(--muted)";
+  }
+
+  function findingsForHypothesis(hypId) {
+    return (findings || []).filter(function (f) {
+      return (f.hypothesis_id || f.hypothesisId) === hypId;
+    });
+  }
+
+  return React.createElement("div", { style: { padding: "13px 20px", borderBottom: "1px solid var(--ruleh)" } },
+    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px", paddingBottom: "8px", borderBottom: "1px solid var(--ink)" } },
+      React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Hypotheses")
+    ),
+    hypotheses.map(function (h, idx) {
+      var label = h.label || ("H" + (idx + 1));
+      var isAbandoned = h.status === "abandoned";
+      var c = h.computed || { status: "NOT_STARTED", total: 0, known: 0, reasoned: 0, low_confidence: 0, contradicting: 0, supporting: 0 };
+      var isOpen = expandedId === h.id;
+      var linked = isOpen ? findingsForHypothesis(h.id) : [];
+
+      return React.createElement("div", {
+        key: h.id || ("h-" + idx),
+        style: {
+          padding: "8px 0",
+          borderBottom: "1px solid var(--rule)",
+          opacity: isAbandoned ? 0.45 : 1,
+          cursor: "pointer",
+        },
+        onClick: function () { setExpandedId(isOpen ? null : h.id); },
+      },
+        React.createElement("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "8px", marginBottom: "3px" } },
+          React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: "8px" } },
+            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 700, color: "var(--ink)" } }, label),
+            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", letterSpacing: ".08em", textTransform: "uppercase", color: statusColor(c.status), fontWeight: 600 } }, c.status.replace("_", " "))
+          ),
+          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)" } }, isOpen ? "\u25be" : "\u25b8")
+        ),
+        React.createElement("div", { style: { fontSize: "11px", lineHeight: 1.4, color: "var(--ink2)", marginBottom: "3px" } }, h.text || ""),
+        React.createElement("div", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", display: "flex", gap: "10px" } },
+          React.createElement("span", { style: { color: c.known > 0 ? "var(--green)" : "var(--muted)" } }, "K " + c.known),
+          React.createElement("span", null, "R " + c.reasoned),
+          React.createElement("span", null, "L " + c.low_confidence),
+          c.contradicting > 0
+            ? React.createElement("span", { style: { color: "var(--red, #c43)" } }, "\u2715 " + c.contradicting)
+            : null
+        ),
+        isOpen && linked.length > 0
+          ? React.createElement("div", { style: { marginTop: "6px", paddingLeft: "8px", borderLeft: "1px solid var(--rule)" } },
+              linked.map(function (f) {
+                return React.createElement("div", {
+                  key: f.id,
+                  style: { fontSize: "10.5px", color: "var(--ink2)", padding: "3px 0", display: "flex", gap: "6px", alignItems: "baseline" },
+                },
+                  React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "8px", textTransform: "uppercase", color: "var(--muted)", minWidth: "44px" } }, (f.agent_id || f.ag || "?")),
+                  React.createElement("span", null, f.claim_text || f.text || "")
+                );
+              })
+            )
+          : null,
+        isOpen && linked.length === 0
+          ? React.createElement("div", { style: { marginTop: "4px", fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)" } }, "No findings linked yet.")
+          : null
+      );
+    })
+  );
+}
+
 function Feed({ feedRef, ...props }) {
   var _s = useState(null);
   var expanded = _s[0];
@@ -319,32 +397,14 @@ export default function MissionControl(props) {
           })
         ),
 
-        // Hypotheses (CP1 chantier 2.6.1) — show H1..H4 labels + text once
-        // framing has produced them. Stays empty pre-framing.
+        // HypothesisPanel (Chantier 4 CP1) — first-class panel with computed
+        // status, finding counts (KNOWN/REASONED/LOW + contradicting), and
+        // click-to-expand showing linked findings. Pre-framing: empty.
         ((props.hypotheses && props.hypotheses.length > 0) ?
-          React.createElement("div", { style: { padding: "13px 20px", borderBottom: "1px solid var(--ruleh)" } },
-            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px", paddingBottom: "8px", borderBottom: "1px solid var(--ink)" } },
-              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Hypotheses")
-            ),
-            props.hypotheses.map(function (h, idx) {
-              var label = h.label || ("H" + (idx + 1));
-              var isAbandoned = h.status === "abandoned";
-              return React.createElement("div", {
-                key: h.id || ("h-" + idx),
-                style: {
-                  padding: "6px 0",
-                  borderBottom: "1px solid var(--rule)",
-                  opacity: isAbandoned ? 0.45 : 1,
-                }
-              },
-                React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "2px" } },
-                  React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 700, color: "var(--ink)" } }, label),
-                  React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".08em" } }, h.status || "active")
-                ),
-                React.createElement("div", { style: { fontSize: "11px", lineHeight: 1.4, color: "var(--ink2)" } }, h.text || "")
-              );
-            })
-          )
+          React.createElement(HypothesisPanel, {
+            hypotheses: props.hypotheses,
+            findings: props.findings || [],
+          })
         : null),
 
         // Deliverables

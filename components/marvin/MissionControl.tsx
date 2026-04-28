@@ -104,7 +104,21 @@ interface MissionControlViewProps {
   backendState?: BackendConnectionState;
   agents: { id: string; name: string; role: string; status: string; milestonesTotal?: number; milestonesDelivered?: number }[];
   checkpoints: { id: string; label: string; status: string }[];
-  hypotheses: { id: string; label?: string | null; text: string; status: string }[];
+  hypotheses: {
+    id: string;
+    label?: string | null;
+    text: string;
+    status: string;
+    computed?: {
+      status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED";
+      total: number;
+      known: number;
+      reasoned: number;
+      low_confidence: number;
+      contradicting: number;
+      supporting: number;
+    };
+  }[];
   activity?: Array<{ id: string; ag?: string; text?: string; ts?: string; claim_text?: string; confidence?: string }>;
   findings: Array<{ id: string; agent_id?: string | null; claim_text?: string; confidence?: string | null; ag?: string; text?: string; ts?: string; workstream_id?: string }>;
   deliverables: { id: string; label: string; status: string; href?: string }[];

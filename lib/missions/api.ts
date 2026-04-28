@@ -166,7 +166,21 @@ export async function getMissionProgress(missionId: string): Promise<{
     claim_text: string;
     agent_id: string | null;
   }>;
-  hypotheses?: Array<{ id: string; label?: string | null; text: string; status: string }>;
+  hypotheses?: Array<{
+    id: string;
+    label?: string | null;
+    text: string;
+    status: string;
+    computed?: {
+      status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED";
+      total: number;
+      known: number;
+      reasoned: number;
+      low_confidence: number;
+      contradicting: number;
+      supporting: number;
+    };
+  }>;
   deliverables?: Array<{
     id: string;
     deliverable_type: string;
