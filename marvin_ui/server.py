@@ -28,7 +28,10 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk, ToolMessage
+import sqlite3
+
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 from pydantic import BaseModel
 
@@ -264,14 +267,41 @@ def _get_mission_lock(mission_id: str) -> asyncio.Lock:
     return _mission_locks[mission_id]
 
 
+_checkpoint_conn: sqlite3.Connection | None = None
+
+
+def _build_checkpointer():
+    """Build the graph checkpointer.
+
+    Default: SqliteSaver backed by ~/.marvin/checkpoints.db so graph state
+    survives uvicorn restarts. Tests / ephemeral runs can opt out via
+    MARVIN_CHECKPOINT_BACKEND=memory.
+    """
+    global _checkpoint_conn
+    backend = os.getenv("MARVIN_CHECKPOINT_BACKEND", "sqlite").strip().lower()
+    if backend == "memory":
+        logger.info("Graph checkpointer: MemorySaver (in-process only)")
+        return MemorySaver()
+
+    db_path = os.getenv("MARVIN_CHECKPOINT_DB") or os.path.expanduser("~/.marvin/checkpoints.db")
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    # check_same_thread=False — sqlite3 conn shared across asyncio tasks /
+    # threadpool workers. SqliteSaver serializes its own writes via internal lock.
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    saver = SqliteSaver(conn)
+    saver.setup()
+    _checkpoint_conn = conn
+    logger.info("Graph checkpointer: SqliteSaver at %s", db_path)
+    return saver
+
+
 async def get_graph():
     """Get compiled graph singleton with checkpointer."""
     global _graph
     async with _graph_lock:
         if _graph is None:
-            checkpointer = MemorySaver()
+            checkpointer = _build_checkpointer()
             _graph = build_graph(checkpointer=checkpointer)
-            logger.info("Graph initialized with MemorySaver checkpointer")
         return _graph
 
 
