@@ -670,6 +670,35 @@ _PHASE_LABELS: dict[str, str] = {
     "done": "Mission complete",
 }
 
+# Hard-coded intent strings per node. Emitted immediately when a node becomes
+# active so the live feed has something to show during the LLM round-trip.
+# Only nodes with a user-facing display name (i.e., not in _DISPLAY_NAME with
+# value None) should appear here. System/control-flow nodes are excluded.
+_NODE_INTENT: dict[str, str] = {
+    "dora": "Mapping the competitive landscape",
+    "calculus": "Crunching financial signals",
+    "adversus": "Stress-testing the hypothesis",
+    "merlin": "Synthesising the verdict",
+    "synthesis_critic": "Refining the synthesis",
+    "papyrus_phase0": "Drafting the framing memo",
+    "papyrus_delivery": "Assembling the deliverable",
+    "orchestrator": "Coordinating mission tasks",
+    "orchestrator_qa": "Running quality checks",
+    "framing": "Framing the mission",
+    "framing_orchestrator": "Structuring the brief",
+}
+
+
+async def _emit_narration(agent: str, intent: str) -> str:
+    """Emit a narration event paired with agent_active.
+
+    Unlike agent_active this is NOT throttled — each activation carries a
+    unique intent string that the feed should always show.
+    """
+    import datetime
+    ts = datetime.datetime.utcnow().isoformat() + "Z"
+    return _sse_event("narration", {"agent": agent, "intent": intent, "ts": ts})
+
 
 async def _emit_phase_changed(phase: str) -> str:
     payload = {"phase": phase, "label": _PHASE_LABELS.get(phase, phase)}
@@ -749,6 +778,10 @@ async def _emit_for_update(
                 out.append(await _emit_agent_active(node_name))
                 if throttle_state is not None:
                     throttle_state[_throttle_key_active] = _now
+            # Always emit narration (not throttled) — unique signal per activation.
+            _intent = _NODE_INTENT.get(node_name)
+            if _intent:
+                out.append(await _emit_narration(node_name, _intent))
 
         for msg in output.get("messages", []):
             if isinstance(msg, AIMessage):

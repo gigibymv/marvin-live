@@ -100,9 +100,10 @@ var KIND_VISUALS = {
   gate:          { glyph: "◧", color: "var(--amber)", label: "Gate" },
   phase:         { glyph: "—", color: "var(--ink3)",  label: "Phase" },
   agent:         { glyph: "●", color: "var(--ink2)",  label: "Agent" },
-  agent_message: { glyph: "“", color: "var(--ink3)",  label: "Reasoning" },
-  tool_call:     { glyph: "→", color: "var(--muted)", label: "Tool" },
-  tool_result:   { glyph: "←", color: "var(--muted)", label: "Result" },
+  agent_message: { glyph: "\u201C", color: "var(--ink3)",  label: "Reasoning" },
+  narration:     { glyph: "\u2026", color: "var(--ink3)",  label: "Intent" },
+  tool_call:     { glyph: "\u2192", color: "var(--muted)", label: "Tool" },
+  tool_result:   { glyph: "\u2190", color: "var(--muted)", label: "Result" },
 };
 
 function kindVisual(kind) {

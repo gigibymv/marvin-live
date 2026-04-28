@@ -197,7 +197,8 @@ export default function MissionControl({
         | "agent"
         | "agent_message"
         | "tool_call"
-        | "tool_result";
+        | "tool_result"
+        | "narration";
       claim_text: string;
       confidence?: string;
       agent?: string;
@@ -419,6 +420,22 @@ export default function MissionControl({
                 agent: event.agent,
               }),
             );
+            break;
+          case "narration":
+            // Replace any existing narration entry from the same agent so only
+            // the latest intent is visible in the in-progress block.
+            setLiveFindings((current) => {
+              const filtered = current.filter(
+                (e) => !(e.kind === "narration" && e.agent === event.agent),
+              );
+              return filtered.concat({
+                id: makeMessageId(missionId, "narration"),
+                kind: "narration",
+                claim_text: event.intent,
+                agent: event.agent,
+                ts: event.ts,
+              });
+            });
             break;
           case "gate_pending": {
             // Chat-first gate UX. The modal no longer auto-opens; instead the

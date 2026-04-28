@@ -57,6 +57,7 @@ export type MissionStreamEvent =
   | { type: "agent_done"; agentId?: string; label?: string }
   | { type: "agent_active"; agent: string }
   | { type: "agent_message"; agent: string; text: string }
+  | { type: "narration"; agent: string; intent: string; ts?: string }
   | { type: "phase_changed"; phase: string; label?: string }
   | { type: "run_end" };
 
@@ -192,6 +193,12 @@ export function createEventSourceMissionEventStream(basePath = "/api/v1"): Missi
       addListener(source, "agent_active", onEvent, (payload) => ({
         type: "agent_active",
         agent: String(payload.agent ?? ""),
+      }));
+      addListener(source, "narration", onEvent, (payload) => ({
+        type: "narration",
+        agent: String(payload.agent ?? ""),
+        intent: String(payload.intent ?? ""),
+        ts: payload.ts ? String(payload.ts) : undefined,
       }));
       addListener(source, "run_end", onEvent, () => ({ type: "run_end" }));
 
@@ -443,6 +450,13 @@ function mapSSEToStreamEvent(event: SSEEvent): MissionStreamEvent | null {
         type: "agent_message",
         agent: String(event.agent ?? ""),
         text: String(event.text ?? ""),
+      };
+    case "narration":
+      return {
+        type: "narration",
+        agent: String(event.agent ?? ""),
+        intent: String(event.intent ?? ""),
+        ts: event.ts ? String(event.ts) : undefined,
       };
     case "run_end":
       return { type: "run_end" };
