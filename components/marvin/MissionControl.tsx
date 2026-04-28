@@ -1314,313 +1314,359 @@ export default function MissionControl({
               border: "1px solid #e5e2de",
               borderRadius: "14px",
               boxShadow: "0 32px 80px rgba(26,24,20,.22)",
-              padding: "22px 24px",
+              display: "flex",
+              flexDirection: "column",
+              maxHeight: "80vh",
+              padding: 0,
             }}
           >
+            {/* Header */}
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: "14px",
+                flexShrink: 0,
+                padding: "22px 24px 14px",
               }}
             >
-              <div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontFamily: "system-ui",
+                      fontSize: "9px",
+                      fontWeight: 600,
+                      letterSpacing: "0.14em",
+                      textTransform: "uppercase",
+                      color: "#8a8784",
+                      marginBottom: "5px",
+                    }}
+                  >
+                    Gate pending
+                  </div>
+                  <h2
+                    style={{
+                      fontFamily: "Georgia, serif",
+                      fontSize: "22px",
+                      fontWeight: 700,
+                      letterSpacing: "-0.02em",
+                      margin: 0,
+                    }}
+                  >
+                    {gateModal.title || "Validation required"}
+                  </h2>
+                </div>
+                <button
+                  onClick={handleGateClose}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#8a8784",
+                    display: "flex",
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M3 3l10 10M13 3L3 13"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Body — scrollable */}
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "0 24px",
+              }}
+            >
+              {gateModal.stage && (
                 <div
                   style={{
                     fontFamily: "system-ui",
                     fontSize: "9px",
-                    fontWeight: 600,
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
                     color: "#8a8784",
-                    marginBottom: "5px",
+                    marginBottom: "10px",
                   }}
                 >
-                  Gate pending
+                  Stage · {gateModal.stage}
                 </div>
-                <h2
-                  style={{
-                    fontFamily: "Georgia, serif",
-                    fontSize: "22px",
-                    fontWeight: 700,
-                    letterSpacing: "-0.02em",
-                    margin: 0,
-                  }}
-                >
-                  {gateModal.title || "Validation required"}
-                </h2>
-              </div>
-              <button
-                onClick={handleGateClose}
+              )}
+
+              <p
                 style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "#8a8784",
-                  display: "flex",
+                  fontSize: "13px",
+                  lineHeight: 1.6,
+                  color: "#3a362f",
+                  marginBottom: "14px",
                 }}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M3 3l10 10M13 3L3 13"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </button>
-            </div>
+                {gateModal.summary || "A gate is waiting for human review before the mission can proceed."}
+              </p>
 
-            {gateModal.stage && (
+              {gateModal.framing && (
+                <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
+                  <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
+                    Framing summary
+                  </div>
+                  {gateModal.framing.briefSummary && (
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "6px" }}>
+                      {gateModal.framing.briefSummary}
+                    </div>
+                  )}
+                  {gateModal.framing.missionAngle && (
+                    <div style={{ fontSize: "11px", lineHeight: 1.5, color: "#78716A" }}>
+                      Angle: {gateModal.framing.missionAngle}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {gateModal.coverage && (
+                <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
+                  <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
+                    Research coverage
+                  </div>
+                  <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "8px" }}>
+                    {gateModal.coverage.findings_total} findings across {gateModal.coverage.workstreams_with_material}/{gateModal.coverage.workstreams_total} workstreams · {gateModal.coverage.milestones_delivered}/{gateModal.coverage.milestones_total} milestones delivered
+                  </div>
+                  <div style={{ display: "grid", gap: "4px" }}>
+                    {gateModal.coverage.workstreams.map((w) => (
+                      <div key={w.id} style={{ display: "flex", justifyContent: "space-between", gap: "10px", fontSize: "11px", color: "#5a5854" }}>
+                        <span>{w.id} · {w.label}</span>
+                        <span>{w.findings_total} findings · {w.milestones_delivered}/{w.milestones_total}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {gateModal.merlinVerdict && (
+                <div style={{ marginBottom: "14px", border: "1px solid #d5e2d8", borderRadius: "8px", padding: "10px 12px", background: "rgba(45,110,78,.06)" }}>
+                  <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
+                    Merlin verdict · {gateModal.merlinVerdict.verdict}
+                  </div>
+                  {gateModal.merlinVerdict.notes && (
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                      {gateModal.merlinVerdict.notes}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(gateModal.unlocksOnApprove || gateModal.unlocksOnReject) && (
+                <div
+                  style={{
+                    border: "1px solid #e5e2de",
+                    borderRadius: "8px",
+                    padding: "10px 12px",
+                    marginBottom: "14px",
+                    background: "#fff",
+                  }}
+                >
+                  {gateModal.unlocksOnApprove && (
+                    <div style={{ fontSize: "12px", color: "#3a362f", marginBottom: gateModal.unlocksOnReject ? "6px" : 0 }}>
+                      <strong style={{ color: "#2D6E4E" }}>Approve →</strong> {gateModal.unlocksOnApprove}
+                    </div>
+                  )}
+                  {gateModal.unlocksOnReject && (
+                    <div style={{ fontSize: "12px", color: "#3a362f" }}>
+                      <strong style={{ color: "#8B6200" }}>Reject →</strong> {gateModal.unlocksOnReject}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {gateModal.hypotheses && gateModal.hypotheses.length > 0 && (
+                <div style={{ marginBottom: "14px" }}>
+                  <div
+                    style={{
+                      fontFamily: "system-ui",
+                      fontSize: "9px",
+                      fontWeight: 700,
+                      letterSpacing: "0.14em",
+                      textTransform: "uppercase",
+                      color: "#5a5854",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Hypotheses ({gateModal.hypotheses.length})
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                    {gateModal.hypotheses.map((h) => (
+                      <li key={h.id} style={{ marginBottom: "4px" }}>
+                        {h.text}
+                        {h.status && h.status !== "open" && (
+                          <span style={{ color: "#78716A", marginLeft: "6px", fontSize: "10px" }}>· {h.status}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {gateModal.researchFindings && gateModal.researchFindings.length > 0 && (
+                <div style={{ marginBottom: "14px" }}>
+                  <div
+                    style={{
+                      fontFamily: "system-ui",
+                      fontSize: "9px",
+                      fontWeight: 700,
+                      letterSpacing: "0.14em",
+                      textTransform: "uppercase",
+                      color: "#5a5854",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Recent claims{typeof gateModal.findingsTotal === "number" ? ` (showing ${gateModal.researchFindings.length} of ${gateModal.findingsTotal})` : ""}
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                    {gateModal.researchFindings.map((f, i) => (
+                      <li key={`${f.agent_id ?? "x"}-${i}`} style={{ marginBottom: "4px" }}>
+                        {f.claim_text}
+                        <span style={{ color: "#78716A", marginLeft: "6px", fontSize: "10px" }}>
+                          {f.agent_id ?? "agent"}{f.confidence ? ` · ${f.confidence}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {gateModal.redteamFindings && gateModal.redteamFindings.length > 0 && (
+                <div style={{ marginBottom: "14px", border: "1px solid rgba(139,98,0,0.3)", borderRadius: "8px", padding: "10px 12px", background: "rgba(139,98,0,.05)" }}>
+                  <div
+                    style={{
+                      fontFamily: "system-ui",
+                      fontSize: "9px",
+                      fontWeight: 700,
+                      letterSpacing: "0.14em",
+                      textTransform: "uppercase",
+                      color: "#8B6200",
+                      marginBottom: "6px",
+                    }}
+                  >
+                    Red-team challenges
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                    {gateModal.redteamFindings.map((f, i) => (
+                      <li key={`rt-${i}`}>{f.claim_text}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {gateModal.openRisks && gateModal.openRisks.length > 0 && (
+                <div style={{ marginBottom: "14px", color: "#8B6200", fontSize: "12px", lineHeight: 1.5 }}>
+                  <strong>Open risks:</strong>
+                  <ul style={{ margin: "4px 0 0", paddingLeft: "16px" }}>
+                    {gateModal.openRisks.map((risk, i) => (
+                      <li key={`risk-${i}`}>{risk}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {gateModal.arbiterFlags && gateModal.arbiterFlags.length > 0 && (
+                <div style={{ marginBottom: "14px", color: "#8B6200", fontSize: "12px", lineHeight: 1.5 }}>
+                  <strong>Arbiter flagged:</strong>
+                  <ul style={{ margin: "4px 0 0", paddingLeft: "16px" }}>
+                    {gateModal.arbiterFlags.map((flag, i) => (
+                      <li key={`af-${i}`}>{flag}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div
                 style={{
                   fontFamily: "system-ui",
                   fontSize: "9px",
-                  letterSpacing: "0.14em",
+                  letterSpacing: "0.1em",
                   textTransform: "uppercase",
                   color: "#8a8784",
-                  marginBottom: "10px",
+                  marginBottom: "16px",
                 }}
               >
-                Stage · {gateModal.stage}
+                Gate ID: {gateModal.gateId}
               </div>
-            )}
-
-            <p
-              style={{
-                fontSize: "13px",
-                lineHeight: 1.6,
-                color: "#3a362f",
-                marginBottom: "14px",
-              }}
-            >
-              {gateModal.summary || "A gate is waiting for human review before the mission can proceed."}
-            </p>
-
-            {gateModal.framing && (
-              <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
-                <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
-                  Framing summary
-                </div>
-                {gateModal.framing.briefSummary && (
-                  <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "6px" }}>
-                    {gateModal.framing.briefSummary}
-                  </div>
-                )}
-                {gateModal.framing.missionAngle && (
-                  <div style={{ fontSize: "11px", lineHeight: 1.5, color: "#78716A" }}>
-                    Angle: {gateModal.framing.missionAngle}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {gateModal.coverage && (
-              <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
-                <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
-                  Research coverage
-                </div>
-                <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "8px" }}>
-                  {gateModal.coverage.findings_total} findings across {gateModal.coverage.workstreams_with_material}/{gateModal.coverage.workstreams_total} workstreams · {gateModal.coverage.milestones_delivered}/{gateModal.coverage.milestones_total} milestones delivered
-                </div>
-                <div style={{ display: "grid", gap: "4px" }}>
-                  {gateModal.coverage.workstreams.map((w) => (
-                    <div key={w.id} style={{ display: "flex", justifyContent: "space-between", gap: "10px", fontSize: "11px", color: "#5a5854" }}>
-                      <span>{w.id} · {w.label}</span>
-                      <span>{w.findings_total} findings · {w.milestones_delivered}/{w.milestones_total}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {gateModal.merlinVerdict && (
-              <div style={{ marginBottom: "14px", border: "1px solid #d5e2d8", borderRadius: "8px", padding: "10px 12px", background: "rgba(45,110,78,.06)" }}>
-                <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
-                  Merlin verdict · {gateModal.merlinVerdict.verdict}
-                </div>
-                {gateModal.merlinVerdict.notes && (
-                  <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
-                    {gateModal.merlinVerdict.notes}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {(gateModal.unlocksOnApprove || gateModal.unlocksOnReject) && (
-              <div
-                style={{
-                  border: "1px solid #e5e2de",
-                  borderRadius: "8px",
-                  padding: "10px 12px",
-                  marginBottom: "14px",
-                  background: "#fff",
-                }}
-              >
-                {gateModal.unlocksOnApprove && (
-                  <div style={{ fontSize: "12px", color: "#3a362f", marginBottom: gateModal.unlocksOnReject ? "6px" : 0 }}>
-                    <strong style={{ color: "#2D6E4E" }}>Approve →</strong> {gateModal.unlocksOnApprove}
-                  </div>
-                )}
-                {gateModal.unlocksOnReject && (
-                  <div style={{ fontSize: "12px", color: "#3a362f" }}>
-                    <strong style={{ color: "#8B6200" }}>Reject →</strong> {gateModal.unlocksOnReject}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {gateModal.hypotheses && gateModal.hypotheses.length > 0 && (
-              <div style={{ marginBottom: "14px", maxHeight: "180px", overflowY: "auto" }}>
-                <div
-                  style={{
-                    fontFamily: "system-ui",
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
-                    color: "#5a5854",
-                    marginBottom: "6px",
-                  }}
-                >
-                  Hypotheses ({gateModal.hypotheses.length})
-                </div>
-                <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
-                  {gateModal.hypotheses.map((h) => (
-                    <li key={h.id} style={{ marginBottom: "4px" }}>
-                      {h.text}
-                      {h.status && h.status !== "open" && (
-                        <span style={{ color: "#78716A", marginLeft: "6px", fontSize: "10px" }}>· {h.status}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {gateModal.researchFindings && gateModal.researchFindings.length > 0 && (
-              <div style={{ marginBottom: "14px", maxHeight: "180px", overflowY: "auto" }}>
-                <div
-                  style={{
-                    fontFamily: "system-ui",
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
-                    color: "#5a5854",
-                    marginBottom: "6px",
-                  }}
-                >
-                  Recent claims{typeof gateModal.findingsTotal === "number" ? ` (showing ${gateModal.researchFindings.length} of ${gateModal.findingsTotal})` : ""}
-                </div>
-                <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
-                  {gateModal.researchFindings.map((f, i) => (
-                    <li key={`${f.agent_id ?? "x"}-${i}`} style={{ marginBottom: "4px" }}>
-                      {f.claim_text}
-                      <span style={{ color: "#78716A", marginLeft: "6px", fontSize: "10px" }}>
-                        {f.agent_id ?? "agent"}{f.confidence ? ` · ${f.confidence}` : ""}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {gateModal.redteamFindings && gateModal.redteamFindings.length > 0 && (
-              <div style={{ marginBottom: "14px", border: "1px solid rgba(139,98,0,0.3)", borderRadius: "8px", padding: "10px 12px", background: "rgba(139,98,0,.05)" }}>
-                <div
-                  style={{
-                    fontFamily: "system-ui",
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    letterSpacing: "0.14em",
-                    textTransform: "uppercase",
-                    color: "#8B6200",
-                    marginBottom: "6px",
-                  }}
-                >
-                  Red-team challenges
-                </div>
-                <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
-                  {gateModal.redteamFindings.map((f, i) => (
-                    <li key={`rt-${i}`}>{f.claim_text}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {gateModal.openRisks && gateModal.openRisks.length > 0 && (
-              <div style={{ marginBottom: "14px", color: "#8B6200", fontSize: "12px", lineHeight: 1.5 }}>
-                <strong>Open risks:</strong>
-                <ul style={{ margin: "4px 0 0", paddingLeft: "16px" }}>
-                  {gateModal.openRisks.map((risk, i) => (
-                    <li key={`risk-${i}`}>{risk}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {gateModal.arbiterFlags && gateModal.arbiterFlags.length > 0 && (
-              <div style={{ marginBottom: "14px", color: "#8B6200", fontSize: "12px", lineHeight: 1.5 }}>
-                <strong>Arbiter flagged:</strong>
-                <ul style={{ margin: "4px 0 0", paddingLeft: "16px" }}>
-                  {gateModal.arbiterFlags.map((flag, i) => (
-                    <li key={`af-${i}`}>{flag}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div
-              style={{
-                fontFamily: "system-ui",
-                fontSize: "9px",
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-                color: "#8a8784",
-                marginBottom: "16px",
-              }}
-            >
-              Gate ID: {gateModal.gateId}
             </div>
 
-            {gateModal.format === "data_decision" && gateModal.options && gateModal.options.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "8px" }}>
-                {gateModal.options.map((opt) => (
+            {/* Footer */}
+            <div
+              style={{
+                flexShrink: 0,
+                padding: "14px 24px 22px",
+                borderTop: "1px solid #e5e2de",
+                background: "#f9f7f4",
+              }}
+            >
+              {gateModal.format === "data_decision" && gateModal.options && gateModal.options.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "8px" }}>
+                  {gateModal.options.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleGateDecision(
+                        gateModal.gateId,
+                        opt.value as "skip_calculus" | "proceed_low_confidence" | "request_data_room",
+                        opt.label,
+                      )}
+                      style={{
+                        textAlign: "left",
+                        padding: "12px 14px",
+                        background: "#fff",
+                        border: "1px solid #d5d2ce",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        fontFamily: "system-ui",
+                      }}
+                    >
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1a1814", marginBottom: "4px" }}>
+                        {opt.label}
+                      </div>
+                      {opt.consequence && (
+                        <div style={{ fontSize: "12px", color: "#5a5854", lineHeight: 1.4 }}>
+                          {opt.consequence}
+                        </div>
+                      )}
+                    </button>
+                  ))}
                   <button
-                    key={opt.value}
-                    onClick={() => handleGateDecision(
-                      gateModal.gateId,
-                      opt.value as "skip_calculus" | "proceed_low_confidence" | "request_data_room",
-                      opt.label,
-                    )}
+                    onClick={handleGateClose}
                     style={{
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      background: "#fff",
-                      border: "1px solid #d5d2ce",
-                      borderRadius: "8px",
+                      alignSelf: "flex-start",
+                      marginTop: "4px",
+                      padding: "8px 0",
+                      background: "transparent",
+                      border: "none",
                       cursor: "pointer",
                       fontFamily: "system-ui",
+                      fontSize: "12px",
+                      color: "#78716A",
+                      textDecoration: "underline",
                     }}
                   >
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#1a1814", marginBottom: "4px" }}>
-                      {opt.label}
-                    </div>
-                    {opt.consequence && (
-                      <div style={{ fontSize: "12px", color: "#5a5854", lineHeight: 1.4 }}>
-                        {opt.consequence}
-                      </div>
-                    )}
+                    Decide later
                   </button>
-                ))}
+                </div>
+              ) : (
+              <div style={{ display: "flex", gap: "10px", justifyContent: "space-between", alignItems: "center" }}>
                 <button
                   onClick={handleGateClose}
                   style={{
-                    alignSelf: "flex-start",
-                    marginTop: "4px",
-                    padding: "8px 0",
+                    padding: "10px 16px",
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
@@ -1629,64 +1675,47 @@ export default function MissionControl({
                     color: "#78716A",
                     textDecoration: "underline",
                   }}
+                  title="Close without losing the pending gate. State is preserved — you can decide later."
                 >
                   Decide later
                 </button>
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <button
+                    onClick={() => handleGateReject(gateModal.gateId, "")}
+                    style={{
+                      padding: "10px 20px",
+                      background: "#fff",
+                      border: "1px solid #d5d2ce",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      fontFamily: "system-ui",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      color: "#5a5854",
+                    }}
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => handleGateApprove(gateModal.gateId, "")}
+                    style={{
+                      padding: "10px 20px",
+                      background: "#1a1814",
+                      border: "none",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      fontFamily: "system-ui",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      color: "#fff",
+                    }}
+                  >
+                    Approve
+                  </button>
+                </div>
               </div>
-            ) : (
-            <div style={{ display: "flex", gap: "10px", justifyContent: "space-between", alignItems: "center" }}>
-              <button
-                onClick={handleGateClose}
-                style={{
-                  padding: "10px 16px",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  fontFamily: "system-ui",
-                  fontSize: "12px",
-                  color: "#78716A",
-                  textDecoration: "underline",
-                }}
-                title="Close without losing the pending gate. State is preserved — you can decide later."
-              >
-                Decide later
-              </button>
-              <div style={{ display: "flex", gap: "12px" }}>
-                <button
-                  onClick={() => handleGateReject(gateModal.gateId, "")}
-                  style={{
-                    padding: "10px 20px",
-                    background: "#fff",
-                    border: "1px solid #d5d2ce",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontFamily: "system-ui",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    color: "#5a5854",
-                  }}
-                >
-                  Reject
-                </button>
-                <button
-                  onClick={() => handleGateApprove(gateModal.gateId, "")}
-                  style={{
-                    padding: "10px 20px",
-                    background: "#1a1814",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontFamily: "system-ui",
-                    fontSize: "13px",
-                    fontWeight: 500,
-                    color: "#fff",
-                  }}
-                >
-                  Approve
-                </button>
-              </div>
+              )}
             </div>
-            )}
           </div>
         </div>
       )}
