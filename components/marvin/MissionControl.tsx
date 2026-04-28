@@ -1318,6 +1318,7 @@ export default function MissionControl({
               flexDirection: "column",
               maxHeight: "80vh",
               padding: 0,
+              fontFamily: '"Geist", sans-serif',
             }}
           >
             {/* Header */}
@@ -1337,7 +1338,7 @@ export default function MissionControl({
                 <div>
                   <div
                     style={{
-                      fontFamily: "system-ui",
+                      fontFamily: '"Geist Mono", monospace',
                       fontSize: "9px",
                       fontWeight: 600,
                       letterSpacing: "0.14em",
@@ -1350,7 +1351,7 @@ export default function MissionControl({
                   </div>
                   <h2
                     style={{
-                      fontFamily: "Georgia, serif",
+                      fontFamily: '"Newsreader", "Georgia", serif',
                       fontSize: "22px",
                       fontWeight: 700,
                       letterSpacing: "-0.02em",
@@ -1393,7 +1394,7 @@ export default function MissionControl({
               {gateModal.stage && (
                 <div
                   style={{
-                    fontFamily: "system-ui",
+                    fontFamily: '"Geist Mono", monospace',
                     fontSize: "9px",
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
@@ -1418,7 +1419,7 @@ export default function MissionControl({
 
               {gateModal.framing && (
                 <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
-                  <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
+                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
                     Framing summary
                   </div>
                   {gateModal.framing.briefSummary && (
@@ -1436,7 +1437,7 @@ export default function MissionControl({
 
               {gateModal.coverage && (
                 <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
-                  <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
+                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
                     Research coverage
                   </div>
                   <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "8px" }}>
@@ -1455,7 +1456,7 @@ export default function MissionControl({
 
               {gateModal.merlinVerdict && (
                 <div style={{ marginBottom: "14px", border: "1px solid #d5e2d8", borderRadius: "8px", padding: "10px 12px", background: "rgba(45,110,78,.06)" }}>
-                  <div style={{ fontFamily: "system-ui", fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
+                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
                     Merlin verdict · {gateModal.merlinVerdict.verdict}
                   </div>
                   {gateModal.merlinVerdict.notes && (
@@ -1493,7 +1494,7 @@ export default function MissionControl({
                 <div style={{ marginBottom: "14px" }}>
                   <div
                     style={{
-                      fontFamily: "system-ui",
+                      fontFamily: '"Geist Mono", monospace',
                       fontSize: "9px",
                       fontWeight: 700,
                       letterSpacing: "0.14em",
@@ -1521,7 +1522,7 @@ export default function MissionControl({
                 <div style={{ marginBottom: "14px" }}>
                   <div
                     style={{
-                      fontFamily: "system-ui",
+                      fontFamily: '"Geist Mono", monospace',
                       fontSize: "9px",
                       fontWeight: 700,
                       letterSpacing: "0.14em",
@@ -1549,7 +1550,7 @@ export default function MissionControl({
                 <div style={{ marginBottom: "14px", border: "1px solid rgba(139,98,0,0.3)", borderRadius: "8px", padding: "10px 12px", background: "rgba(139,98,0,.05)" }}>
                   <div
                     style={{
-                      fontFamily: "system-ui",
+                      fontFamily: '"Geist Mono", monospace',
                       fontSize: "9px",
                       fontWeight: 700,
                       letterSpacing: "0.14em",
@@ -1592,7 +1593,7 @@ export default function MissionControl({
 
               <div
                 style={{
-                  fontFamily: "system-ui",
+                  fontFamily: '"Geist Mono", monospace',
                   fontSize: "9px",
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
@@ -1630,7 +1631,7 @@ export default function MissionControl({
                         border: "1px solid #d5d2ce",
                         borderRadius: "8px",
                         cursor: "pointer",
-                        fontFamily: "system-ui",
+                        fontFamily: '"Geist Mono", monospace',
                       }}
                     >
                       <div style={{ fontSize: "13px", fontWeight: 600, color: "#1a1814", marginBottom: "4px" }}>
@@ -1652,7 +1653,7 @@ export default function MissionControl({
                       background: "transparent",
                       border: "none",
                       cursor: "pointer",
-                      fontFamily: "system-ui",
+                      fontFamily: '"Geist Mono", monospace',
                       fontSize: "12px",
                       color: "#78716A",
                       textDecoration: "underline",
@@ -1670,7 +1671,7 @@ export default function MissionControl({
                     background: "transparent",
                     border: "none",
                     cursor: "pointer",
-                    fontFamily: "system-ui",
+                    fontFamily: '"Geist Mono", monospace',
                     fontSize: "12px",
                     color: "#78716A",
                     textDecoration: "underline",
@@ -1688,7 +1689,7 @@ export default function MissionControl({
                       border: "1px solid #d5d2ce",
                       borderRadius: "8px",
                       cursor: "pointer",
-                      fontFamily: "system-ui",
+                      fontFamily: '"Geist Mono", monospace',
                       fontSize: "13px",
                       fontWeight: 500,
                       color: "#5a5854",
@@ -1704,7 +1705,7 @@ export default function MissionControl({
                       border: "none",
                       borderRadius: "8px",
                       cursor: "pointer",
-                      fontFamily: "system-ui",
+                      fontFamily: '"Geist Mono", monospace',
                       fontSize: "13px",
                       fontWeight: 500,
                       color: "#fff",
