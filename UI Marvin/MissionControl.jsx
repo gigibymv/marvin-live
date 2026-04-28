@@ -114,6 +114,77 @@ function StateTag({ state }) {
   );
 }
 
+// Chantier 4 CP2: rich finding card with confidence badge, hypothesis link,
+// agent + timestamp, source citation, and impact-based emphasis.
+function FindingCard({ finding, isOpen, onToggle }) {
+  var f = finding || {};
+  var conf = (f.confidence || "").toUpperCase();
+  var confColor = conf === "KNOWN" ? "var(--green)"
+    : conf === "REASONED" ? "var(--amber)"
+    : "var(--muted)";
+  var confLabel = conf === "LOW_CONFIDENCE" ? "LOW" : (conf || "—");
+  var hypothesisLabel = f.hypothesis_label || (f.hypothesis_id ? "·" : "");
+  var isLoadBearing = f.impact === "load_bearing";
+  var hasSource = !!(f.source_id || f.source);
+  var clickable = hasSource;
+
+  return React.createElement("div", {
+    style: {
+      borderBottom: "1px solid var(--rule)",
+      borderLeft: isLoadBearing ? "3px solid var(--ink)" : "3px solid transparent",
+      paddingLeft: "8px",
+      background: isLoadBearing ? "rgba(26,24,20,.03)" : "transparent",
+    }
+  },
+    React.createElement("div", {
+      style: {
+        display: "grid",
+        gridTemplateColumns: "60px 1fr 36px",
+        gap: "0 10px",
+        alignItems: "baseline",
+        padding: "9px 0",
+        cursor: clickable ? "pointer" : "default",
+      },
+      onClick: clickable ? onToggle : null,
+    },
+      // Left column: agent + confidence badge stacked
+      React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: "3px" } },
+        React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink)" } }, f.ag || f.agent_id || "?"),
+        React.createElement("span", {
+          style: {
+            fontFamily: "var(--m)", fontSize: "8px", fontWeight: 700,
+            letterSpacing: ".1em", color: confColor,
+            border: "1px solid " + confColor, padding: "1px 4px",
+            display: "inline-block", width: "fit-content",
+          }
+        }, confLabel)
+      ),
+      // Center column: claim text + meta line
+      React.createElement("div", { style: { minWidth: 0 } },
+        React.createElement("span", { style: { fontFamily: "var(--g)", fontSize: "12.5px", lineHeight: 1.45, color: "var(--ink2)", fontWeight: isLoadBearing ? 600 : 400 } }, f.text || f.claim_text || ""),
+        React.createElement("div", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", marginTop: "3px", display: "flex", gap: "8px" } },
+          hypothesisLabel
+            ? React.createElement("span", { style: { color: "var(--ink3)", fontWeight: 600 } }, hypothesisLabel)
+            : null,
+          isLoadBearing
+            ? React.createElement("span", { style: { color: "var(--ink)", fontWeight: 700, letterSpacing: ".06em" } }, "LOAD-BEARING")
+            : null,
+          hasSource
+            ? React.createElement("span", null, isOpen ? "\u25be source" : "\u25b8 source")
+            : null
+        )
+      ),
+      // Right column: timestamp
+      React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", textAlign: "right" } }, f.ts || "")
+    ),
+    isOpen && hasSource
+      ? React.createElement("div", { style: { paddingBottom: "8px", paddingLeft: "70px" } },
+          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--ink3)", lineHeight: 1.6, fontStyle: "italic" } }, f.source || ("Source: " + f.source_id))
+        )
+      : null
+  );
+}
+
 // Chantier 4 CP1: first-class hypothesis panel with computed status,
 // finding counts, and click-to-expand. Reads computed{} block from backend.
 function HypothesisPanel({ hypotheses, findings }) {
@@ -272,32 +343,12 @@ function Feed({ feedRef, ...props }) {
       ),
       completed.map(function (e) {
         var open = expanded === e.id;
-        return React.createElement("div", { key: e.id, style: { borderBottom: "1px solid var(--rule)" } },
-          // Main row — strict grid
-          React.createElement("div", {
-            style: {
-              display: "grid",
-              gridTemplateColumns: COL_AG + " 1fr " + COL_TS,
-              gap: "0 10px",
-              alignItems: "baseline",
-              padding: "8px 0",
-              cursor: e.source ? "pointer" : "default"
-            }, onClick: e.source ? function () { setExpanded(open ? null : e.id); } : null
-          },
-            // Agent
-            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 500, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)" } }, e.ag),
-            // Text + conf dot
-            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "6px", minWidth: 0 } },
-              React.createElement("span", { style: { fontFamily: "var(--g)", fontSize: "12.5px", lineHeight: 1.45, color: "var(--ink2)" } }, e.text)
-            ),
-            // Timestamp
-            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", textAlign: "right" } }, e.ts)
-          ),
-          // Source expansion
-          open && e.source ? React.createElement("div", { style: { paddingBottom: "8px", paddingLeft: "74px" } },
-            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--ink3)", lineHeight: 1.6, fontStyle: "italic" } }, e.source)
-          ) : null
-        );
+        return React.createElement(FindingCard, {
+          key: e.id,
+          finding: e,
+          isOpen: open,
+          onToggle: function () { setExpanded(open ? null : e.id); },
+        });
       })
     )
   );

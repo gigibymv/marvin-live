@@ -1156,6 +1156,7 @@ async def get_mission_progress(mission_id: str):
     deliverables = store.list_deliverables(mission_id)
     workstreams = store.list_workstreams(mission_id)
     mission_brief = store.get_mission_brief(mission_id)
+    _hypothesis_label_by_id = {h.id: (h.label or "") for h in hypotheses}
     gate_material = {
         g.id: evaluate_gate_material(
             store,
@@ -1208,9 +1209,13 @@ async def get_mission_progress(mission_id: str):
                 "id": f.id,
                 "workstream_id": f.workstream_id,
                 "hypothesis_id": f.hypothesis_id,
+                "hypothesis_label": _hypothesis_label_by_id.get(f.hypothesis_id or ""),
                 "confidence": f.confidence,
                 "claim_text": f.claim_text,
                 "agent_id": f.agent_id,
+                "source_id": f.source_id,
+                "impact": f.impact,  # Chantier 4 CP2: drives load_bearing emphasis
+                "created_at": f.created_at,
             }
             for f in findings
         ],

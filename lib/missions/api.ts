@@ -161,10 +161,13 @@ export async function getMissionProgress(missionId: string): Promise<{
     id: string;
     workstream_id?: string | null;
     hypothesis_id?: string | null;
+    hypothesis_label?: string | null;
     source_id: string | null;
     confidence: string | null;
     claim_text: string;
     agent_id: string | null;
+    impact?: "load_bearing" | "supporting" | "color" | null;
+    created_at?: string | null;
   }>;
   hypotheses?: Array<{
     id: string;

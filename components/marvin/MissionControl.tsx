@@ -120,7 +120,20 @@ interface MissionControlViewProps {
     };
   }[];
   activity?: Array<{ id: string; ag?: string; text?: string; ts?: string; claim_text?: string; confidence?: string }>;
-  findings: Array<{ id: string; agent_id?: string | null; claim_text?: string; confidence?: string | null; ag?: string; text?: string; ts?: string; workstream_id?: string }>;
+  findings: Array<{
+    id: string;
+    agent_id?: string | null;
+    claim_text?: string;
+    confidence?: string | null;
+    ag?: string;
+    text?: string;
+    ts?: string;
+    workstream_id?: string;
+    hypothesis_id?: string | null;
+    hypothesis_label?: string | null;
+    source_id?: string | null;
+    impact?: "load_bearing" | "supporting" | "color" | null;
+  }>;
   deliverables: { id: string; label: string; status: string; href?: string }[];
   activeAgent: string | null;
   workstreamContent?: {
@@ -1038,13 +1051,18 @@ export default function MissionControl({
     id: f.id,
     ag: normalizeAgentName(f.agent ?? f.agent_id ?? f.ag),
     text: f.claim_text ?? f.text ?? "",
-    ts: f.ts ?? "",
+    ts: f.ts ?? f.created_at ?? "",
     confidence: f.confidence,
     workstream_id: f.workstream_id ?? f.workstreamId,
     agent_id: f.agent ?? f.agent_id,
     claim_text: f.claim_text,
     kind: f.kind ?? "finding",
     href: f.href,
+    // Chantier 4 CP2: enrich for FindingCard.
+    hypothesis_id: f.hypothesis_id ?? f.hypothesisId ?? null,
+    hypothesis_label: f.hypothesis_label ?? null,
+    source_id: f.source_id ?? null,
+    impact: f.impact ?? null,
   });
   const allFindings = (progress?.findings ?? []).map(normalizeFinding);
   // Newest-on-top: the rail is a live feed; users want the most recent event
