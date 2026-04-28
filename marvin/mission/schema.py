@@ -84,6 +84,7 @@ class Finding(MarvinModel):
     human_validated: bool = False
     created_at: str | None = None
     impact: FindingImpact | None = None  # Chantier 4: load_bearing | supporting | color
+    source_type: str | None = None  # sec_filing | web | data_room | inference | press
 
     @model_validator(mode="after")
     def validate_known_source(self) -> "Finding":

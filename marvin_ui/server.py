@@ -478,6 +478,7 @@ def _build_finding_added_from_emit(payload: dict) -> dict:
         ("workstream_id", "workstreamId"),
         ("hypothesis_id", "hypothesisId"),
         ("source_id", "sourceId"),
+        ("source_type", "sourceType"),
         ("created_at", "ts"),
     ):
         value = payload.get(src_key)

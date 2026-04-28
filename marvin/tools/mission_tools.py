@@ -402,6 +402,7 @@ def add_finding_to_mission(
     workstream_id: str | None = None,
     hypothesis_id: str | None = None,
     source_id: str | None = None,
+    source_type: str | None = None,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
     """Add a finding to the mission.
@@ -410,6 +411,7 @@ def add_finding_to_mission(
     BEFORE insert. Invalid references raise ValueError with the allowed set,
     so the LLM tool-loop receives a corrective message instead of an opaque
     SQLite FOREIGN KEY error. Pass None when no link applies.
+    source_type: classify origin (sec_filing/web/data_room/press/inference). Default inference.
     """
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
@@ -543,6 +545,7 @@ def add_finding_to_mission(
         claim_text=claim_text,
         confidence=confidence,
         source_id=source_id,
+        source_type=source_type,
         agent_id=agent_id,
         created_at=utc_now_iso(),
     )
@@ -557,6 +560,7 @@ def add_finding_to_mission(
             "workstream_id": workstream_id,
             "hypothesis_id": hypothesis_id,
             "source_id": source_id,
+            "source_type": source_type,
             "created_at": finding.created_at,
         },
     )

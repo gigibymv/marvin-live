@@ -133,6 +133,7 @@ interface MissionControlViewProps {
     hypothesis_id?: string | null;
     hypothesis_label?: string | null;
     source_id?: string | null;
+    source_type?: string | null;
     impact?: "load_bearing" | "supporting" | "color" | null;
   }>;
   deliverables: { id: string; label: string; status: string; href?: string; onOpen?: () => void }[];
@@ -1077,6 +1078,7 @@ export default function MissionControl({
     hypothesis_id: f.hypothesis_id ?? f.hypothesisId ?? null,
     hypothesis_label: f.hypothesis_label ?? null,
     source_id: f.source_id ?? null,
+    source_type: f.source_type ?? f.sourceType ?? null,
     impact: f.impact ?? null,
   });
   const allFindings = (progress?.findings ?? []).map(normalizeFinding);

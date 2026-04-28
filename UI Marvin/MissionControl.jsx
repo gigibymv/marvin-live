@@ -133,11 +133,21 @@ function FindingCard({ finding, isOpen, onToggle }) {
   var isLoadBearing = f.impact === "load_bearing";
   var hasSource = !!(f.source_id || f.source);
   var clickable = hasSource;
+  var sourceTypeMap = {
+    sec_filing: { label: "SEC", color: "var(--ink)" },
+    web: { label: "WEB", color: "var(--ink3)" },
+    data_room: { label: "DATA", color: "var(--green)" },
+    press: { label: "PRESS", color: "var(--ink3)" },
+    inference: { label: "INFERENCE", color: "var(--amber)" },
+  };
+  var st = f.source_type || f.sourceType || null;
+  var sourceBadge = sourceTypeMap[st] || { label: "INFERENCE", color: "var(--amber)" };
+  var leftBorderColor = isLoadBearing ? "var(--ink)" : (!isLoadBearing && !st) ? "var(--amber)" : "transparent";
 
   return React.createElement("div", {
     style: {
       borderBottom: "1px solid var(--rule)",
-      borderLeft: isLoadBearing ? "3px solid var(--ink)" : "3px solid transparent",
+      borderLeft: "3px solid " + leftBorderColor,
       paddingLeft: "8px",
       background: isLoadBearing ? "rgba(26,24,20,.03)" : "transparent",
     }
@@ -153,9 +163,17 @@ function FindingCard({ finding, isOpen, onToggle }) {
       },
       onClick: clickable ? onToggle : null,
     },
-      // Left column: agent + confidence badge stacked
+      // Left column: agent + source badge + confidence badge stacked
       React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: "3px" } },
         React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink)" } }, f.ag || f.agent_id || "?"),
+        React.createElement("span", {
+          style: {
+            fontFamily: "var(--m)", fontSize: "8px", fontWeight: 700,
+            letterSpacing: ".1em", color: sourceBadge.color,
+            border: "1px solid " + sourceBadge.color, padding: "1px 4px",
+            display: "inline-block", width: "fit-content",
+          }
+        }, sourceBadge.label),
         React.createElement("span", {
           style: {
             fontFamily: "var(--m)", fontSize: "8px", fontWeight: 700,
