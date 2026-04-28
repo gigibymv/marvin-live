@@ -44,7 +44,13 @@ const CHECKPOINTS = [];
 
 const HYP = [];
 
-const AGENTS = [];
+const AGENTS = [
+  { id: "dora", name: "Dora" },
+  { id: "calculus", name: "Calculus" },
+  { id: "adversus", name: "Adversus" },
+  { id: "merlin", name: "Merlin" },
+  { id: "papyrus", name: "Papyrus" },
+];
 
 const WS = [
   { id: "ws1", label: "Competitive" },
