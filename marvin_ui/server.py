@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import queue
+import time
 import re
 import uuid
 from contextlib import asynccontextmanager
@@ -126,6 +127,54 @@ _TOOL_SUMMARIES: dict[str, callable] = {
     "set_merlin_verdict": lambda r: f"Verdict: {r.get('verdict', '')}",
     "add_hypothesis_to_mission": lambda r: "Hypothesis recorded",
     "persist_source_for_mission": lambda r: "Source added",
+    # Humanized labels for common tool calls surfaced in the live rail
+    "tavily_search": lambda r: (
+        f"Searching the web for {str(r.get('query', r.get('result', {}).get('query', '')))[:40]}"
+        if (r.get('query') or r.get('result', {}).get('query'))
+        else "Searching the web"
+    ),
+    "search_company": lambda r: (
+        f"Looking up company: {str(r.get('company_name', ''))[:40]}"
+        if r.get('company_name')
+        else "Looking up company"
+    ),
+    "search_sec_filings": lambda r: (
+        f"Searching SEC filings for {str(r.get('company_name', ''))[:30]}"
+        if r.get('company_name')
+        else "Searching SEC filings"
+    ),
+    "get_recent_filings": lambda r: (
+        f"Fetching {r.get('filing_type', '')} filings for {str(r.get('company_name', ''))[:30]}"
+        if r.get('company_name')
+        else "Fetching filings"
+    ),
+    "parse_data_room": lambda r: (
+        f"Reading {str(r.get('file_path', ''))[-40:]}"
+        if r.get('file_path')
+        else "Reading data room file"
+    ),
+    "quality_of_earnings": lambda r: "Running quality-of-earnings analysis",
+    "cohort_analysis": lambda r: "Running cohort analysis",
+    "compute_cac_ltv": lambda r: "Computing CAC / LTV metrics",
+    "concentration_analysis": lambda r: "Running concentration analysis",
+    "anomaly_detector": lambda r: "Scanning for anomalies",
+    "attack_hypothesis": lambda r: "Stress-testing hypothesis",
+    "generate_stress_scenarios": lambda r: "Generating stress scenarios",
+    "identify_weakest_link": lambda r: "Identifying weakest link",
+    "run_ansoff": lambda r: "Running Ansoff growth analysis",
+    "build_bottom_up_tam": lambda r: "Building bottom-up TAM",
+    "analyze_market_data": lambda r: "Analysing market data",
+    "run_pestel": lambda r: "Running PESTEL analysis",
+    "moat_analysis": lambda r: "Running moat analysis",
+    "win_loss_framework": lambda r: "Running win/loss framework",
+    "check_mece": lambda r: "Checking MECE coverage",
+    "check_internal_consistency": lambda r: "Checking internal consistency",
+    "get_storyline_findings": lambda r: "Loading storyline findings",
+    "generate_framing_memo": lambda r: "Generating framing memo",
+    "generate_workstream_report": lambda r: "Generating workstream report",
+    "generate_report_pdf": lambda r: "Generating PDF report",
+    "generate_exec_summary": lambda r: "Generating executive summary",
+    "generate_data_book": lambda r: "Generating data book",
 }
 
 
@@ -639,10 +688,16 @@ async def _emit_for_update(
     event: dict,
     current_agent: str | None,
     current_phase: str | None,
+    throttle_state: dict[tuple[str, str], float] | None = None,
 ) -> tuple[list[str], str | None, str | None, bool]:
     """Translate one graph.astream update into SSE strings.
 
     Returns (sse_strings, new_current_agent, new_current_phase, is_interrupt).
+
+    throttle_state: mutable dict keyed by (event_type, node_name) → last emit
+    timestamp (time.monotonic()). Limits agent_active, tool_call, and agent_done
+    events to at most one per 500 ms per (type, node) pair. Pass the same dict
+    object across calls within a stream session.
     """
     out: list[str] = []
     if "__interrupt__" in event:
@@ -679,9 +734,21 @@ async def _emit_for_update(
         # findings via tools never flips to "running".
         if node_name != current_agent:
             if current_agent is not None:
-                out.append(await _emit_agent_done(current_agent))
+                _throttle_key_done = ("agent_done", current_agent)
+                _now = time.monotonic()
+                _last_done = (throttle_state or {}).get(_throttle_key_done, 0.0)
+                if _now - _last_done >= 0.5:
+                    out.append(await _emit_agent_done(current_agent))
+                    if throttle_state is not None:
+                        throttle_state[_throttle_key_done] = _now
             current_agent = node_name
-            out.append(await _emit_agent_active(node_name))
+            _throttle_key_active = ("agent_active", node_name)
+            _now = time.monotonic()
+            _last_active = (throttle_state or {}).get(_throttle_key_active, 0.0)
+            if _now - _last_active >= 0.5:
+                out.append(await _emit_agent_active(node_name))
+                if throttle_state is not None:
+                    throttle_state[_throttle_key_active] = _now
 
         for msg in output.get("messages", []):
             if isinstance(msg, AIMessage):
@@ -702,7 +769,13 @@ async def _emit_for_update(
                 for call in tool_calls:
                     name = call.get("name") if isinstance(call, dict) else getattr(call, "name", None)
                     if name:
-                        out.append(await _emit_tool_call(node_name, str(name)))
+                        _throttle_key_tc = ("tool_call", node_name)
+                        _now_tc = time.monotonic()
+                        _last_tc = (throttle_state or {}).get(_throttle_key_tc, 0.0)
+                        if _now_tc - _last_tc >= 0.5:
+                            out.append(await _emit_tool_call(node_name, str(name)))
+                            if throttle_state is not None:
+                                throttle_state[_throttle_key_tc] = _now_tc
             elif isinstance(msg, ToolMessage):
                 tool_name = getattr(msg, "name", "tool")
                 summary = _get_tool_summary(tool_name, {"result": msg.content})
@@ -874,6 +947,7 @@ async def _stream_chat(
         
         current_agent = None
         current_phase: str | None = None
+        throttle_state: dict[tuple[str, str], float] = {}
         heartbeat_counter = 0
         # Chat-driven approval (FIX 3) bypasses the initial-brief state and
         # drives the parked checkpoint forward via Command(resume=...). The
@@ -946,7 +1020,7 @@ async def _stream_chat(
                         continue
 
                     sse_strings, current_agent, current_phase, is_interrupt = await _emit_for_update(
-                        event, current_agent, current_phase
+                        event, current_agent, current_phase, throttle_state
                     )
                     for s in sse_strings:
                         if s:
@@ -1106,6 +1180,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
 
         current_agent: str | None = None
         current_phase: str | None = (snapshot.values or {}).get("phase") if isinstance((snapshot.values or {}).get("phase"), str) else None
+        throttle_state: dict[tuple[str, str], float] = {}
         heartbeat_counter = 0
         # First iteration: None drives astream from the existing checkpoint.
         # Subsequent iterations use Command(resume=payload) after a gate decision.
@@ -1124,7 +1199,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                     if not isinstance(event, dict):
                         continue
                     sse_strings, current_agent, current_phase, is_interrupt = await _emit_for_update(
-                        event, current_agent, current_phase
+                        event, current_agent, current_phase, throttle_state
                     )
                     for s in sse_strings:
                         if s:
