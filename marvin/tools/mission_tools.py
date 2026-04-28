@@ -210,6 +210,55 @@ def get_hypotheses(state: InjectedStateArg = None) -> dict[str, Any]:
     return {"mission_id": mission_id, "hypotheses": serialize_models(hypotheses)}
 
 
+# Chantier 4: HypothesisPanel needs a computed status per hypothesis.
+HYPOTHESIS_STATUSES = ("NOT_STARTED", "TESTING", "SUPPORTED", "WEAKENED")
+
+
+def compute_hypothesis_status(findings: list[Finding]) -> dict[str, Any]:
+    """Pure function: derive UI status for a hypothesis from its linked findings.
+
+    Rules (Chantier 4 spec):
+        - NOT_STARTED: 0 findings
+        - WEAKENED:    any contradicting finding OR >50% LOW_CONFIDENCE
+        - SUPPORTED:   >=2 KNOWN supporting findings AND 0 contradicting
+        - TESTING:     some findings exist but none KNOWN (or in-between)
+
+    Contradicting = agent_id == "adversus" (red-team). Everyone else is
+    supporting. The function is pure: no DB, no I/O.
+    """
+    counts = {"KNOWN": 0, "REASONED": 0, "LOW_CONFIDENCE": 0}
+    contradicting = 0
+    supporting_known = 0
+    for f in findings:
+        counts[f.confidence] = counts.get(f.confidence, 0) + 1
+        if f.agent_id == "adversus":
+            contradicting += 1
+        elif f.confidence == "KNOWN":
+            supporting_known += 1
+
+    total = len(findings)
+    if total == 0:
+        status = "NOT_STARTED"
+    elif contradicting > 0:
+        status = "WEAKENED"
+    elif counts["LOW_CONFIDENCE"] * 2 > total:
+        status = "WEAKENED"
+    elif supporting_known >= 2:
+        status = "SUPPORTED"
+    else:
+        status = "TESTING"
+
+    return {
+        "status": status,
+        "total": total,
+        "known": counts["KNOWN"],
+        "reasoned": counts["REASONED"],
+        "low_confidence": counts["LOW_CONFIDENCE"],
+        "contradicting": contradicting,
+        "supporting": total - contradicting,
+    }
+
+
 def add_hypothesis_to_mission(text: str, state: InjectedStateArg = None) -> dict[str, Any]:
     """Add a hypothesis to the mission."""
     mission_id = require_mission_id(state)
