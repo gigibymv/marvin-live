@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Pre-commit hook: runs runtime smoke when graph/server/checkpointer files are staged.
+#
+# Install once:
+#   ln -s ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
+#   chmod +x scripts/git-hooks/pre-commit
+#
+# Bypass (rare, must be justified): git commit --no-verify
+
+set -e
+
+TRIGGERS='^(marvin_ui/server\.py|marvin/graph/runner\.py|marvin/graph/|.*checkpoint.*\.py|.*async.*\.py)'
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR | grep -E "$TRIGGERS" || true)
+
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+echo "[pre-commit] runtime-relevant files staged:"
+echo "$staged" | sed 's/^/  /'
+echo "[pre-commit] running runtime smoke test..."
+
+if [ ! -x .venv/bin/python ]; then
+  echo "[pre-commit] FAIL — .venv/bin/python missing; run setup first" >&2
+  exit 1
+fi
+
+if ! .venv/bin/python scripts/smoke_runtime.py; then
+  echo "" >&2
+  echo "[pre-commit] FAIL — runtime smoke did not pass." >&2
+  echo "[pre-commit] Fix the runtime issue before committing." >&2
+  echo "[pre-commit] To bypass with explicit acceptance of risk: git commit --no-verify" >&2
+  exit 1
+fi
+
+echo "[pre-commit] runtime smoke PASS"

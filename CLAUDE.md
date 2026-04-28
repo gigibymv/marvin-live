@@ -295,12 +295,25 @@ For changes touching:
 * gates
 * event ownership
 * late-phase execution
+* checkpointer / async pipelines
 
 the expected bar is:
 
 * targeted tests
 * relevant regression tests
 * runtime evidence when the path is load-bearing
+
+#### Mandatory runtime smoke
+
+Any change touching `marvin_ui/server.py`, `marvin/graph/runner.py`, `marvin/graph/**`, the checkpointer, or any async pipeline MUST pass `make smoke` (i.e. `.venv/bin/python scripts/smoke_runtime.py`) before:
+
+* committing (the pre-commit hook in `scripts/git-hooks/pre-commit` enforces this — install via `ln -s ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit`)
+* declaring a chantier "done"
+* claiming "tests green" in any handoff or commit message
+
+The smoke spawns uvicorn on a free port, sends a real `POST /chat`, reads the first 8 seconds of the SSE stream, and asserts (a) no `error` events and (b) at least one progress event. This catches sync-vs-async runtime divergences (e.g. sync `SqliteSaver` paired with async `graph.astream`) that unit tests silently miss.
+
+If smoke fails: fix the runtime issue. Do not bypass with `--no-verify` unless an explicit out-of-band justification is recorded.
 
 ### 2. Do not reintroduce fallback `mission_id`
 
