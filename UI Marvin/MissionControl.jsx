@@ -378,8 +378,15 @@ export default function MissionControl(props) {
     : WS;
   var feedRef = useRef(null);
   var chatRef = useRef(null);
+  var chatInputRef = useRef(null);
 
   useEffect(function () { if (chatRef.current) chatRef.current.scrollTop = 99999; }, [messages, typing]);
+  useEffect(function () {
+    var el = chatInputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 125) + "px";
+  }, [chatDraft]);
 
   function send() {
     if (!chatDraft.trim()) return;
@@ -583,7 +590,7 @@ export default function MissionControl(props) {
         // Input
         React.createElement("div", { style: { borderTop: "1px solid var(--ruleh)", background: "var(--paper)", flexShrink: 0 } },
           React.createElement("div", { style: { padding: "11px 20px 8px" } },
-            React.createElement("textarea", { rows: 2, value: chatDraft, placeholder: "Ask MARVIN or redirect the mission...", onChange: function (e) { onChatDraftChange(e.target.value); }, onKeyDown: function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } } })
+            React.createElement("textarea", { ref: chatInputRef, value: chatDraft, placeholder: "Ask MARVIN or redirect the mission...", style: { minHeight: "62px", maxHeight: "125px", overflowY: "auto", width: "100%", resize: "none" }, onChange: function (e) { onChatDraftChange(e.target.value); }, onKeyDown: function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } } })
           ),
           React.createElement("div", { style: { padding: "7px 20px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid var(--rule)" } },
             React.createElement("span", { className: "k" }, "\u2318\u21b5 to send"),
