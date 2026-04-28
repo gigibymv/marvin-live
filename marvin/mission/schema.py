@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Confidence = Literal["KNOWN", "REASONED", "LOW_CONFIDENCE"]
+FindingImpact = Literal["load_bearing", "supporting", "color"]
 HypothesisStatus = Literal["active", "validated", "invalidated", "abandoned"]
 WorkstreamStatus = Literal["pending", "in_progress", "delivered"]
 MilestoneStatus = Literal["pending", "in_progress", "delivered", "skipped"]
@@ -82,11 +83,19 @@ class Finding(MarvinModel):
     agent_id: str | None = None
     human_validated: bool = False
     created_at: str | None = None
+    impact: FindingImpact | None = None  # Chantier 4: load_bearing | supporting | color
 
     @model_validator(mode="after")
     def validate_known_source(self) -> "Finding":
         if self.confidence == "KNOWN" and not self.source_id:
             raise ValueError("source_id required for KNOWN findings")
+        return self
+
+    @model_validator(mode="after")
+    def validate_load_bearing_confidence(self) -> "Finding":
+        # Chantier 4: load_bearing findings must be KNOWN or REASONED, not LOW.
+        if self.impact == "load_bearing" and self.confidence == "LOW_CONFIDENCE":
+            raise ValueError("load_bearing findings cannot be LOW_CONFIDENCE")
         return self
 
 

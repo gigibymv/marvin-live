@@ -216,6 +216,7 @@ class MissionStore:
             ("gates", "questions", "ALTER TABLE gates ADD COLUMN questions TEXT"),
             ("hypotheses", "label", "ALTER TABLE hypotheses ADD COLUMN label TEXT"),
             ("missions", "data_room_path", "ALTER TABLE missions ADD COLUMN data_room_path TEXT"),
+            ("findings", "impact", "ALTER TABLE findings ADD COLUMN impact TEXT"),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
@@ -498,8 +499,8 @@ class MissionStore:
             """
             INSERT OR REPLACE INTO findings
             (id, mission_id, workstream_id, hypothesis_id, claim_text, confidence,
-             source_id, agent_id, human_validated, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             source_id, agent_id, human_validated, created_at, impact)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 finding.id,
@@ -512,6 +513,7 @@ class MissionStore:
                 finding.agent_id,
                 int(finding.human_validated),
                 finding.created_at,
+                finding.impact,
             ),
         )
         return finding
