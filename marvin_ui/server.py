@@ -46,6 +46,7 @@ from marvin.graph.runner import build_graph
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools.common import slugify, short_id, utc_now_iso
+from marvin.tools.mission_tools import compute_hypothesis_status
 from marvin.mission.schema import Finding, Gate, Hypothesis, Mission as MissionModel
 
 # Configure logging
@@ -142,6 +143,27 @@ def _mission_exists(store: MissionStore, mission_id: str) -> bool:
         return True
     except KeyError:
         return False
+
+
+def _hypotheses_with_status(hypotheses, findings) -> list[dict]:
+    """Chantier 4: enrich each hypothesis with computed status + counts.
+
+    Groups findings by hypothesis_id (in Python — no extra DB hit), feeds
+    each group into compute_hypothesis_status, and returns the UI payload.
+    """
+    by_hyp: dict[str | None, list] = {}
+    for f in findings:
+        by_hyp.setdefault(f.hypothesis_id, []).append(f)
+    return [
+        {
+            "id": h.id,
+            "label": h.label,
+            "text": h.text,
+            "status": h.status,
+            "computed": compute_hypothesis_status(by_hyp.get(h.id, [])),
+        }
+        for h in hypotheses
+    ]
 
 
 def _deliverable_progress_payload(deliverable) -> dict:
@@ -1055,6 +1077,24 @@ async def get_mission(mission_id: str):
     return mission.model_dump()
 
 
+@app.get("/api/v1/missions/{mission_id}/hypotheses")
+async def get_mission_hypotheses(mission_id: str):
+    """Chantier 4: hypotheses with computed status for HypothesisPanel.
+
+    Each entry carries {id, label, text, status, computed: {status, counts}}.
+    Status comes from compute_hypothesis_status (pure function over linked
+    findings)."""
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    hypotheses = store.list_hypotheses(mission_id)
+    findings = store.list_findings(mission_id)
+    return {
+        "mission_id": mission_id,
+        "hypotheses": _hypotheses_with_status(hypotheses, findings),
+    }
+
+
 @app.get("/api/v1/missions/{mission_id}/workstreams/{ws_id}/findings")
 async def get_workstream_findings(mission_id: str, ws_id: str):
     """Bug 6 (chantier 2.6): per-workstream findings for tab display.
@@ -1174,15 +1214,7 @@ async def get_mission_progress(mission_id: str):
             }
             for f in findings
         ],
-        "hypotheses": [
-            {
-                "id": h.id,
-                "label": h.label,
-                "text": h.text,
-                "status": h.status,
-            }
-            for h in hypotheses
-        ],
+        "hypotheses": _hypotheses_with_status(hypotheses, findings),
         "deliverables": [_deliverable_progress_payload(d) for d in deliverables],
         "workstreams": [
             {
