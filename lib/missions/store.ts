@@ -24,6 +24,30 @@ const DEFAULT_RUN_STATE: MissionRunState = {
   isStreaming: false,
 };
 
+const VALID_WORKSPACE_TABS: WorkspaceTab[] = ["brief", "ws1", "ws2", "ws3", "ws4", "final"];
+
+function normalizeWorkspaceTab(value: unknown): WorkspaceTab {
+  if (value === "ws5") return "final";
+  return VALID_WORKSPACE_TABS.includes(value as WorkspaceTab) ? (value as WorkspaceTab) : "brief";
+}
+
+function migratePersistedUiState(persisted: unknown): unknown {
+  if (!persisted || typeof persisted !== "object") return persisted;
+  const state = persisted as Partial<MissionUiStore>;
+  const selectedTabs = state.selectedWorkspaceTabByMissionId;
+  if (!selectedTabs || typeof selectedTabs !== "object") return persisted;
+
+  return {
+    ...state,
+    selectedWorkspaceTabByMissionId: Object.fromEntries(
+      Object.entries(selectedTabs).map(([missionId, tab]) => [
+        missionId,
+        normalizeWorkspaceTab(tab),
+      ]),
+    ),
+  };
+}
+
 export const useMissionUiStore = create<MissionUiStore>()(
   persist(
     (set) => ({
@@ -79,6 +103,8 @@ export const useMissionUiStore = create<MissionUiStore>()(
     }),
     {
       name: "marvin.missions.ui",
+      version: 1,
+      migrate: migratePersistedUiState,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         isSidebarOpen: state.isSidebarOpen,

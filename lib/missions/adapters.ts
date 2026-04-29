@@ -7,7 +7,7 @@ import type {
   WorkspaceTab,
 } from "@/lib/missions/types";
 
-export const DEFAULT_WORKSPACE_TAB: WorkspaceTab = "ws1";
+export const DEFAULT_WORKSPACE_TAB: WorkspaceTab = "brief";
 
 const TEMPLATE_LABELS: Record<MissionTemplate, string> = {
   cdd: "Commercial Due Diligence",
@@ -113,6 +113,97 @@ export function formatGatePendingChatMessage(event: GatePendingPresentationInput
 export function formatGatePendingFeedSignal(event: GatePendingPresentationInput): string {
   const label = (event.title || event.gateType || event.gate_type || "validation").toString().replace(/_/g, " ").trim();
   return `Gate pending · ${label}`;
+}
+
+export interface NarrationPresentationInput {
+  agent?: string | null;
+  intent?: string | null;
+}
+
+export function formatNarrationChatMessage(event: NarrationPresentationInput): string {
+  const agent = event.agent?.trim() || "MARVIN";
+  const intent = event.intent?.trim() || "Still working.";
+  return `${agent} — ${intent}`;
+}
+
+export function formatDeliverableReadyChatMessage(label: unknown): string {
+  const text = String(label ?? "deliverable").replace(/_/g, " ").trim() || "deliverable";
+  return `MARVIN — I’ve generated the ${text} and added it to Deliverables.`;
+}
+
+const DELIVERABLE_LABELS: Record<string, string> = {
+  market_brief: "Market brief",
+  competitive_brief: "Competitive analysis",
+  financial_brief: "Financial analysis",
+  risk_brief: "Risk / Red-team",
+  investment_memo: "Investment memo",
+  engagement_brief: "Engagement brief",
+  framing_memo: "framing memo",
+  exec_summary: "exec summary",
+  data_book: "data book",
+};
+
+const WORKSTREAM_REPORT_LABELS: Record<string, string> = {
+  W1: "Market report",
+  W2: "Financial report",
+  W3: "Synthesis report",
+  W4: "Stress testing report",
+};
+
+export function routeDeliverableToSectionId(deliverable: {
+  deliverable_type?: unknown;
+  deliverableType?: unknown;
+  file_path?: unknown;
+  filePath?: unknown;
+}): string | null {
+  const type = String(deliverable.deliverable_type ?? deliverable.deliverableType ?? "").toLowerCase();
+  const filePath = String(deliverable.file_path ?? deliverable.filePath ?? "");
+  const workstreamMatch = filePath.match(/(?:^|\/)(W\d+)_report\.md$/i);
+  if (workstreamMatch?.[1]) return workstreamMatch[1].toUpperCase();
+
+  const knownTypeRoutes: Record<string, string> = {
+    market_brief: "W1",
+    market_report: "W1",
+    competitive_landscape: "W1",
+    financial_snapshot: "W2",
+    financial_model: "W2",
+    risk_register: "W4",
+    redteam_report: "W4",
+    engagement_brief: "brief",
+    framing_memo: "brief",
+    investment_memo: "final",
+    exec_summary: "final",
+    data_book: "final",
+    report_pdf: "final",
+  };
+
+  return knownTypeRoutes[type] ?? null;
+}
+
+export function formatDeliverableDisplayName(deliverable: {
+  deliverable_type?: unknown;
+  deliverableType?: unknown;
+  file_path?: unknown;
+  filePath?: unknown;
+}): string {
+  const type = String(deliverable.deliverable_type ?? deliverable.deliverableType ?? "deliverable");
+  const sectionId = routeDeliverableToSectionId(deliverable);
+
+  if (type.toLowerCase() === "workstream_report" && sectionId) {
+    return WORKSTREAM_REPORT_LABELS[sectionId] ?? "Workstream report";
+  }
+
+  return DELIVERABLE_LABELS[type] ?? type.replace(/_/g, " ");
+}
+
+export function routeDeliverableToWorkstreamId(deliverable: {
+  deliverable_type?: unknown;
+  deliverableType?: unknown;
+  file_path?: unknown;
+  filePath?: unknown;
+}): string | null {
+  const sectionId = routeDeliverableToSectionId(deliverable);
+  return sectionId?.match(/^W\d+$/) ? sectionId : null;
 }
 
 function formatMissionDate(createdAt: string): string {

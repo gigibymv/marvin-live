@@ -1,7 +1,7 @@
 import type { MissionUiStore } from "@/lib/missions/store";
 import type { MissionRunState, WorkspaceTab } from "@/lib/missions/types";
 
-const DEFAULT_TAB: WorkspaceTab = "ws1";
+const DEFAULT_TAB: WorkspaceTab = "brief";
 const DEFAULT_RUN_STATE: MissionRunState = {
   isStreaming: false,
 };

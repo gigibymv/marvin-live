@@ -1,6 +1,6 @@
 export type MissionTemplate = "cdd" | "redteam" | "strategy" | "board";
 export type MissionStatus = "active" | "completed";
-export type WorkspaceTab = "ws1" | "ws2" | "ws3" | "ws4" | "ws5";
+export type WorkspaceTab = "brief" | "ws1" | "ws2" | "ws3" | "ws4" | "final";
 export type MissionPanel = "feed" | "chat";
 export type MissionMessageAuthor = "u" | "m";
 export type BackendConnectionState = "local" | "connecting" | "ready" | "offline";

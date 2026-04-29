@@ -18,10 +18,11 @@ html,body,#root{height:100%}
 ::-webkit-scrollbar{width:3px}
 ::-webkit-scrollbar-thumb{background:var(--ruleh)}
 .k{font-family:var(--m);font-size:10px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
-.tab{font-family:var(--m);font-size:10px;letter-spacing:.13em;text-transform:uppercase;padding:9px 0;margin-right:24px;background:none;border:none;border-bottom:1.5px solid transparent;color:var(--muted);cursor:pointer;white-space:nowrap;transition:color .12s,border-color .12s;flex-shrink:0}
+.tab{font-family:var(--m);font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:9px 0;margin-right:14px;background:none;border:none;border-bottom:1.5px solid transparent;color:var(--muted);cursor:pointer;white-space:nowrap;transition:color .12s,border-color .12s;flex-shrink:0}
 .tab:hover{color:var(--ink2)}
 .tab.on{color:var(--ink);border-bottom-color:var(--ink)}
 .tab.done{color:var(--ink3)}
+.tab.live:not(.on){color:var(--ink2)}
 .ag{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--rule)}
 .ag:last-child{border-bottom:none}
 .dl{display:flex;align-items:baseline;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--rule)}
@@ -53,11 +54,10 @@ const AGENTS = [
 ];
 
 const WS = [
-  { id: "ws1", label: "Competitive" },
-  { id: "ws2", label: "Market" },
-  { id: "ws3", label: "Financial" },
-  { id: "ws4", label: "Risk" },
-  { id: "ws5", label: "Memo" },
+  { id: "ws1", label: "Market analysis" },
+  { id: "ws2", label: "Financial analysis" },
+  { id: "ws3", label: "Synthesis" },
+  { id: "ws4", label: "Stress testing" },
 ];
 
 const LIVE = [];
@@ -101,7 +101,7 @@ var KIND_VISUALS = {
   phase:         { glyph: "—", color: "var(--ink3)",  label: "Phase" },
   agent:         { glyph: "●", color: "var(--ink2)",  label: "Agent" },
   agent_message: { glyph: "\u201C", color: "var(--ink3)",  label: "Reasoning" },
-  narration:     { glyph: "\u2026", color: "var(--ink3)",  label: "Intent" },
+  narration:     { glyph: "\u2026", color: "var(--ink3)",  label: "Narration" },
   tool_call:     { glyph: "\u2192", color: "var(--muted)", label: "Tool" },
   tool_result:   { glyph: "\u2190", color: "var(--muted)", label: "Result" },
 };
@@ -125,15 +125,17 @@ function StateTag({ state }) {
 // agent + timestamp, source citation, and impact-based emphasis.
 function FindingCard({ finding, isOpen, onToggle }) {
   var f = finding || {};
+  var kind = f.kind || "finding";
   var conf = (f.confidence || "").toUpperCase();
   var confColor = conf === "KNOWN" ? "var(--green)"
     : conf === "REASONED" ? "var(--amber)"
+    : conf === "READY" || conf === "DONE" ? "var(--green)"
     : "var(--muted)";
   var confLabel = conf === "LOW_CONFIDENCE" ? "LOW" : (conf || "—");
   var hypothesisLabel = f.hypothesis_label || (f.hypothesis_id ? "·" : "");
   var isLoadBearing = f.impact === "load_bearing";
   var hasSource = !!(f.source_id || f.source);
-  var clickable = hasSource;
+  var clickable = hasSource || !!f.onOpen || !!f.href;
   var sourceTypeMap = {
     sec_filing: { label: "SEC", color: "var(--ink)" },
     web: { label: "WEB", color: "var(--ink3)" },
@@ -142,8 +144,15 @@ function FindingCard({ finding, isOpen, onToggle }) {
     inference: { label: "INFERENCE", color: "var(--amber)" },
   };
   var st = f.source_type || f.sourceType || null;
-  var sourceBadge = sourceTypeMap[st] || { label: "INFERENCE", color: "var(--amber)" };
-  var leftBorderColor = isLoadBearing ? "var(--ink)" : (!isLoadBearing && !st) ? "var(--amber)" : "transparent";
+  var sourceBadge = kind === "deliverable"
+    ? { label: "DELIVERABLE", color: "var(--green)" }
+    : kind === "milestone"
+      ? { label: "MILESTONE", color: "var(--ink)" }
+      : sourceTypeMap[st] || { label: "INFERENCE", color: "var(--amber)" };
+  var leftBorderColor = kind === "deliverable" ? "var(--green)"
+    : kind === "milestone" ? "var(--ink)"
+    : isLoadBearing ? "var(--ink)"
+      : (!isLoadBearing && !st) ? "var(--amber)" : "transparent";
 
   return React.createElement("div", {
     style: {
@@ -156,7 +165,7 @@ function FindingCard({ finding, isOpen, onToggle }) {
     React.createElement("div", {
       style: {
         display: "grid",
-        gridTemplateColumns: "60px 1fr 36px",
+        gridTemplateColumns: kind === "deliverable" ? "112px minmax(0, 1fr) 118px" : "64px minmax(0, 1fr) 76px",
         gap: "0 10px",
         alignItems: "baseline",
         padding: "9px 0",
@@ -200,7 +209,45 @@ function FindingCard({ finding, isOpen, onToggle }) {
         )
       ),
       // Right column: timestamp
-      React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", textAlign: "right" } }, f.ts || "")
+      kind === "deliverable" && f.onOpen
+        ? React.createElement("button", {
+            type: "button",
+            onClick: function (ev) { ev.stopPropagation(); f.onOpen(); },
+            style: {
+              fontFamily: "var(--m)",
+              fontSize: "9px",
+              fontWeight: 700,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
+              color: "var(--green)",
+              textAlign: "right",
+              whiteSpace: "nowrap",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+            }
+          }, "Open / Download")
+        : kind === "deliverable" && f.href
+          ? React.createElement("a", {
+              href: f.href,
+              target: "_blank",
+              rel: "noreferrer",
+              onClick: function (ev) { ev.stopPropagation(); },
+              style: {
+                fontFamily: "var(--m)",
+                fontSize: "9px",
+                fontWeight: 700,
+                letterSpacing: ".1em",
+                textTransform: "uppercase",
+                color: "var(--green)",
+                textAlign: "right",
+                whiteSpace: "nowrap",
+              }
+            }, "Download \u2197")
+          : kind === "deliverable"
+            ? React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--green)", textAlign: "right", whiteSpace: "nowrap" } }, "Ready")
+      : React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--muted)", textAlign: "right", overflowWrap: "anywhere" } }, f.ts || "")
     ),
     isOpen && hasSource
       ? React.createElement("div", { style: { paddingBottom: "8px", paddingLeft: "70px" } },
@@ -305,6 +352,7 @@ function Feed({ feedRef, ...props }) {
 
   var activity = props.activity || LIVE;
   var completed = props.findings || DONE;
+  var waitState = props.waitState || null;
 
   // Fixed column widths for the completed grid
   var COL_AG = "64px";
@@ -365,18 +413,35 @@ function Feed({ feedRef, ...props }) {
         React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600, letterSpacing: ".06em", color: "var(--ink)" } }, props.nextCheckpointLabel || "No open checkpoint")
       ),
 
-      // COMPLETED — strict 3-col grid
+      // SECTION OUTPUTS — selected-tab material
       React.createElement("div", { style: { padding: "0 24px" } },
         React.createElement("div", { style: { padding: "9px 0 8px", borderBottom: "1px solid var(--ink)" } },
-          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Completed")
+          React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, props.completedTitle || "Section outputs")
         ),
+        completed.length === 0 && waitState && waitState.isWorking && waitState.showInOutputs
+          ? React.createElement("div", { style: { padding: "15px 0 16px", borderBottom: "1px solid var(--rule)" } },
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" } },
+                React.createElement("span", { style: { color: "var(--amber)", animation: "pulse 1.4s ease-in-out infinite", fontSize: "8px" } }, "\u25cf"),
+                React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink)" } }, waitState.headline + " · " + waitState.elapsedLabel)
+              ),
+              React.createElement("div", { style: { fontSize: "12px", lineHeight: 1.55, color: "var(--ink3)", maxWidth: "560px" } }, "No output for this section yet. " + waitState.message)
+            )
+          : completed.length === 0
+            ? React.createElement("div", { style: { padding: "14px 0", fontFamily: "var(--m)", fontSize: "9.5px", letterSpacing: ".06em", color: "var(--muted)" } }, props.completedEmptyText || "No outputs for this section yet.")
+          : null,
         completed.map(function (e) {
           var open = expanded === e.id;
           return React.createElement(FindingCard, {
-            key: e.id,
+            key: (e.kind || "output") + ":" + e.id,
             finding: e,
             isOpen: open,
-            onToggle: function () { setExpanded(open ? null : e.id); },
+            onToggle: function () {
+              if (e.onOpen) {
+                e.onOpen();
+                return;
+              }
+              setExpanded(open ? null : e.id);
+            },
           });
         })
       )
@@ -415,6 +480,9 @@ function Feed({ feedRef, ...props }) {
       },
         React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--amber)" } }, "In progress"),
         React.createElement("span", { style: { color: "var(--amber)", animation: "pulse 1.4s ease-in-out infinite", fontSize: "8px" } }, "\u25cf"),
+        waitState && waitState.isWorking
+          ? React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--amber)", letterSpacing: ".06em" } }, waitState.elapsedLabel)
+          : null,
         React.createElement("button", {
           onClick: function () { setFeedCollapsed(function (v) { return !v; }); },
           style: {
@@ -427,12 +495,30 @@ function Feed({ feedRef, ...props }) {
 
       // Scrollable activity list (hidden when collapsed)
       feedCollapsed ? null : React.createElement("div", { style: { flex: 1, overflowY: "auto", padding: "10px 24px 12px" } },
+        waitState && waitState.isWorking
+          ? React.createElement("div", {
+              key: "working-state",
+              style: {
+                display: "grid",
+                gridTemplateColumns: "14px " + COL_AG + " 1fr",
+                gap: "0 10px",
+                alignItems: "baseline",
+                paddingBottom: activity.length > 0 ? "8px" : "0",
+                marginBottom: activity.length > 0 ? "8px" : "0",
+                borderBottom: activity.length > 0 ? "1px solid rgba(139,98,0,.12)" : "none"
+              }
+            },
+              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "11px", color: "var(--amber)", lineHeight: 1.4, alignSelf: "start", paddingTop: "1px", textAlign: "center", animation: "pulse 1.4s ease-in-out infinite" } }, "\u25cf"),
+              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--amber)", alignSelf: "start", paddingTop: "2px" } }, "MARVIN"),
+              React.createElement("span", { style: { fontSize: "13px", lineHeight: 1.5, color: "var(--ink2)", fontWeight: 500 } }, waitState.headline + " · " + waitState.elapsedLabel + " — " + waitState.message)
+            )
+          : null,
         activity.map(function (e, i) {
           var visual = kindVisual(e.kind);
           var isPhase = e.kind === "phase";
           if (isPhase) {
             return React.createElement("div", {
-              key: e.id,
+            key: (e.kind || "event") + ":" + e.id,
               style: {
                 display: "flex", alignItems: "center", gap: "8px",
                 padding: "10px 0", margin: "4px 0",
@@ -445,7 +531,7 @@ function Feed({ feedRef, ...props }) {
             );
           }
           return React.createElement("div", {
-            key: e.id, style: {
+            key: (e.kind || "event") + ":" + e.id, style: {
               display: "grid",
               gridTemplateColumns: "14px " + COL_AG + " 1fr",
               gap: "0 10px", alignItems: "baseline",
@@ -474,21 +560,28 @@ export default function MissionControl(props) {
   var chatDraft = props.chatDraft || "";
   var onChatDraftChange = props.onChatDraftChange || function () { };
   var onSendMessage = props.onSendMessage || function () { };
-  var selectedTab = props.selectedTab || props.defaultTab || "ws1";
+  var selectedTab = props.selectedTab === "ws5" ? "final" : (props.selectedTab || props.defaultTab || "brief");
   var onSelectTab = props.onSelectTab || function () { };
   var typing = !!props.isTyping;
+  var currentNarration = props.currentNarration || "MARVIN is working on the next step.";
   var gateModal = props.gateModal || null;
   var onGateClose = props.onGateClose || function () { };
   var backendState = props.backendState || "local";
   var pendingGateBanner = props.pendingGateBanner || null;
+  var waitState = props.waitState || null;
   var briefStatus = props.briefStatus || "pending";
   var briefIsComplete = briefStatus === "completed";
   var briefIsActive = briefStatus === "now";
   var workstreamTabs = props.workstreamContent && props.workstreamContent.length
     ? props.workstreamContent.map(function (w) {
-      return { id: "ws" + String(w.id || "").replace(/^W/i, ""), label: w.label || w.id };
+      return { id: "ws" + String(w.id || "").replace(/^W/i, ""), label: w.label || w.id, status: w.status || "pending" };
     })
     : WS;
+  var sectionTabs = props.sectionTabs && props.sectionTabs.length
+    ? props.sectionTabs
+    : [{ id: "brief", label: "Brief", status: briefStatus }]
+        .concat(workstreamTabs)
+        .concat([{ id: "final", label: "Final deliverables", status: "pending" }]);
   var feedRef = useRef(null);
   var chatRef = useRef(null);
   var chatInputRef = useRef(null);
@@ -506,7 +599,15 @@ export default function MissionControl(props) {
     onSendMessage(chatDraft);
   }
 
-  var pct = mission.progress * 100;
+  var missionStatusLabel = mission.statusLabel || (mission.checkpoint ? "Next gate · " + mission.checkpoint : "Ready");
+  var missionStatusTone = missionStatusLabel.indexOf("Gate pending") === 0
+    ? "var(--amber)"
+    : missionStatusLabel === "Complete"
+      ? "var(--green)"
+      : missionStatusLabel.indexOf("running") > -1
+        ? "var(--green)"
+        : "var(--muted)";
+  var missionStatusPulses = missionStatusLabel.indexOf("running") > -1;
 
   return React.createElement(React.Fragment, null,
     React.createElement("style", null, CSS),
@@ -539,16 +640,71 @@ export default function MissionControl(props) {
           ),
           React.createElement("div", { className: "k", style: { marginBottom: "5px" } }, "Mission"),
           React.createElement("div", { style: { fontFamily: "var(--d)", fontSize: "15px", fontWeight: 600, letterSpacing: "-.02em", lineHeight: 1.2, marginBottom: "3px" } }, mission.name),
-          React.createElement("div", { style: { fontFamily: "var(--m)", fontSize: "9.5px", color: "var(--muted)", marginBottom: "12px" } }, mission.client),
-          // Progress bar
-          React.createElement("div", { style: { position: "relative", height: "3px", background: "var(--ruleh)" } },
-            React.createElement("div", { style: { position: "absolute", left: 0, top: 0, height: "100%", width: pct + "%", background: "var(--ink)" } }),
-            (props.checkpoints || CHECKPOINTS).map(function (cp, i) {
-              var left = ((i + 1) / (props.checkpoints || CHECKPOINTS).length * 100) + "%";
-              var bg = cp.status === "completed" ? "var(--muted)" : cp.status === "now" ? "var(--ink)" : "var(--ruleh)";
-              return React.createElement("div", { key: cp.id, style: { position: "absolute", top: "-3.5px", left: left, transform: "translateX(-50%)", width: "1px", height: "10px", background: bg } });
-            })
+          React.createElement("div", { style: { fontFamily: "var(--m)", fontSize: "9.5px", color: "var(--muted)", marginBottom: "10px" } }, mission.client),
+          React.createElement("div", {
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              fontFamily: "var(--m)",
+              fontSize: "9px",
+              fontWeight: 600,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
+              color: missionStatusTone,
+            }
+          },
+            missionStatusPulses
+              ? React.createElement("span", { style: { animation: "pulse 1.4s ease-in-out infinite", fontSize: "7px" } }, "\u25cf")
+              : null,
+            missionStatusLabel
           )
+        ),
+
+        // Deliverables
+        React.createElement("div", { style: { padding: "13px 20px", borderBottom: "1px solid var(--ruleh)" } },
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px", paddingBottom: "8px", borderBottom: "1px solid var(--ink)" } },
+            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Deliverables")
+          ),
+          (props.deliverables || DELIVERABLES).map(function (d) {
+            var isReady = d.status === "ready";
+            var canOpen = isReady && (d.onOpen || d.href);
+            // Chantier 4 CP3: prefer onOpen (preview modal) over plain href
+            // navigation. Falls back to <a href> if no onOpen handler.
+            var asAnchor = canOpen && !d.onOpen && d.href;
+            var tag = asAnchor ? "a" : "div";
+            var elProps = {
+              key: d.id,
+              className: "dl",
+              style: {
+                opacity: isReady ? 1 : 0.4,
+                textDecoration: "none",
+                color: "inherit",
+                cursor: canOpen ? "pointer" : "default",
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                padding: "5px 0",
+                borderBottom: "1px solid var(--rule)",
+              },
+            };
+            if (asAnchor) {
+              elProps.href = d.href;
+              elProps.target = "_blank";
+              elProps.rel = "noopener noreferrer";
+            } else if (canOpen && d.onOpen) {
+              elProps.role = "button";
+              elProps.tabIndex = 0;
+              elProps.onClick = d.onOpen;
+              elProps.onKeyDown = function (ev) {
+                if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); d.onOpen(); }
+              };
+            }
+            return React.createElement(tag, elProps,
+              React.createElement("span", { style: { fontSize: "11.5px", fontWeight: isReady ? 500 : 400 } }, d.label),
+              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: isReady ? "var(--green)" : "var(--muted)" } }, canOpen ? "Open \u2192" : isReady ? "\u2193" : "\u2014")
+            );
+          })
         ),
 
         // Checkpoints
@@ -596,53 +752,7 @@ export default function MissionControl(props) {
             hypotheses: props.hypotheses,
             findings: props.findings || [],
           })
-        : null),
-
-        // Deliverables
-        React.createElement("div", { style: { padding: "13px 20px 16px" } },
-          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px", paddingBottom: "8px", borderBottom: "1px solid var(--ink)" } },
-            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--ink)" } }, "Deliverables")
-          ),
-          (props.deliverables || DELIVERABLES).map(function (d) {
-            var isReady = d.status === "ready";
-            var canOpen = isReady && (d.onOpen || d.href);
-            // Chantier 4 CP3: prefer onOpen (preview modal) over plain href
-            // navigation. Falls back to <a href> if no onOpen handler.
-            var asAnchor = canOpen && !d.onOpen && d.href;
-            var tag = asAnchor ? "a" : "div";
-            var elProps = {
-              key: d.id,
-              className: "dl",
-              style: {
-                opacity: isReady ? 1 : 0.4,
-                textDecoration: "none",
-                color: "inherit",
-                cursor: canOpen ? "pointer" : "default",
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                padding: "5px 0",
-                borderBottom: "1px solid var(--rule)",
-              },
-            };
-            if (asAnchor) {
-              elProps.href = d.href;
-              elProps.target = "_blank";
-              elProps.rel = "noopener noreferrer";
-            } else if (canOpen && d.onOpen) {
-              elProps.role = "button";
-              elProps.tabIndex = 0;
-              elProps.onClick = d.onOpen;
-              elProps.onKeyDown = function (ev) {
-                if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); d.onOpen(); }
-              };
-            }
-            return React.createElement(tag, elProps,
-              React.createElement("span", { style: { fontSize: "11.5px", fontWeight: isReady ? 500 : 400 } }, d.label),
-              React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: isReady ? "var(--green)" : "var(--muted)" } }, canOpen ? "Open \u2192" : isReady ? "\u2193" : "\u2014")
-            );
-          })
-        )
+        : null)
       ),
 
       // CENTER
@@ -651,16 +761,30 @@ export default function MissionControl(props) {
         React.createElement("div", { style: { padding: "16px 24px 0", borderBottom: "1px solid var(--ruleh)", flexShrink: 0 } },
           React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: "12px", marginBottom: "12px" } },
             React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "10px", color: "var(--muted)" } }, mission.client),
-            React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--green)", animation: "pulse 2s ease-in-out infinite", marginLeft: "auto" } }, "\u25cf Active")
+            React.createElement("span", {
+              style: {
+                fontFamily: "var(--m)",
+                fontSize: "9px",
+                fontWeight: 600,
+                letterSpacing: ".14em",
+                textTransform: "uppercase",
+                color: missionStatusTone,
+                animation: missionStatusPulses ? "pulse 2s ease-in-out infinite" : "none",
+                marginLeft: "auto"
+              }
+            }, missionStatusLabel)
           ),
           // Tabs
           React.createElement("div", { style: { display: "flex", overflowX: "auto", scrollbarWidth: "none" } },
-            React.createElement("span", {
-              className: "tab" + (briefIsComplete ? " done" : briefIsActive ? " on" : ""),
-              style: { cursor: "default" }
-            }, (briefIsComplete ? "\u2713 " : "") + "Brief"),
-            workstreamTabs.map(function (w) {
-              return React.createElement("button", { key: w.id, className: "tab" + (selectedTab === w.id ? " on" : ""), onClick: function () { onSelectTab(w.id); } }, w.label);
+            sectionTabs.map(function (w) {
+              var isDone = w.status === "completed";
+              var isLive = w.status === "now" || w.status === "in_progress";
+              var prefix = isDone ? "\u2713 " : isLive ? "\u25cf " : "";
+              return React.createElement("button", {
+                key: w.id,
+                className: "tab" + (isDone ? " done" : "") + (isLive ? " live" : "") + (selectedTab === w.id ? " on" : ""),
+                onClick: function () { onSelectTab(w.id); }
+              }, prefix + w.label);
             })
           )
         ),
@@ -683,36 +807,50 @@ export default function MissionControl(props) {
           React.createElement("div", { style: { display: "flex", gap: "8px", alignItems: "center" } },
             pendingGateBanner.onApprove ? React.createElement("button", {
               onClick: pendingGateBanner.onApprove,
+              disabled: !!pendingGateBanner.actionInFlight,
               "aria-label": "Approve gate",
               style: {
                 fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600,
                 letterSpacing: ".12em", textTransform: "uppercase",
                 padding: "6px 12px", background: "#1a1814", color: "var(--paper)",
-                border: "none", cursor: "pointer", borderRadius: "4px",
+                border: "none", cursor: pendingGateBanner.actionInFlight ? "wait" : "pointer", borderRadius: "4px",
+                opacity: pendingGateBanner.actionInFlight ? 0.7 : 1,
               }
-            }, "Approve") : null,
+            }, pendingGateBanner.actionInFlight === "approve" ? "Research starting..." : "Approve") : null,
             pendingGateBanner.onReject ? React.createElement("button", {
               onClick: pendingGateBanner.onReject,
+              disabled: !!pendingGateBanner.actionInFlight,
               "aria-label": "Reject gate",
               style: {
                 fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600,
                 letterSpacing: ".12em", textTransform: "uppercase",
                 padding: "6px 12px", background: "var(--paper)", color: "var(--ink)",
-                border: "1px solid var(--ruleh)", cursor: "pointer", borderRadius: "4px",
+                border: "1px solid var(--ruleh)", cursor: pendingGateBanner.actionInFlight ? "wait" : "pointer", borderRadius: "4px",
+                opacity: pendingGateBanner.actionInFlight ? 0.55 : 1,
               }
-            }, "Reject") : null,
+            }, pendingGateBanner.actionInFlight === "reject" ? "Rejecting..." : "Reject") : null,
             React.createElement("button", {
               onClick: pendingGateBanner.onResume,
+              disabled: !!pendingGateBanner.actionInFlight,
               style: {
                 fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600,
                 letterSpacing: ".12em", textTransform: "uppercase",
                 padding: "6px 12px", background: "transparent", color: "var(--ink2)",
-                border: "1px solid var(--ruleh)", cursor: "pointer", borderRadius: "4px",
+                border: "1px solid var(--ruleh)", cursor: pendingGateBanner.actionInFlight ? "not-allowed" : "pointer", borderRadius: "4px",
+                opacity: pendingGateBanner.actionInFlight ? 0.5 : 1,
               }
             }, "Review")
           )
         ) : null,
-        React.createElement(Feed, { feedRef: feedRef, activity: props.activity, findings: props.findings, nextCheckpointLabel: props.nextCheckpointLabel })
+        React.createElement(Feed, {
+          feedRef: feedRef,
+          activity: props.activity,
+          findings: props.findings,
+          nextCheckpointLabel: props.nextCheckpointLabel,
+          completedTitle: props.completedTitle,
+          completedEmptyText: props.completedEmptyText,
+          waitState: waitState
+        })
       ),
 
       // RIGHT RAIL
@@ -732,8 +870,9 @@ export default function MissionControl(props) {
             );
           }),
           typing ? React.createElement("div", null,
-            React.createElement("div", { className: "msg-m", style: { display: "inline-block", padding: "9px 13px" } },
+            React.createElement("div", { className: "msg-m", style: { display: "inline-block", maxWidth: "90%", padding: "9px 13px", color: "var(--ink2)" } },
               React.createElement("div", { className: "k", style: { marginBottom: "4px" } }, "Marvin"),
+              React.createElement("div", { style: { fontSize: "12.5px", lineHeight: 1.55, marginBottom: "7px" } }, currentNarration),
               React.createElement("div", { style: { display: "flex", gap: "4px" } },
                 [0, 1, 2].map(function (i) {
                   return React.createElement("div", { key: i, style: { width: "4px", height: "4px", background: "var(--muted)", animation: "blink 1.1s " + (i * 0.25) + "s ease-in-out infinite" } });

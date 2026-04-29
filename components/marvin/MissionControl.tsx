@@ -7,8 +7,12 @@ import RawMissionControlView from "../../UI Marvin/MissionControl.jsx";
 import {
   buildInitialMessages,
   DEFAULT_WORKSPACE_TAB,
+  formatDeliverableDisplayName,
+  formatDeliverableReadyChatMessage,
   formatGatePendingChatMessage,
   formatGatePendingFeedSignal,
+  formatNarrationChatMessage,
+  routeDeliverableToSectionId,
 } from "@/lib/missions/adapters";
 import {
   type MissionEventStream,
@@ -73,20 +77,6 @@ function shortenAgentMessage(raw: unknown): string {
   return text.length > 220 ? text.slice(0, 220).trimEnd() + "…" : text;
 }
 
-const DELIVERABLE_LABELS: Record<string, string> = {
-  market_brief: "Market brief",
-  competitive_brief: "Competitive analysis",
-  financial_brief: "Financial analysis",
-  risk_brief: "Risk / Red-team",
-  investment_memo: "Investment memo",
-  engagement_brief: "Engagement brief",
-};
-
-function humanizeDeliverableType(t: unknown): string {
-  const raw = String(t ?? "deliverable");
-  return DELIVERABLE_LABELS[raw] ?? raw.replace(/_/g, " ");
-}
-
 // Extended view props that include gate validation handlers
 interface MissionControlViewProps {
   mission: Mission;
@@ -124,24 +114,36 @@ interface MissionControlViewProps {
   activity?: Array<{ id: string; ag?: string; text?: string; ts?: string; claim_text?: string; confidence?: string }>;
   findings: Array<{
     id: string;
+    kind?: "finding" | "milestone" | "deliverable";
     agent_id?: string | null;
     claim_text?: string;
     confidence?: string | null;
     ag?: string;
     text?: string;
     ts?: string;
-    workstream_id?: string;
+    workstream_id?: string | null;
     hypothesis_id?: string | null;
     hypothesis_label?: string | null;
     source_id?: string | null;
     source_type?: string | null;
     impact?: "load_bearing" | "supporting" | "color" | null;
+    href?: string;
+    onOpen?: () => void;
+    output_label?: string;
+    section_id?: string | null;
   }>;
   deliverables: { id: string; label: string; status: string; href?: string; onOpen?: () => void }[];
   activeAgent: string | null;
+  currentNarration?: string | null;
+  sectionTabs?: {
+    id: WorkspaceTab;
+    label: string;
+    status?: "pending" | "now" | "in_progress" | "completed";
+  }[];
   workstreamContent?: {
     id: string;
     label: string;
+    status?: "pending" | "now" | "in_progress" | "completed";
     findings: Array<{ id: string; claim_text: string; confidence: string | null; agent_id: string | null }>;
     milestones: Array<{ id: string; label: string; status: string }>;
   }[];
@@ -149,16 +151,75 @@ interface MissionControlViewProps {
     onResume: () => void;
     onApprove?: () => void;
     onReject?: () => void;
+    actionInFlight?: "approve" | "reject" | null;
     title?: string;
     summary?: string;
     gateId?: string;
   } | null;
   briefStatus?: "pending" | "now" | "completed";
   nextCheckpointLabel?: string | null;
+  completedTitle?: string;
+  completedEmptyText?: string;
+  waitState?: {
+    isWorking: boolean;
+    showInOutputs: boolean;
+    isStalled: boolean;
+    elapsedLabel: string;
+    message: string;
+    headline: string;
+  };
 }
 
 const MissionControlView = RawMissionControlView as unknown as ComponentType<MissionControlViewProps>;
 type MissionProgressSnapshot = Awaited<ReturnType<typeof getMissionProgress>>;
+type WorkstreamViewStatus = "pending" | "now" | "in_progress" | "completed";
+type LiveFindingEvent = {
+  id: string;
+  kind:
+    | "finding"
+    | "milestone"
+    | "deliverable"
+    | "gate"
+    | "phase"
+    | "agent"
+    | "agent_message"
+    | "tool_call"
+    | "tool_result"
+    | "narration";
+  claim_text: string;
+  confidence?: string;
+  agent?: string;
+  workstreamId?: string;
+  hypothesisId?: string;
+  ts?: string;
+  href?: string;
+};
+
+function liveEventKey(event: Pick<LiveFindingEvent, "kind" | "id">): string {
+  return `${event.kind}:${event.id}`;
+}
+
+function upsertLiveEvent(current: LiveFindingEvent[], event: LiveFindingEvent): LiveFindingEvent[] {
+  const key = liveEventKey(event);
+  const existingIndex = current.findIndex((item) => liveEventKey(item) === key);
+  if (existingIndex === -1) return current.concat(event);
+  const next = current.slice();
+  next[existingIndex] = { ...next[existingIndex], ...event };
+  return next;
+}
+
+function dedupeByKey<T>(items: T[], getKey: (item: T) => string): T[] {
+  const byKey = new Map<string, T>();
+  for (const item of items) byKey.set(getKey(item), item);
+  return Array.from(byKey.values());
+}
+
+function formatElapsed(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = String(safeSeconds % 60).padStart(2, "0");
+  return `${minutes}:${remainder}`;
+}
 
 function assertGateLifecycleContract(data: MissionProgressSnapshot): void {
   for (const gate of data.gates ?? []) {
@@ -187,35 +248,21 @@ export default function MissionControl({
   const [isOffline, setIsOffline] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isStalled, setIsStalled] = useState(false);
+  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
+  const [streamElapsedSeconds, setStreamElapsedSeconds] = useState(0);
+  const [gateActionInFlight, setGateActionInFlight] = useState<{
+    gateId: string;
+    action: "approve" | "reject" | "decision" | "clarification";
+  } | null>(null);
+  const [resolvingGateIds, setResolvingGateIds] = useState<Set<string>>(new Set());
   const lastEventAtRef = useRef<number>(Date.now());
 
   // Progress state for real-time data from backend
   const [progress, setProgress] = useState<MissionProgressSnapshot | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, "idle" | "active" | "done">>({});
-  const [liveFindings, setLiveFindings] = useState<
-    Array<{
-      id: string;
-      kind:
-        | "finding"
-        | "milestone"
-        | "deliverable"
-        | "gate"
-        | "phase"
-        | "agent"
-        | "agent_message"
-        | "tool_call"
-        | "tool_result"
-        | "narration";
-      claim_text: string;
-      confidence?: string;
-      agent?: string;
-      workstreamId?: string;
-      hypothesisId?: string;
-      ts?: string;
-      href?: string;
-    }>
-  >([]);
+  const [latestNarration, setLatestNarration] = useState<string | null>(null);
+  const [liveFindings, setLiveFindings] = useState<LiveFindingEvent[]>([]);
   const [milestoneStatusOverrides, setMilestoneStatusOverrides] = useState<Record<string, string>>({});
   const [gatePayloads, setGatePayloads] = useState<Record<string, MissionGateModalState>>({});
   const [pausedForGate, setPausedForGate] = useState(false);
@@ -225,6 +272,24 @@ export default function MissionControl({
   const [previewDeliverableId, setPreviewDeliverableId] = useState<string | null>(null);
   const [clarificationSubmitting, setClarificationSubmitting] = useState(false);
   const resumeTimerRef = useRef<number | null>(null);
+  const announcedDeliverablesRef = useRef<Set<string>>(new Set());
+
+  const markGateResolving = useCallback((gateId: string) => {
+    setResolvingGateIds((current) => {
+      const next = new Set(current);
+      next.add(gateId);
+      return next;
+    });
+  }, []);
+
+  const clearGateResolving = useCallback((gateId: string) => {
+    setResolvingGateIds((current) => {
+      if (!current.has(gateId)) return current;
+      const next = new Set(current);
+      next.delete(gateId);
+      return next;
+    });
+  }, []);
 
   const chatDraft = useMissionUiStore((state) => selectChatDraft(state, missionId));
   const selectedTab = useMissionUiStore((state) => selectWorkspaceTab(state, missionId));
@@ -251,74 +316,122 @@ export default function MissionControl({
     void refreshProgress();
   }, [refreshProgress]);
 
+  const announceDeliverableReady = useCallback(
+    (
+      deliverableId: string | undefined,
+      deliverable: { deliverableType?: unknown; label?: unknown; filePath?: unknown },
+      { announce = true } = {},
+    ) => {
+      const key = deliverableId || String(deliverable.deliverableType ?? deliverable.label ?? "deliverable");
+      if (announcedDeliverablesRef.current.has(key)) return;
+      announcedDeliverablesRef.current.add(key);
+      if (!announce) return;
+      const label = formatDeliverableDisplayName({
+        deliverable_type: deliverable.deliverableType ?? deliverable.label,
+        file_path: deliverable.filePath,
+      });
+      setMessages((current) =>
+        current.concat({
+          id: makeMessageId(missionId, "deliverable-chat"),
+          from: "m",
+          text: formatDeliverableReadyChatMessage(label),
+        }),
+      );
+    },
+    [missionId],
+  );
+
+  const refreshMissionEvents = useCallback(async ({ replace = false } = {}) => {
+    if (repository.kind !== "http") return;
+    try {
+      const { events } = await getMissionEvents(missionId);
+      for (const evt of events) {
+        if (evt.type === "deliverable_ready") {
+          announceDeliverableReady(
+            evt.deliverableId,
+            {
+              deliverableType: evt.deliverableType ?? evt.label,
+              label: evt.label,
+              filePath: evt.filePath,
+            },
+            { announce: !replace },
+          );
+        }
+      }
+      const hydrated = events.map((evt) => {
+        if (evt.type === "finding_added") {
+          return {
+            id: evt.findingId ?? `${missionId}-${evt.ts ?? ""}-finding`,
+            kind: "finding" as const,
+            claim_text: evt.text ?? "",
+            confidence: evt.confidence ?? undefined,
+            agent: evt.agent ?? undefined,
+            workstreamId: evt.workstreamId ?? undefined,
+            hypothesisId: evt.hypothesisId ?? undefined,
+            ts: evt.ts,
+          };
+        }
+        if (evt.type === "milestone_done") {
+          return {
+            id: evt.milestoneId ?? `${missionId}-${evt.ts ?? ""}-milestone`,
+            kind: "milestone" as const,
+            claim_text: evt.label
+              ? `Milestone complete · ${evt.label}`
+              : `Milestone complete · ${evt.milestoneId ?? "step"}`,
+            confidence: "done",
+            workstreamId: evt.workstreamId ?? undefined,
+            ts: evt.ts,
+          };
+        }
+        if (evt.type === "deliverable_ready") {
+          return {
+            id: evt.deliverableId ?? `${missionId}-${evt.ts ?? ""}-deliverable`,
+            kind: "deliverable" as const,
+            claim_text: `Deliverable ready · ${formatDeliverableDisplayName({
+              deliverable_type: evt.deliverableType ?? evt.label,
+              file_path: evt.filePath,
+            })}`,
+            confidence: "ready",
+            ts: evt.ts,
+            href: evt.filePath
+              ? getDeliverableDownloadUrl(evt.filePath)
+              : undefined,
+          };
+        }
+        // gate_resolved
+        return {
+          id: evt.gateId ?? `${missionId}-${evt.ts ?? ""}-gate`,
+          kind: "gate" as const,
+          claim_text: `Gate ${evt.status ?? "resolved"} · ${evt.gateType ?? evt.gateId ?? ""}`,
+          confidence: evt.status ?? "gate",
+          ts: evt.ts,
+        };
+      });
+
+      if (replace) {
+        // Replace rather than append: this is the source-of-truth snapshot.
+        setLiveFindings(dedupeByKey(hydrated, liveEventKey));
+        return;
+      }
+
+      setLiveFindings((current) => {
+        const byId = new Map(current.map((event) => [liveEventKey(event), event]));
+        for (const event of hydrated) {
+          byId.set(liveEventKey(event), event);
+        }
+        return Array.from(byId.values());
+      });
+    } catch (error) {
+      console.error("Failed to hydrate mission events:", error);
+    }
+  }, [announceDeliverableReady, missionId, repository.kind]);
+
   // Hydrate the live rail from persisted events so a refresh restores the
   // chronology instead of starting empty (CLAUDE.md invariant: UI reflects
   // backend truth — the rail is a view onto persisted state, not session-only).
   useEffect(() => {
-    if (repository.kind !== "http") return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { events } = await getMissionEvents(missionId);
-        if (cancelled) return;
-        const hydrated = events.map((evt) => {
-          if (evt.type === "finding_added") {
-            return {
-              id: evt.findingId ?? `${missionId}-${evt.ts ?? ""}-finding`,
-              kind: "finding" as const,
-              claim_text: evt.text ?? "",
-              confidence: evt.confidence ?? undefined,
-              agent: evt.agent ?? undefined,
-              workstreamId: evt.workstreamId ?? undefined,
-              hypothesisId: evt.hypothesisId ?? undefined,
-              ts: evt.ts,
-            };
-          }
-          if (evt.type === "milestone_done") {
-            return {
-              id: evt.milestoneId ?? `${missionId}-${evt.ts ?? ""}-milestone`,
-              kind: "milestone" as const,
-              claim_text: evt.label
-                ? `Milestone complete · ${evt.label}`
-                : `Milestone complete · ${evt.milestoneId ?? "step"}`,
-              confidence: "done",
-              workstreamId: evt.workstreamId ?? undefined,
-              ts: evt.ts,
-            };
-          }
-          if (evt.type === "deliverable_ready") {
-            return {
-              id: evt.deliverableId ?? `${missionId}-${evt.ts ?? ""}-deliverable`,
-              kind: "deliverable" as const,
-              claim_text: `Deliverable ready · ${humanizeDeliverableType(
-                evt.deliverableType ?? evt.label,
-              )}`,
-              confidence: "ready",
-              ts: evt.ts,
-              href: evt.filePath
-                ? getDeliverableDownloadUrl(evt.filePath)
-                : undefined,
-            };
-          }
-          // gate_resolved
-          return {
-            id: evt.gateId ?? `${missionId}-${evt.ts ?? ""}-gate`,
-            kind: "gate" as const,
-            claim_text: `Gate ${evt.status ?? "resolved"} · ${evt.gateType ?? evt.gateId ?? ""}`,
-            confidence: evt.status ?? "gate",
-            ts: evt.ts,
-          };
-        });
-        // Replace rather than append: this is the source-of-truth snapshot.
-        setLiveFindings(hydrated);
-      } catch (error) {
-        console.error("Failed to hydrate mission events:", error);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [missionId, repository.kind]);
+    void refreshMissionEvents({ replace: true });
+  }, [refreshMissionEvents]);
 
   // Load mission on mount
   useEffect(() => {
@@ -333,7 +446,9 @@ export default function MissionControl({
         }
 
         setMission(nextMission);
-        setMessages(nextMission ? buildInitialMessages(nextMission) : []);
+        setMessages((current) =>
+          current.length > 0 ? current : nextMission ? buildInitialMessages(nextMission) : [],
+        );
         setBackendState(repository.kind === "local" ? "local" : "ready");
         setIsOffline(false);
       } catch (error) {
@@ -384,7 +499,7 @@ export default function MissionControl({
       },
       onEvent: (event) => {
         lastEventAtRef.current = Date.now();
-        if (isStalled) setIsStalled(false);
+        setIsStalled(false);
         switch (event.type) {
           case "text":
             setMessages((current) =>
@@ -399,7 +514,7 @@ export default function MissionControl({
             // Tool plumbing belongs in the rail (transparency on agent
             // activity), never in chat. Chat is reserved for Marvin's voice.
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "tool"),
                 kind: "tool_call",
                 claim_text: `${event.agent ?? "Agent"} → ${humanizeToolName(event.text)}`,
@@ -409,7 +524,7 @@ export default function MissionControl({
             break;
           case "tool_result":
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "result"),
                 kind: "tool_result",
                 claim_text: humanizeToolResultText(event.text),
@@ -422,7 +537,7 @@ export default function MissionControl({
             // to the rail, not chat — keeps chat focused on Marvin's voice
             // while still showing what working agents are thinking.
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "agent-msg"),
                 kind: "agent_message",
                 claim_text: shortenAgentMessage(event.text),
@@ -430,7 +545,26 @@ export default function MissionControl({
               }),
             );
             break;
-          case "narration":
+          case "narration": {
+            if (!event.intent.trim()) {
+              break;
+            }
+            const narrationText = formatNarrationChatMessage({
+              agent: normalizeAgentName(event.agent),
+              intent: event.intent,
+            });
+            setLatestNarration(narrationText);
+            setMessages((current) => {
+              const last = current[current.length - 1];
+              if (last?.from === "m" && last.text === narrationText) {
+                return current;
+              }
+              return current.concat({
+                id: makeMessageId(missionId, "narration-chat"),
+                from: "m",
+                text: narrationText,
+              });
+            });
             // Replace any existing narration entry from the same agent so only
             // the latest intent is visible in the in-progress block.
             setLiveFindings((current) => {
@@ -446,6 +580,7 @@ export default function MissionControl({
               });
             });
             break;
+          }
           case "gate_pending": {
             // Chat-first gate UX. The modal no longer auto-opens; instead the
             // gate is announced in chat and signalled in the live feed. The
@@ -462,7 +597,7 @@ export default function MissionControl({
               setClarificationAnswers(questions.map(() => ""));
               setClarificationSubmitting(false);
               setLiveFindings((current) =>
-                current.concat({
+                upsertLiveEvent(current, {
                   id: makeMessageId(missionId, "clarif-signal"),
                   kind: "gate",
                   claim_text: `Clarification round ${modalPayload.round ?? 1} of ${
@@ -472,6 +607,7 @@ export default function MissionControl({
                 }),
               );
               setPausedForGate(true);
+              setLatestNarration(null);
               setRunState(missionId, { isStreaming: false });
               void refreshProgress();
               break;
@@ -493,7 +629,7 @@ export default function MissionControl({
             });
             setLiveFindings((current) => {
               if (current.some((f) => f.id === gateFeedId)) return current;
-              return current.concat({
+              return upsertLiveEvent(current, {
                 id: gateFeedId,
                 kind: "gate",
                 claim_text: formatGatePendingFeedSignal(event),
@@ -501,6 +637,7 @@ export default function MissionControl({
               });
             });
             setPausedForGate(true);
+            setLatestNarration(null);
             setRunState(missionId, { isStreaming: false });
             void refreshProgress();
             break;
@@ -513,7 +650,7 @@ export default function MissionControl({
               [(event.agent ?? "unknown").toLowerCase()]: "active",
             }));
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "agent-active"),
                 kind: "agent",
                 claim_text: `${display} started`,
@@ -533,7 +670,7 @@ export default function MissionControl({
               }));
             }
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "agent-done"),
                 kind: "agent",
                 claim_text: `${display} finished`,
@@ -544,8 +681,11 @@ export default function MissionControl({
             break;
           }
           case "phase_changed":
+            if (event.phase && event.phase !== "awaiting_confirmation") {
+              setResolvingGateIds(new Set());
+            }
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "phase"),
                 kind: "phase",
                 claim_text: `Phase · ${event.label ?? event.phase}`,
@@ -557,10 +697,11 @@ export default function MissionControl({
             // phase_changed but does not push a fresh /progress payload —
             // re-fetch so the center pane reflects backend truth.
             void refreshProgress();
+            void refreshMissionEvents();
             break;
           case "finding_added":
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: event.findingId ?? makeMessageId(missionId, "finding"),
                 kind: "finding",
                 claim_text: event.text,
@@ -580,7 +721,7 @@ export default function MissionControl({
               }));
             }
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: event.milestoneId ?? makeMessageId(missionId, "milestone"),
                 kind: "milestone",
                 claim_text: event.label
@@ -593,12 +734,23 @@ export default function MissionControl({
             void refreshProgress();
             break;
           case "deliverable_ready":
+            announceDeliverableReady(
+              event.deliverableId,
+              {
+                deliverableType: event.deliverableType ?? event.label,
+                label: event.label,
+                filePath: event.filePath,
+              },
+            );
             setLiveFindings((current) =>
-              current.concat({
+              upsertLiveEvent(current, {
                 id: event.deliverableId ?? makeMessageId(missionId, "deliverable"),
                 kind: "deliverable",
                 claim_text: event.label
-                  ? `Deliverable ready · ${humanizeDeliverableType(event.deliverableType ?? event.label)}`
+                  ? `Deliverable ready · ${formatDeliverableDisplayName({
+                      deliverable_type: event.deliverableType ?? event.label,
+                      file_path: event.filePath,
+                    })}`
                   : "Deliverable ready",
                 confidence: "ready",
                 ts: event.ts,
@@ -611,7 +763,13 @@ export default function MissionControl({
             break;
           case "run_end":
             setPausedForGate(false);
+            setLatestNarration(null);
             setRunState(missionId, { isStreaming: false });
+            setGateActionInFlight(null);
+            window.setTimeout(() => {
+              void refreshProgress();
+              void refreshMissionEvents();
+            }, 500);
             break;
           default:
             break;
@@ -628,7 +786,7 @@ export default function MissionControl({
     return () => {
       subscription.close();
     };
-  }, [eventStream, missionId, setRunState, refreshProgress]);
+  }, [eventStream, missionId, setRunState, refreshProgress, refreshMissionEvents, announceDeliverableReady]);
 
   // Chantier 2.7 FIX 2 — re-attach to checkpointed mission on mount.
   // Recovers tab close, network blip, and uvicorn restart. Backend emits
@@ -679,6 +837,7 @@ export default function MissionControl({
 
       // Set streaming state
       setRunState(mission.id, { isStreaming: true });
+      setLatestNarration("MARVIN — Starting the mission run.");
       setStreamError(null);
 
       // For local repository, use mock response
@@ -733,7 +892,9 @@ export default function MissionControl({
   );
 
   const scheduleResumeStream = useCallback(() => {
-    if (eventStream.kind !== "fetch" || typeof eventStream.resume !== "function") return;
+    if (eventStream.kind !== "fetch" || typeof eventStream.resume !== "function") {
+      return false;
+    }
     const resumeStream = eventStream.resume;
     if (resumeTimerRef.current !== null) {
       window.clearTimeout(resumeTimerRef.current);
@@ -743,18 +904,30 @@ export default function MissionControl({
     // relay graph + persistence events into the live rail.
     resumeTimerRef.current = window.setTimeout(() => {
       resumeTimerRef.current = null;
-      void resumeStream();
+      void resumeStream().finally(() => {
+        void refreshProgress();
+        setRunState(missionId, { isStreaming: false });
+        setGateActionInFlight(null);
+        window.setTimeout(() => {
+          setResolvingGateIds(new Set());
+        }, 1_500);
+      });
     }, 300);
-  }, [eventStream]);
+    return true;
+  }, [eventStream, missionId, refreshProgress, setRunState]);
 
   // Handle gate approval
   const handleGateApprove = useCallback(
     async (gateId: string, notes: string = "") => {
       if (!mission) return;
+      if (gateActionInFlight?.gateId === gateId) return;
 
+      setGateActionInFlight({ gateId, action: "approve" });
+      markGateResolving(gateId);
       setGateModal(null);
       setPausedForGate(false);
       setRunState(mission.id, { isStreaming: true });
+      setLatestNarration("Workflow — Gate approved. Starting the research workstreams.");
 
       try {
         // For HTTP repository, call the API
@@ -774,6 +947,8 @@ export default function MissionControl({
               text: result.message ?? "Gate already validated.",
             });
             setRunState(mission.id, { isStreaming: false });
+            setGateActionInFlight(null);
+            clearGateResolving(gateId);
             return;
           }
           if (result.conflict) {
@@ -783,6 +958,8 @@ export default function MissionControl({
               text: result.message ?? "Gate already completed; cannot change.",
             });
             setRunState(mission.id, { isStreaming: false });
+            setGateActionInFlight(null);
+            clearGateResolving(gateId);
             return;
           }
 
@@ -802,29 +979,34 @@ export default function MissionControl({
           });
 
           const shouldResume = shouldAttachResumeStream(result);
-          if (shouldResume) {
-            scheduleResumeStream();
-          } else {
+          if (!shouldResume || !scheduleResumeStream()) {
             setRunState(mission.id, { isStreaming: false });
+            setGateActionInFlight(null);
           }
         }
       } catch (error) {
         console.error("Failed to validate gate:", error);
         setRunState(mission.id, { isStreaming: false });
+        setGateActionInFlight(null);
+        clearGateResolving(gateId);
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [mission, repository.kind, setRunState, appendGateMessage, scheduleResumeStream]
+    [clearGateResolving, gateActionInFlight, markGateResolving, mission, repository.kind, setRunState, appendGateMessage, scheduleResumeStream]
   );
 
   // Handle gate rejection
   const handleGateReject = useCallback(
     async (gateId: string, notes: string = "") => {
       if (!mission) return;
+      if (gateActionInFlight?.gateId === gateId) return;
 
+      setGateActionInFlight({ gateId, action: "reject" });
+      markGateResolving(gateId);
       setGateModal(null);
       setPausedForGate(false);
       setRunState(mission.id, { isStreaming: true });
+      setLatestNarration("Workflow — Reworking the mission from your feedback.");
 
       try {
         // For HTTP repository, call the API
@@ -838,6 +1020,8 @@ export default function MissionControl({
               text: result.message ?? "Gate already rejected.",
             });
             setRunState(mission.id, { isStreaming: false });
+            setGateActionInFlight(null);
+            clearGateResolving(gateId);
             return;
           }
           if (result.conflict) {
@@ -847,6 +1031,8 @@ export default function MissionControl({
               text: result.message ?? "Gate already completed; cannot change.",
             });
             setRunState(mission.id, { isStreaming: false });
+            setGateActionInFlight(null);
+            clearGateResolving(gateId);
             return;
           }
 
@@ -861,19 +1047,20 @@ export default function MissionControl({
           });
 
           const shouldResume = shouldAttachResumeStream(result);
-          if (shouldResume) {
-            scheduleResumeStream();
-          } else {
+          if (!shouldResume || !scheduleResumeStream()) {
             setRunState(mission.id, { isStreaming: false });
+            setGateActionInFlight(null);
           }
         }
       } catch (error) {
         console.error("Failed to validate gate:", error);
         setRunState(mission.id, { isStreaming: false });
+        setGateActionInFlight(null);
+        clearGateResolving(gateId);
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [mission, repository.kind, setRunState, appendGateMessage, scheduleResumeStream]
+    [clearGateResolving, gateActionInFlight, markGateResolving, mission, repository.kind, setRunState, appendGateMessage, scheduleResumeStream]
   );
 
   // CP2 (chantier 2.6.1): data_decision gate handler. Posts a `decision`
@@ -889,6 +1076,7 @@ export default function MissionControl({
       setGateModal(null);
       setPausedForGate(false);
       setRunState(mission.id, { isStreaming: true });
+      setLatestNarration("Workflow — Applying your gate decision.");
       setMessages((current) =>
         current.concat({
           id: makeMessageId(mission.id, "decision"),
@@ -922,9 +1110,7 @@ export default function MissionControl({
             return;
           }
           const shouldResume = shouldAttachResumeStream(result);
-          if (shouldResume) {
-            scheduleResumeStream();
-          } else {
+          if (!shouldResume || !scheduleResumeStream()) {
             setRunState(mission.id, { isStreaming: false });
           }
         }
@@ -947,6 +1133,7 @@ export default function MissionControl({
     const answers = questions.map((_, idx) => (clarificationAnswers[idx] ?? "").trim());
     setClarificationSubmitting(true);
     setRunState(mission.id, { isStreaming: true });
+    setLatestNarration("Workflow — Applying your clarification.");
     try {
       const result = await apiSubmitClarificationAnswers(
         mission.id,
@@ -964,9 +1151,7 @@ export default function MissionControl({
       setClarificationAnswers([]);
       setPausedForGate(false);
       const shouldResume = shouldAttachResumeStream(result);
-      if (shouldResume) {
-        scheduleResumeStream();
-      } else {
+      if (!shouldResume || !scheduleResumeStream()) {
         setRunState(mission.id, { isStreaming: false });
       }
     } catch (error) {
@@ -992,6 +1177,7 @@ export default function MissionControl({
     }
     setGateModal(null);
     setRunState(missionId, { isStreaming: false });
+    setLatestNarration(null);
   }, [gateModal, mission, missionId, setRunState, appendGateMessage]);
 
   // Re-open a deferred gate from the checkpoint surface.
@@ -1011,14 +1197,38 @@ export default function MissionControl({
   }, [gatePayloads, progress]);
 
   useEffect(() => {
+    if (!runState.isStreaming && gateActionInFlight) {
+      setGateActionInFlight(null);
+    }
+  }, [gateActionInFlight, runState.isStreaming]);
+
+  useEffect(() => {
+    if (!runState.isStreaming || pausedForGate) {
+      setStreamStartedAt(null);
+      setStreamElapsedSeconds(0);
+      return;
+    }
+
+    const startedAt = streamStartedAt ?? Date.now();
+    if (streamStartedAt === null) {
+      setStreamStartedAt(startedAt);
+      lastEventAtRef.current = startedAt;
+    }
+
+    setStreamElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    const handle = window.setInterval(() => {
+      setStreamElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1_000);
+    return () => window.clearInterval(handle);
+  }, [pausedForGate, runState.isStreaming, streamStartedAt]);
+
+  useEffect(() => {
     if (!runState.isStreaming || pausedForGate) {
       if (isStalled) setIsStalled(false);
       return;
     }
     const handle = window.setInterval(() => {
-      if (Date.now() - lastEventAtRef.current > 30_000) {
-        setIsStalled(true);
-      }
+      setIsStalled(Date.now() - lastEventAtRef.current > 30_000);
     }, 5_000);
     return () => window.clearInterval(handle);
   }, [runState.isStreaming, pausedForGate, isStalled]);
@@ -1100,6 +1310,7 @@ export default function MissionControl({
 
   // Compute checkpoints from gates
   const gateStatusToCheckpoint = (g: any) => {
+    if (resolvingGateIds.has(g.id)) return "completed";
     if (g.status === "completed") return "completed";
     if (g.lifecycle_status === "open" || g.is_open) return "now";
     return "later";
@@ -1109,37 +1320,73 @@ export default function MissionControl({
     label: String(g.gate_type ?? "").replace(/_/g, " "),
     status: gateStatusToCheckpoint(g),
   }));
+  const visiblePendingGates = (progress?.gates ?? []).filter(
+    (g) => (g.lifecycle_status === "open" || g.is_open) && !resolvingGateIds.has(g.id),
+  );
+  const hasPendingGate = visiblePendingGates.length > 0;
+  const pendingGate = visiblePendingGates[0];
   const nextCheckpointLabel =
-    checkpoints.find((cp) => cp.status === "now")?.label ?? null;
+    visiblePendingGates[0]?.gate_type?.replace(/_/g, " ") ??
+    checkpoints.find((cp) => cp.status === "now")?.label ??
+    null;
   const deliveredMilestones = allMilestones.filter((m) => {
     const liveStatus = milestoneStatusOverrides[m.id];
     return (liveStatus ?? m.status) === "delivered";
   }).length;
   const progressRatio = allMilestones.length > 0 ? deliveredMilestones / allMilestones.length : 0;
+  const missionStatusLabel = resolvingGateIds.size > 0
+    ? "Mission running"
+    : hasPendingGate
+    ? `Gate pending · ${nextCheckpointLabel ?? "Review"}`
+    : progressRatio >= 1 && allMilestones.length > 0
+      ? "Complete"
+      : activeAgent
+        ? `${activeAgent} running`
+        : runState.isStreaming
+          ? "Mission running"
+          : nextCheckpointLabel
+            ? `Next gate · ${nextCheckpointLabel}`
+            : "Ready";
   const missionForView = {
     ...mission,
     progress: progressRatio,
     checkpoint: nextCheckpointLabel ?? "No open checkpoint",
+    statusLabel: missionStatusLabel,
   };
 
   // Compute hypotheses
   const hypotheses = progress?.hypotheses ?? [];
 
-  // Compute findings (snapshot from /progress + live SSE additions)
-  // When a workstream tab is selected, scope findings to that workstream so
-  // the center pane reflects per-stream content instead of a global feed.
-  // Normalize findings to the shape the presentational Feed expects
-  // ({ id, ag, text, ts }), so progress + SSE rows render correctly.
+  // Compute section outputs (findings + milestones + deliverables). The center
+  // pane is scoped to an explicit section, so Brief, Synthesis, Stress testing,
+  // and Final deliverables are distinct instead of sharing a misleading global
+  // list.
+  const tabToSectionId = (tab: string): string => {
+    if (tab === "brief" || tab === "final") return tab;
+    if (tab === "ws5") return "final";
+    return tab.replace(/^ws/i, "W");
+  };
+  const selectedSectionId = selectedTab ? tabToSectionId(selectedTab) : "brief";
+  const sectionLabelById: Record<string, string> = {
+    brief: "Brief",
+    W1: "Market analysis",
+    W2: "Financial analysis",
+    W3: "Synthesis",
+    W4: "Stress testing",
+    final: "Final deliverables",
+  };
+  const workstreamLabel = sectionLabelById[selectedSectionId] ?? "section";
   const normalizeFinding = (f: any) => ({
     id: f.id,
+    kind: f.kind ?? "finding",
     ag: normalizeAgentName(f.agent ?? f.agent_id ?? f.ag),
     text: f.claim_text ?? f.text ?? "",
     ts: f.ts ?? f.created_at ?? "",
     confidence: f.confidence,
+    section_id: f.section_id ?? f.sectionId ?? null,
     workstream_id: f.workstream_id ?? f.workstreamId,
     agent_id: f.agent ?? f.agent_id,
     claim_text: f.claim_text,
-    kind: f.kind ?? "finding",
     href: f.href,
     // Chantier 4 CP2: enrich for FindingCard.
     hypothesis_id: f.hypothesis_id ?? f.hypothesisId ?? null,
@@ -1154,19 +1401,16 @@ export default function MissionControl({
   // reverse for display.
   const activity = liveFindings.slice().reverse().map(normalizeFinding);
   // Tab id "ws1" maps to backend workstream id "W1", etc.
-  // Strict filter: only show findings tagged to the selected workstream.
+  // Strict filter: only show outputs tagged/routed to the selected workstream.
   // Untagged findings are intentionally excluded so per-tab content stays
   // distinct rather than every untagged finding bleeding into all tabs.
-  const tabToWorkstream = (tab: string) => tab.replace(/^ws/i, "W");
-  const selectedWs = selectedTab ? tabToWorkstream(selectedTab) : null;
-  const findings = selectedWs
-    ? allFindings.filter((f) => f.workstream_id === selectedWs)
-    : allFindings;
 
   // Compute deliverables (snapshot + live SSE additions, deduped by id)
   const seedDeliverables = (progress?.deliverables ?? []).map((d) => ({
     id: d.id,
-    label: humanizeDeliverableType(d.deliverable_type),
+    label: formatDeliverableDisplayName(d),
+    deliverable_type: d.deliverable_type,
+    file_path: d.file_path,
     status: d.status === "ready" && d.file_path ? "ready" : "pending",
     href: d.status === "ready" && d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
     // Chantier 4 CP3: ready deliverables open the preview modal instead of
@@ -1177,6 +1421,49 @@ export default function MissionControl({
         : undefined,
   }));
   const deliverables = seedDeliverables;
+  const deliverableOutputs = seedDeliverables
+    .filter((d) => d.status === "ready")
+    .map((d) => ({
+      id: d.id,
+      kind: "deliverable" as const,
+      ag: "MARVIN",
+      text: `Deliverable ready · ${d.label}`,
+      claim_text: `Deliverable ready · ${d.label}`,
+      confidence: "READY",
+      section_id: routeDeliverableToSectionId(d),
+      workstream_id: null,
+      ts: "",
+      href: d.href,
+      onOpen: d.onOpen,
+      output_label: d.label,
+    }));
+  const milestoneOutputs = allMilestones
+    .filter((m) => {
+      const liveStatus = milestoneStatusOverrides[m.id];
+      return (liveStatus ?? m.status) === "delivered";
+    })
+    .map((m) => ({
+      id: m.id,
+      kind: "milestone" as const,
+      ag: "MARVIN",
+      text: `Milestone complete · ${m.label}`,
+      claim_text: `Milestone complete · ${m.label}`,
+      confidence: "DONE",
+      section_id: null,
+      workstream_id: m.workstream_id,
+      ts: "",
+    }));
+  const allSectionOutputs = dedupeByKey([
+    ...allFindings,
+    ...deliverableOutputs,
+    ...milestoneOutputs,
+  ], (output) => `${output.kind}:${output.id}`);
+  const findings = allSectionOutputs.filter((output) => {
+    const sectionId = output.section_id ?? output.workstream_id;
+    return sectionId === selectedSectionId;
+  });
+  const completedTitle = `${workstreamLabel} outputs`;
+  const completedEmptyText = `No outputs for ${workstreamLabel} yet.`;
 
   // Build per-workstream content for the center tabs from real findings.
   // Bug 6 (chantier 2.6): tabs are content-driven (DB findings), not the
@@ -1185,20 +1472,36 @@ export default function MissionControl({
   const AGENT_TO_WS: Record<string, string> = {
     dora: "W1", calculus: "W2", merlin: "W3", adversus: "W4",
   };
-  const workstreamContent = (progress?.workstreams ?? []).map((ws) => ({
-    id: ws.id,
-    label: ws.label,
-    findings: (progress?.findings ?? []).filter((f: any) => {
-      if (f.workstream_id === ws.id) return true;
-      const mapped = AGENT_TO_WS[(f.agent_id || "").toLowerCase()];
-      return mapped === ws.id;
-    }),
-    milestones: (progress?.milestones ?? []).filter((m: any) => m.workstream_id === ws.id),
-  }));
+  const workstreamContent = (progress?.workstreams ?? []).map((ws) => {
+    const wsMilestones = (progress?.milestones ?? []).filter((m: any) => m.workstream_id === ws.id);
+    const wsDelivered = wsMilestones.filter((m: any) => {
+      const liveStatus = milestoneStatusOverrides[m.id];
+      return (liveStatus ?? m.status) === "delivered";
+    }).length;
+    const agentKey = ws.assigned_agent?.toLowerCase() ?? ws.id.toLowerCase();
+    const liveStatus = agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
+    const status: WorkstreamViewStatus =
+      wsMilestones.length > 0 && wsDelivered === wsMilestones.length
+        ? "completed"
+        : liveStatus === "active"
+          ? "now"
+          : wsDelivered > 0
+            ? "in_progress"
+            : "pending";
+    return {
+      id: ws.id,
+      label: ws.label,
+      status,
+      findings: (progress?.findings ?? []).filter((f: any) => {
+        if (f.workstream_id === ws.id) return true;
+        const mapped = AGENT_TO_WS[(f.agent_id || "").toLowerCase()];
+        return mapped === ws.id;
+      }),
+      milestones: wsMilestones,
+    };
+  });
 
-  const hasPendingGate = (progress?.gates ?? []).some((g) => g.lifecycle_status === "open" || g.is_open);
   const showDeferredBanner = hasPendingGate && !gateModal;
-  const pendingGate = (progress?.gates ?? []).find((g) => g.lifecycle_status === "open" || g.is_open);
   const pendingGateModal =
     pendingGate
       ? gatePayloads[pendingGate.id] ??
@@ -1208,7 +1511,50 @@ export default function MissionControl({
         })
       : null;
   const briefStatus: "pending" | "now" | "completed" = progress?.framing ? "completed" : "now";
-  const showTyping = runState.isStreaming && !pausedForGate;
+  const workstreamStatus = (workstreamId: string): WorkstreamViewStatus =>
+    workstreamContent.find((ws) => ws.id === workstreamId)?.status ?? "pending";
+  const hasFinalDeliverables = deliverableOutputs.some((d) => d.section_id === "final");
+  const missionIsWorking = (runState.isStreaming || resolvingGateIds.size > 0) && !pausedForGate;
+  const baseSectionTabs: MissionControlViewProps["sectionTabs"] = [
+    { id: "brief", label: "Brief", status: briefStatus },
+    { id: "ws1", label: "Market analysis", status: workstreamStatus("W1") },
+    { id: "ws2", label: "Financial analysis", status: workstreamStatus("W2") },
+    { id: "ws3", label: "Synthesis", status: workstreamStatus("W3") },
+    { id: "ws4", label: "Stress testing", status: workstreamStatus("W4") },
+    { id: "final", label: "Final deliverables", status: hasFinalDeliverables ? "completed" : "pending" },
+  ];
+  const hasLiveStep = baseSectionTabs.some((tab) => tab.status === "now" || tab.status === "in_progress");
+  const nextPendingStepIndex = baseSectionTabs.findIndex((tab) => tab.status === "pending");
+  const sectionTabs = missionIsWorking && !hasPendingGate && !hasLiveStep && nextPendingStepIndex >= 0
+    ? baseSectionTabs.map((tab, index) =>
+        index === nextPendingStepIndex ? { ...tab, status: "now" as const } : tab,
+      )
+    : baseSectionTabs;
+  const showTyping = missionIsWorking;
+  const activeStep = sectionTabs.find((tab) => tab.status === "now") ?? sectionTabs.find((tab) => tab.status === "in_progress");
+  const selectedTabId = selectedSectionId === "brief" || selectedSectionId === "final"
+    ? selectedSectionId
+    : (`ws${selectedSectionId.replace(/^W/i, "")}` as WorkspaceTab);
+  const showWaitInSelectedOutputs = showTyping && activeStep?.id === selectedTabId;
+  const waitHeadline = activeAgent ? `${activeAgent} is working` : "MARVIN is working";
+  const waitBaseMessage =
+    latestNarration ??
+    (activeAgent
+      ? `${activeAgent} is working on the next mission step.`
+      : "Workflow — Starting the research workstreams.");
+  const waitMessage = isStalled
+    ? "Still working. No action needed — MARVIN will update this panel as soon as the next event arrives."
+    : streamElapsedSeconds >= 8
+      ? `${waitBaseMessage} This can take a minute while agents search, reason, and write findings.`
+      : waitBaseMessage;
+  const waitState: MissionControlViewProps["waitState"] = {
+    isWorking: showTyping,
+    showInOutputs: showWaitInSelectedOutputs,
+    isStalled,
+    elapsedLabel: formatElapsed(streamElapsedSeconds),
+    message: waitMessage,
+    headline: waitHeadline,
+  };
 
 
   // Render with gate modal that includes approve/reject buttons
@@ -1235,13 +1581,21 @@ export default function MissionControl({
         findings={findings}
         deliverables={deliverables}
         activeAgent={activeAgent}
+        currentNarration={waitState.message}
+        sectionTabs={sectionTabs}
         workstreamContent={workstreamContent}
+        waitState={waitState}
         pendingGateBanner={
           showDeferredBanner && pendingGate
             ? {
                 onResume: reopenGateFromCheckpoint,
                 onApprove: () => handleGateApprove(pendingGate.id, ""),
                 onReject: () => handleGateReject(pendingGate.id, ""),
+                actionInFlight:
+                  gateActionInFlight?.gateId === pendingGate.id &&
+                  (gateActionInFlight.action === "approve" || gateActionInFlight.action === "reject")
+                    ? gateActionInFlight.action
+                    : null,
                 gateId: pendingGate.id,
                 title: pendingGateModal?.title,
                 summary: pendingGateModal?.summary,
@@ -1250,6 +1604,8 @@ export default function MissionControl({
         }
         briefStatus={briefStatus}
         nextCheckpointLabel={nextCheckpointLabel}
+        completedTitle={completedTitle}
+        completedEmptyText={completedEmptyText}
       />
 
       {/* Chantier 4 CP3: deliverable preview modal. */}

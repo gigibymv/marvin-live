@@ -535,6 +535,29 @@ def test_attack_hypothesis_persists_redteam_finding(store: MissionStore, state: 
     assert any(f.agent_id == "adversus" for f in store.list_findings("m-test"))
 
 
+def test_attack_hypothesis_returns_cap_status_without_crashing(store: MissionStore, state: dict[str, str]):
+    cap = mission_tools.MAX_FINDINGS_PER_AGENT_PER_MISSION["adversus"]
+    for i in range(cap):
+        mission_tools.add_finding_to_mission(
+            claim_text=f"Existing adversus attack {i} with enough distinct detail.",
+            confidence="REASONED",
+            agent_id="adversus",
+            workstream_id="W4",
+            hypothesis_id="h-1",
+            state=state,
+        )
+
+    result = adversus_tools.attack_hypothesis("h-1", "empirical", state)
+
+    assert result["status"] == "cap_reached"
+    assert result["finding_id"] is None
+    assert result["agent_id"] == "adversus"
+    assert result["existing"] == cap
+    assert len(
+        [finding for finding in store.list_findings("m-test") if finding.agent_id == "adversus"]
+    ) == cap
+
+
 def test_generate_stress_scenarios_returns_three_items(state: dict[str, str]):
     result = adversus_tools.generate_stress_scenarios(state=state)
     assert len(result["scenarios"]) == 3

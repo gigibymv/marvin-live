@@ -338,6 +338,7 @@ def _get_mission_lock(mission_id: str) -> asyncio.Lock:
 # advances regardless of whether anyone is watching. CLAUDE.md §1: no silent
 # degradation — gate validation must always advance the graph.
 _detached_drivers: dict[str, asyncio.Task] = {}
+_queued_detached_resumes: dict[str, dict] = {}
 
 
 async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
@@ -425,22 +426,33 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
         existing = _detached_drivers.get(mission_id)
         if existing is asyncio.current_task():
             _detached_drivers.pop(mission_id, None)
+        queued_payload = _queued_detached_resumes.pop(mission_id, None)
+        if queued_payload is not None:
+            logger.info(
+                "Starting queued detached resume: mission=%s gate=%s",
+                mission_id,
+                queued_payload.get("gate_id"),
+            )
+            _spawn_detached_resume(mission_id, queued_payload)
 
 
-def _spawn_detached_resume(mission_id: str, resume_payload: dict) -> None:
+def _spawn_detached_resume(mission_id: str, resume_payload: dict) -> str:
     """Schedule a detached resume task. Idempotent per mission."""
     existing = _detached_drivers.get(mission_id)
     if existing is not None and not existing.done():
+        _queued_detached_resumes[mission_id] = resume_payload
         logger.info(
-            "Detached resume already running for mission=%s — skipping spawn",
+            "Detached resume already running for mission=%s — queued gate=%s",
             mission_id,
+            resume_payload.get("gate_id"),
         )
-        return
+        return "queued"
     task = asyncio.create_task(
         _drive_detached_resume(mission_id, resume_payload),
         name=f"detached-resume-{mission_id}",
     )
     _detached_drivers[mission_id] = task
+    return "spawned"
 
 
 _checkpoint_conn: aiosqlite.Connection | None = None
@@ -866,6 +878,7 @@ def _gate_narration(payload: dict) -> str:
     title = str(payload.get("title") or payload.get("gate_type") or "Validation required").strip()
     if not title:
         title = "Validation required"
+    title = title.replace("_", " ")
     return f"Human review needed: {title}"
 
 
@@ -980,12 +993,6 @@ async def _emit_for_update(
             if phase_intent:
                 out.append(await _emit_narration("workflow", phase_intent))
             current_phase = new_phase
-
-        if "gate_pending" in output:
-            gate_payload = output["gate_pending"]
-            out.append(await _emit_gate_pending(gate_payload))
-            if isinstance(gate_payload, dict):
-                out.append(await _emit_narration("workflow", _gate_narration(gate_payload)))
 
         if output.get("phase_blocked"):
             blocked_payload = output["phase_blocked"]
@@ -1460,6 +1467,10 @@ async def _stream_resume_passive(
                 drained_any = True
 
             if detached_task.done():
+                next_detached = _detached_drivers.get(mission_id)
+                if next_detached is not None and next_detached is not detached_task and not next_detached.done():
+                    detached_task = next_detached
+                    continue
                 break
             # Tight poll when events were just drained; back off when idle so
             # we don't burn CPU. 50ms keeps the feed visually live.
@@ -1526,6 +1537,12 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         return
 
     mission_lock = _get_mission_lock(mission_id)
+    detached = _detached_drivers.get(mission_id)
+    if detached is not None and not detached.done():
+        async for s in _stream_resume_passive(mission_id, detached):
+            yield s
+        return
+
     try:
         await asyncio.wait_for(mission_lock.acquire(), timeout=5.0)
     except asyncio.TimeoutError:
@@ -2402,12 +2419,13 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
             # Clarification / data_decision verdicts re-enter framing or
             # re-fan-out; the existing /resume + /chat flow handles those
             # without a detached driver.
-            _spawn_detached_resume(mission_id, resume_payload)
+            spawn_status = _spawn_detached_resume(mission_id, resume_payload)
             logger.info(
-                "Gate validated, detached driver spawned: "
-                f"mission={mission_id} gate={gate_id}"
+                "Gate validated, detached driver %s: "
+                f"mission={mission_id} gate={gate_id}",
+                spawn_status,
             )
-            status = "resumed_detached"
+            status = "resumed_detached" if spawn_status == "spawned" else "resume_pending"
         else:
             logger.warning(
                 "Gate validated but no active stream to resume: "

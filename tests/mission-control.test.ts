@@ -84,7 +84,7 @@ describe("mission control view", () => {
       }),
     );
 
-    expect(screen.getByText("Brief")).toBeInTheDocument();
+    expect(screen.getByText(/Brief/)).toBeInTheDocument();
     expect(screen.queryByText("✓ Brief")).not.toBeInTheDocument();
   });
 
@@ -221,6 +221,42 @@ describe("mission control view", () => {
     expect(screen.queryByText("A gate is pending review. Mission is paused until you decide.")).not.toBeInTheDocument();
   });
 
+  it("disables gate actions while approval is in flight", async () => {
+    const onApprove = vi.fn();
+    const onReject = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "brief",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "brief",
+        onGateClose: vi.fn(),
+        pendingGateBanner: {
+          onResume: vi.fn(),
+          onApprove,
+          onReject,
+          actionInFlight: "approve",
+          title: "Hypothesis confirmation",
+        },
+      }),
+    );
+
+    const approve = screen.getByRole("button", { name: "Approve gate" });
+    expect(approve).toBeDisabled();
+    expect(screen.getByText("Research starting...")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject gate" })).toBeDisabled();
+    await user.click(approve);
+    expect(onApprove).not.toHaveBeenCalled();
+  });
+
   it("renders operational activity separately from completed findings", () => {
     render(
       React.createElement(MissionControlView, {
@@ -242,5 +278,318 @@ describe("mission control view", () => {
 
     expect(screen.getByText("Dora started")).toBeInTheDocument();
     expect(screen.getByText("Market is growing")).toBeInTheDocument();
+  });
+
+  it("renders selected section outputs with a contextual title", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws4",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        completedTitle: "Stress testing outputs",
+        findings: [
+          {
+            id: "adv-1",
+            kind: "finding",
+            ag: "Adversus",
+            text: "Weakest link identified in H1",
+            confidence: "REASONED",
+          },
+          {
+            id: "w4-report",
+            kind: "deliverable",
+            ag: "MARVIN",
+            text: "Deliverable ready · workstream report",
+            confidence: "READY",
+          },
+          {
+            id: "w4-milestone",
+            kind: "milestone",
+            ag: "MARVIN",
+            text: "Milestone complete · Red-team challenge",
+            confidence: "DONE",
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getByText("Stress testing outputs")).toBeInTheDocument();
+    expect(screen.getByText("Weakest link identified in H1")).toBeInTheDocument();
+    expect(screen.getByText("Deliverable ready · workstream report")).toBeInTheDocument();
+    expect(screen.getByText("Milestone complete · Red-team challenge")).toBeInTheDocument();
+  });
+
+  it("renders the requested output tab order", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "brief",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "brief",
+        onGateClose: vi.fn(),
+        sectionTabs: [
+          { id: "brief", label: "Brief", status: "completed" },
+          { id: "ws1", label: "Market analysis", status: "completed" },
+          { id: "ws2", label: "Financial analysis", status: "pending" },
+          { id: "ws3", label: "Synthesis", status: "pending" },
+          { id: "ws4", label: "Stress testing", status: "completed" },
+          { id: "final", label: "Final deliverables", status: "completed" },
+        ],
+      }),
+    );
+
+    const tabs = screen.getAllByRole("button").filter((button) =>
+      /Brief|Market analysis|Financial analysis|Synthesis|Stress testing|Final deliverables/.test(button.textContent ?? ""),
+    );
+    expect(tabs.map((button) => button.textContent?.replace(/^[✓●]\s*/, ""))).toEqual([
+      "Brief",
+      "Market analysis",
+      "Financial analysis",
+      "Synthesis",
+      "Stress testing",
+      "Final deliverables",
+    ]);
+  });
+
+  it("treats an old persisted ws5 tab as final deliverables", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws5",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "brief",
+        onGateClose: vi.fn(),
+        sectionTabs: [
+          { id: "brief", label: "Brief", status: "completed" },
+          { id: "final", label: "Final deliverables", status: "completed" },
+        ],
+      }),
+    );
+
+    expect(screen.getByRole("button", { name: /Final deliverables/ })).toHaveClass("on");
+  });
+
+  it("shows an explicit empty state for sections without outputs", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws2",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        completedTitle: "Financial analysis outputs",
+        completedEmptyText: "No outputs for Financial analysis yet.",
+        findings: [],
+      }),
+    );
+
+    expect(screen.getByText("Financial analysis outputs")).toBeInTheDocument();
+    expect(screen.getByText("No outputs for Financial analysis yet.")).toBeInTheDocument();
+  });
+
+  it("shows a working state when a running section has no outputs yet", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: true,
+        currentNarration: "Dora is mapping the competitive landscape.",
+        defaultTab: "brief",
+        onGateClose: vi.fn(),
+        completedTitle: "Market analysis outputs",
+        findings: [],
+        waitState: {
+          isWorking: true,
+          showInOutputs: true,
+          isStalled: false,
+          elapsedLabel: "0:18",
+          headline: "Dora is working",
+          message: "Dora is mapping the competitive landscape. This can take a minute while agents search, reason, and write findings.",
+        },
+      }),
+    );
+
+    expect(screen.getAllByText(/Dora is working · 0:18/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/This can take a minute while agents search/).length).toBeGreaterThan(0);
+  });
+
+  it("keeps a quiet empty output pane when another section is working", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws2",
+        onSelectTab: vi.fn(),
+        isTyping: true,
+        currentNarration: "Dora is mapping the competitive landscape.",
+        defaultTab: "brief",
+        onGateClose: vi.fn(),
+        completedTitle: "Financial analysis outputs",
+        completedEmptyText: "No outputs for Financial analysis yet.",
+        findings: [],
+        waitState: {
+          isWorking: true,
+          showInOutputs: false,
+          isStalled: false,
+          elapsedLabel: "0:18",
+          headline: "Dora is working",
+          message: "Dora is mapping the competitive landscape.",
+        },
+      }),
+    );
+
+    expect(screen.getByText("No outputs for Financial analysis yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/No output for this section yet/)).not.toBeInTheDocument();
+  });
+
+  it("opens deliverable outputs from the section pane", async () => {
+    const onOpen = vi.fn();
+    const user = userEvent.setup();
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws3",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        findings: [
+          {
+            id: "exec-summary",
+            kind: "deliverable",
+            ag: "MARVIN",
+            text: "Deliverable ready · exec summary",
+            confidence: "READY",
+            onOpen,
+          },
+        ],
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open / Download" }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps deliverable action separate from the title copy", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "final",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "brief",
+        onGateClose: vi.fn(),
+        findings: [
+          {
+            id: "data-book",
+            kind: "deliverable",
+            ag: "MARVIN",
+            text: "Deliverable ready · data book",
+            confidence: "READY",
+            href: "/download/data-book",
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getByText("Deliverable ready · data book")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download ↗" })).toBeInTheDocument();
+  });
+
+  it("labels narration events clearly in the in-progress rail", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: false,
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+        activity: [
+          {
+            id: "n1",
+            kind: "narration",
+            ag: "Workflow",
+            text: "Initial hypotheses are ready for review",
+          },
+        ],
+        findings: [],
+      }),
+    );
+
+    expect(screen.getByText("Workflow")).toBeInTheDocument();
+    expect(screen.getByText("Initial hypotheses are ready for review")).toBeInTheDocument();
+  });
+
+  it("shows current narration in the live typing bubble", () => {
+    render(
+      React.createElement(MissionControlView, {
+        mission,
+        initialMessages: [],
+        messages: [],
+        chatDraft: "",
+        onChatDraftChange: vi.fn(),
+        onSendMessage: vi.fn(),
+        selectedTab: "ws1",
+        onSelectTab: vi.fn(),
+        isTyping: true,
+        currentNarration: "Workflow — Resuming the mission.",
+        defaultTab: "ws1",
+        onGateClose: vi.fn(),
+      }),
+    );
+
+    expect(screen.getByText("Workflow — Resuming the mission.")).toBeInTheDocument();
   });
 });

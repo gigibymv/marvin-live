@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -60,17 +61,13 @@ async def test_emit_for_update_narrates_gate_interrupt():
     chunks, current_agent, current_phase, is_interrupt = await _emit_for_update(
         {
             "__interrupt__": (
-                type(
-                    "Interrupt",
-                    (),
-                    {
-                        "value": {
-                            "gate_id": "gate-1",
-                            "gate_type": "manager_review",
-                            "title": "Manager review of research claims",
-                        }
-                    },
-                )(),
+                SimpleNamespace(
+                    value={
+                        "gate_id": "gate-1",
+                        "gate_type": "manager_review",
+                        "title": "Manager review of research claims",
+                    }
+                ),
             )
         },
         "dora",
@@ -91,6 +88,35 @@ async def test_emit_for_update_narrates_gate_interrupt():
     assert current_agent is None
     assert current_phase == "research_done"
     assert is_interrupt is True
+
+
+@pytest.mark.asyncio
+async def test_emit_for_update_humanizes_gate_type_fallback():
+    chunks, _, _, _ = await _emit_for_update(
+        {
+            "__interrupt__": (
+                SimpleNamespace(
+                    value={
+                        "gate_id": "gate-1",
+                        "gate_type": "manager_review",
+                        "title": "",
+                    }
+                ),
+            )
+        },
+        None,
+        "research_done",
+        {},
+    )
+
+    events = _events(chunks)
+
+    assert any(
+        event_type == "narration"
+        and payload["agent"] == "Workflow"
+        and payload["intent"] == "Human review needed: manager review"
+        for event_type, payload in events
+    )
 
 
 @pytest.mark.asyncio

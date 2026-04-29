@@ -10,8 +10,13 @@
 import { describe, expect, it } from "vitest";
 import { getDeliverableDownloadUrl } from "@/lib/missions/api";
 import {
+  formatDeliverableReadyChatMessage,
+  formatDeliverableDisplayName,
   formatGatePendingChatMessage,
   formatGatePendingFeedSignal,
+  formatNarrationChatMessage,
+  routeDeliverableToSectionId,
+  routeDeliverableToWorkstreamId,
 } from "@/lib/missions/adapters";
 import { shouldAttachResumeStream } from "@/lib/missions/gate-resume";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
@@ -22,6 +27,8 @@ describe("MissionControl UX slice", () => {
     expect(shouldAttachResumeStream({ status: "resumed_detached" })).toBe(true);
     expect(shouldAttachResumeStream({ status: "resume_pending" })).toBe(true);
     expect(shouldAttachResumeStream({ status: "already_processed" })).toBe(false);
+    expect(shouldAttachResumeStream({ status: "validated_no_stream" })).toBe(false);
+    expect(shouldAttachResumeStream({ status: "conflict" })).toBe(false);
     expect(shouldAttachResumeStream({ status: undefined })).toBe(false);
     expect(shouldAttachResumeStream(null)).toBe(false);
     expect(shouldAttachResumeStream(undefined)).toBe(false);
@@ -207,5 +214,60 @@ describe("MissionControl UX slice", () => {
       "Recorded finding for Dora.",
     );
     expect(humanizeToolResult("")).toBe("step complete");
+  });
+
+  it("formats narration as visible chat copy", () => {
+    expect(
+      formatNarrationChatMessage({
+        agent: "Workflow",
+        intent: "Initial hypotheses are ready for review",
+      }),
+    ).toBe("Workflow — Initial hypotheses are ready for review");
+    expect(formatNarrationChatMessage({ agent: "", intent: "" })).toBe(
+      "MARVIN — Still working.",
+    );
+  });
+
+  it("formats deliverable readiness as visible chat copy", () => {
+    expect(formatDeliverableReadyChatMessage("exec summary")).toBe(
+      "MARVIN — I’ve generated the exec summary and added it to Deliverables.",
+    );
+    expect(formatDeliverableReadyChatMessage("data_book")).toBe(
+      "MARVIN — I’ve generated the data book and added it to Deliverables.",
+    );
+  });
+
+  it("routes deliverables to the matching section", () => {
+    expect(routeDeliverableToSectionId({
+      deliverable_type: "workstream_report",
+      file_path: "/tmp/mission/W4_report.md",
+    })).toBe("W4");
+    expect(routeDeliverableToSectionId({ deliverable_type: "engagement_brief" })).toBe("brief");
+    expect(routeDeliverableToSectionId({ deliverable_type: "framing_memo" })).toBe("brief");
+    expect(routeDeliverableToSectionId({ deliverable_type: "exec_summary" })).toBe("final");
+    expect(routeDeliverableToSectionId({ deliverable_type: "investment_memo" })).toBe("final");
+    expect(routeDeliverableToSectionId({ deliverable_type: "market_brief" })).toBe("W1");
+    expect(routeDeliverableToSectionId({ deliverable_type: "risk_register" })).toBe("W4");
+    expect(routeDeliverableToSectionId({ deliverable_type: "unknown" })).toBeNull();
+    expect(routeDeliverableToWorkstreamId({ deliverable_type: "exec_summary" })).toBeNull();
+  });
+
+  it("labels workstream reports by section", () => {
+    expect(formatDeliverableDisplayName({
+      deliverable_type: "workstream_report",
+      file_path: "/tmp/mission/W1_report.md",
+    })).toBe("Market report");
+    expect(formatDeliverableDisplayName({
+      deliverable_type: "workstream_report",
+      file_path: "/tmp/mission/W2_report.md",
+    })).toBe("Financial report");
+    expect(formatDeliverableDisplayName({
+      deliverable_type: "workstream_report",
+      file_path: "/tmp/mission/W3_report.md",
+    })).toBe("Synthesis report");
+    expect(formatDeliverableDisplayName({
+      deliverable_type: "workstream_report",
+      file_path: "/tmp/mission/W4_report.md",
+    })).toBe("Stress testing report");
   });
 });

@@ -42,7 +42,23 @@ def attack_hypothesis(
         workstream_id="W4",
         state=state,
     )
-    return {"hypothesis_id": hypothesis_id, "angle": angle, "finding_id": finding["finding_id"]}
+    if "finding_id" not in finding:
+        return {
+            "hypothesis_id": hypothesis_id,
+            "angle": angle,
+            "finding_id": None,
+            "status": finding.get("status", "error"),
+            "agent_id": finding.get("agent_id"),
+            "cap": finding.get("cap"),
+            "existing": finding.get("existing"),
+            "message": finding.get("message") or finding.get("reason"),
+        }
+    return {
+        "hypothesis_id": hypothesis_id,
+        "angle": angle,
+        "finding_id": finding["finding_id"],
+        "status": finding["status"],
+    }
 
 
 def generate_stress_scenarios(
