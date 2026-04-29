@@ -1170,6 +1170,39 @@ export default function MissionControl({
   // Render with gate modal that includes approve/reject buttons
   return (
     <>
+      {/* Back-to-board nav header */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          zIndex: 50,
+          padding: "10px 16px",
+        }}
+      >
+        <Link
+          href="/missions"
+          aria-label="Back to missions board"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "5px",
+            fontFamily: '"Geist Mono", monospace',
+            fontSize: "12px",
+            color: "#78716A",
+            textDecoration: "none",
+            letterSpacing: "0.01em",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#1a1814"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#78716A"; }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+            <path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Missions
+        </Link>
+      </div>
+
       <MissionControlView
         mission={missionForView}
         messages={messages}
