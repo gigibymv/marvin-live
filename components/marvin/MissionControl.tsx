@@ -472,21 +472,25 @@ export default function MissionControl({
               ...current,
               [modalPayload.gateId]: modalPayload,
             }));
-            setMessages((current) =>
-              current.concat({
-                id: makeMessageId(missionId, "gate-pending"),
+            const gateMsgId = `${modalPayload.gateId}-gate-pending`;
+            const gateFeedId = `${modalPayload.gateId}-gate-signal`;
+            setMessages((current) => {
+              if (current.some((m) => m.id === gateMsgId)) return current;
+              return current.concat({
+                id: gateMsgId,
                 from: "m",
                 text: formatGatePendingChatMessage(event),
-              }),
-            );
-            setLiveFindings((current) =>
-              current.concat({
-                id: makeMessageId(missionId, "gate-signal"),
+              });
+            });
+            setLiveFindings((current) => {
+              if (current.some((f) => f.id === gateFeedId)) return current;
+              return current.concat({
+                id: gateFeedId,
                 kind: "gate",
                 claim_text: formatGatePendingFeedSignal(event),
                 confidence: "gate",
-              }),
-            );
+              });
+            });
             setPausedForGate(true);
             setRunState(missionId, { isStreaming: false });
             void refreshProgress();
@@ -932,13 +936,15 @@ export default function MissionControl({
   // and will re-interrupt on the next chat turn or page reload.
   const handleGateClose = useCallback(() => {
     if (gateModal && mission) {
-      setMessages((current) =>
-        current.concat({
-          id: makeMessageId(mission.id, "deferred"),
+      const deferredMsgId = `${gateModal.gateId}-deferred`;
+      setMessages((current) => {
+        if (current.some((m) => m.id === deferredMsgId)) return current;
+        return current.concat({
+          id: deferredMsgId,
           from: "m",
           text: `Gate "${gateModal.title}" deferred. The mission is paused and your decision is preserved — reopen anytime to approve or reject.`,
-        }),
-      );
+        });
+      });
     }
     setGateModal(null);
     setRunState(missionId, { isStreaming: false });

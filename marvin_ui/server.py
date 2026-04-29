@@ -117,7 +117,7 @@ def get_display_name(node_name: str | None) -> str | None:
 # chat. Sub-agents (dora/calculus/adversus/merlin) are doing work, not
 # conversing — their content streams to the live rail as agent_message
 # entries instead of polluting the chat with verbose reasoning.
-_CHAT_VOICE_NODES = {"framing", "framing_orchestrator", "orchestrator"}
+_CHAT_VOICE_NODES = {"framing", "framing_orchestrator", "orchestrator", "papyrus_delivery"}
 
 # Tool result summaries for user-friendly display
 _TOOL_SUMMARIES: dict[str, callable] = {

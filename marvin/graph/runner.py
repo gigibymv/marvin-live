@@ -460,24 +460,31 @@ async def merlin_node(state: MarvinState) -> dict:
 
 
 async def papyrus_delivery_node(state: MarvinState) -> dict:
-    """Generate final deliverables and mark mission done."""
+    """Generate final deliverables, mark mission complete, and emit completion message."""
     mission_id = state.get("mission_id", "")
-    messages = state.get("messages", [])
-    
-    msg = HumanMessage(
-        content=(
-            f"Mission: {mission_id}\n"
-            "Task: Generate final deliverables.\n"
-            "Call: generate_report_pdf, generate_exec_summary, generate_data_book"
-        )
-    )
-    
+
     from marvin.tools.papyrus_tools import _generate_data_book_impl, _generate_exec_summary_impl, _generate_report_pdf_impl
+    from marvin.mission.store import MissionStore
 
     _generate_report_pdf_impl(mission_id)
     _generate_exec_summary_impl(mission_id)
     _generate_data_book_impl(mission_id)
-    return {"phase": "done"}
+
+    # Persist mission completion so reconnects and API calls see the final state.
+    try:
+        store = MissionStore()
+        store.update_mission_status(mission_id, "complete")
+        store.close()
+    except Exception:  # noqa: BLE001 - status update is best-effort; don't crash delivery
+        pass
+
+    completion_msg = AIMessage(
+        content=(
+            "Mission complete. The executive summary, data book, and workstream reports "
+            "are ready for review. All deliverables have been generated and persisted."
+        )
+    )
+    return {"phase": "done", "messages": [completion_msg]}
 
 
 def build_graph(checkpointer=None):

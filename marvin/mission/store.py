@@ -274,6 +274,13 @@ class MissionStore:
             (active_agent, mission_id),
         )
 
+    def update_mission_status(self, mission_id: str, status: str) -> None:
+        """Transition mission status (e.g. active → complete). No-op if mission missing."""
+        self._execute(
+            "UPDATE missions SET status = ? WHERE id = ?",
+            (status, mission_id),
+        )
+
     def get_mission(self, mission_id: str) -> Mission:
         row = self._execute("SELECT * FROM missions WHERE id = ?", (mission_id,)).fetchone()
         mission = self._row_to_model(row, Mission)
