@@ -137,6 +137,32 @@ def _stub_papyrus_llm_generate(
             "Evidence is predominantly inference-based. IC defensibility is limited "
             "without primary data.\n"
         )
+    if deliverable_type == "workstream_report":
+        ws_id = (extra or {}).get("workstream_id", "W?")
+        hyp_labels = ", ".join(
+            f"H{i + 1}"
+            for i, h in enumerate(hypotheses)
+            if any((f.hypothesis_id or "") == h.id for f in findings)
+        ) or "H1"
+        finding_paras = "\n\n".join(
+            f"### {f.claim_text[:52].rstrip('.')} (testing {hyp_labels})\n\n"
+            f"{f.claim_text} Confidence: {f.confidence}."
+            for f in findings[:4]
+        ) or "No findings available for this workstream."
+        return (
+            f"# Workstream Report — {ws_id}\n\n"
+            f"**Mission:** {mission.client} — {mission.target}\n"
+            f"**Workstream:** {ws_id}\n"
+            f"**Hypotheses tested:** {hyp_labels}\n"
+            f"**Date:** 2026-04-28\n\n"
+            "## Scope\n\n"
+            f"This workstream tests {hyp_labels} through evidence gathered in {ws_id}.\n\n"
+            f"## Findings\n\n{finding_paras}\n\n"
+            "## Coverage Gaps\n\n"
+            "No primary-source data has been secured. Further evidence required.\n\n"
+            "## Manager Review Note\n\n"
+            "Review the findings above before advancing to the next gate.\n"
+        )
     raise NotImplementedError(f"stub does not yet handle {deliverable_type}")
 
 
@@ -504,7 +530,10 @@ def test_generate_engagement_brief_is_idempotent(store: MissionStore, state: dic
 def test_generate_workstream_report_writes_markdown(store: MissionStore, state: dict[str, str]):
     mission_tools.add_finding_to_mission("Market is growing with healthy retention metrics.", "REASONED", "dora", workstream_id="W1", hypothesis_id="h-1", state=state)
     result = papyrus_tools.generate_workstream_report("W1", state)
-    assert Path(result["file_path"]).read_text(encoding="utf-8").startswith("# W1 Report")
+    body = Path(result["file_path"]).read_text(encoding="utf-8")
+    assert "# Workstream Report" in body
+    assert "## Findings" in body
+    assert "## Coverage Gaps" in body
 
 
 def test_generate_report_pdf_requires_ship_or_g3(store: MissionStore, state: dict[str, str]):

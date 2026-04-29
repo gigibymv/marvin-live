@@ -125,6 +125,32 @@ def _stub_papyrus_llm_generate(
             "- Adversus red-team challenges: 0\n\n"
             "Evidence is predominantly inference-based.\n"
         )
+    if deliverable_type == "workstream_report":
+        ws_id = (extra or {}).get("workstream_id", "W?")
+        hyp_labels = ", ".join(
+            f"H{i + 1}"
+            for i, h in enumerate(hypotheses)
+            if any((f.hypothesis_id or "") == h.id for f in findings)
+        ) or "H1"
+        finding_paras = "\n\n".join(
+            f"### {f.claim_text[:52].rstrip('.')} (testing {hyp_labels})\n\n"
+            f"{f.claim_text} Confidence: {f.confidence}."
+            for f in findings[:4]
+        ) or "No findings available for this workstream."
+        return (
+            f"# Workstream Report — {ws_id}\n\n"
+            f"**Mission:** {mission.client} — {mission.target}\n"
+            f"**Workstream:** {ws_id}\n"
+            f"**Hypotheses tested:** {hyp_labels}\n"
+            f"**Date:** 2026-04-28\n\n"
+            "## Scope\n\n"
+            f"This workstream tests {hyp_labels} through evidence gathered in {ws_id}.\n\n"
+            f"## Findings\n\n{finding_paras}\n\n"
+            "## Coverage Gaps\n\n"
+            "No primary-source data has been secured. Further evidence required.\n\n"
+            "## Manager Review Note\n\n"
+            "Review the findings above before advancing to the next gate.\n"
+        )
     raise NotImplementedError(f"stub does not yet handle {deliverable_type}")
 
 
@@ -342,8 +368,9 @@ def test_generated_workstream_report_contains_traceable_finding_link(store: Miss
     result = papyrus_tools._generate_workstream_report_impl("W1", "m-dlv")
     body = Path(result["file_path"]).read_text(encoding="utf-8")
 
-    assert "Finding ID: f-w1" in body
-    assert "Hypothesis ID: hyp-dlv" in body
+    assert "## Findings" in body
+    assert "## Coverage Gaps" in body
+    assert "f-w1" not in body
     assert store.list_deliverables("m-dlv")[0].status == "ready"
 
 

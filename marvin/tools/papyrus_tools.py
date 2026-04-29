@@ -348,7 +348,7 @@ def generate_framing_memo(state: InjectedStateArg = None) -> dict[str, Any]:
 
 def _generate_workstream_report_impl(workstream_id: str, mission_id: str) -> dict[str, Any]:
     store = get_store(_STORE_FACTORY)
-    findings = [finding for finding in store.list_findings(mission_id) if finding.workstream_id == workstream_id]
+    findings = [f for f in store.list_findings(mission_id) if f.workstream_id == workstream_id]
     if not findings:
         return {
             "mission_id": mission_id,
@@ -359,34 +359,32 @@ def _generate_workstream_report_impl(workstream_id: str, mission_id: str) -> dic
 
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / f"{workstream_id}_report.md"
-    lines = [f"# {workstream_id} Report", ""]
-    lines.extend(
-        [
-            "## Scope",
-            f"This workstream report summarizes persisted findings for {workstream_id}. "
-            "Each claim below includes the finding identifier that backs the report.",
-            "",
-            "## Evidence-backed Findings",
-        ]
-    )
-    for finding in findings:
-        hypothesis_ref = f" Hypothesis ID: {finding.hypothesis_id}." if finding.hypothesis_id else ""
-        source_ref = f" Source ID: {finding.source_id}." if finding.source_id else ""
-        lines.append(
-            f"- Finding ID: {finding.id}. Confidence: {finding.confidence}. "
-            f"Claim: {finding.claim_text}.{hypothesis_ref}{source_ref}"
-        )
-    lines.extend(
-        [
-            "",
-            "## Manager Review Note",
-            "Use this report to confirm whether the workstream has enough evidence for the "
-            "manager review gate, and identify any claims that need additional sourcing.",
-        ]
-    )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-{workstream_id.lower()}-report"
     deliverable_type = "workstream_report"
+
+    if path.exists():
+        return {
+            "mission_id": mission_id,
+            "workstream_id": workstream_id,
+            "file_path": str(path.resolve()),
+            "status": "skipped",
+            "deliverable_id": deliverable_id,
+            "deliverable_type": deliverable_type,
+        }
+
+    mission = store.get_mission(mission_id)
+    hypotheses = store.list_hypotheses(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+
+    body = _papyrus_llm_generate(
+        deliverable_type=deliverable_type,
+        mission=mission,
+        hypotheses=hypotheses,
+        findings=findings,
+        mission_brief=mission_brief,
+        extra={"workstream_id": workstream_id},
+    )
+    path.write_text(body, encoding="utf-8")
     _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path)
     return {
         "mission_id": mission_id,
