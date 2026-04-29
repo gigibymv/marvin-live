@@ -138,10 +138,15 @@ const DELIVERABLE_LABELS: Record<string, string> = {
   risk_brief: "Risk / Red-team",
   investment_memo: "Investment memo",
   engagement_brief: "Engagement brief",
-  framing_memo: "framing memo",
-  exec_summary: "exec summary",
-  data_book: "data book",
+  framing_memo: "Framing memo",
+  exec_summary: "Exec summary",
+  data_book: "Data book",
 };
+
+function capitalizeFirst(text: string): string {
+  if (!text) return text;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 const WORKSTREAM_REPORT_LABELS: Record<string, string> = {
   W1: "Market report",
@@ -193,7 +198,7 @@ export function formatDeliverableDisplayName(deliverable: {
     return WORKSTREAM_REPORT_LABELS[sectionId] ?? "Workstream report";
   }
 
-  return DELIVERABLE_LABELS[type] ?? type.replace(/_/g, " ");
+  return DELIVERABLE_LABELS[type] ?? capitalizeFirst(type.replace(/_/g, " "));
 }
 
 export function routeDeliverableToWorkstreamId(deliverable: {

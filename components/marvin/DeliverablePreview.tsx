@@ -6,12 +6,14 @@
  * Click "Open" on a ready deliverable → fetch /deliverables/{id}/preview →
  * render markdown content + a sidebar of linked findings.
  *
- * - .md → rendered as preformatted text (no extra deps)
+ * - .md → react-markdown + remark-gfm (tables, links, headings)
  * - .pdf → embed via download URL in an iframe
- * - other → falls back to plain text
+ * - other → falls back to monospace plain text
  */
 
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { API_BASE, getDeliverableDownloadUrl } from "@/lib/missions/api";
 
@@ -173,11 +175,34 @@ export function DeliverablePreview({ deliverableId, onClose }: Props) {
               style={{ width: "100%", height: "100%", border: "1px solid var(--rule, rgba(26,24,20,.10))" }}
             />
           )}
-          {data && data.content_type !== "pdf" && (
+          {data && data.content_type === "markdown" && (
+            <div className="md-preview" style={{ fontFamily: "var(--g, system-ui)", fontSize: "13.5px", lineHeight: 1.6, color: "var(--ink2, #3A362F)" }}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {data.content || "(empty file)"}
+              </ReactMarkdown>
+              <style jsx>{`
+                .md-preview :global(h1) { font-size: 20px; font-weight: 700; margin: 0 0 10px; color: var(--ink, #1A1814); }
+                .md-preview :global(h2) { font-size: 16px; font-weight: 700; margin: 18px 0 8px; color: var(--ink, #1A1814); }
+                .md-preview :global(h3) { font-size: 14px; font-weight: 700; margin: 14px 0 6px; color: var(--ink, #1A1814); }
+                .md-preview :global(p) { margin: 0 0 10px; }
+                .md-preview :global(ul), .md-preview :global(ol) { margin: 0 0 10px 20px; padding: 0; }
+                .md-preview :global(li) { margin-bottom: 4px; }
+                .md-preview :global(a) { color: var(--ink, #1A1814); text-decoration: underline; }
+                .md-preview :global(table) { border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
+                .md-preview :global(th), .md-preview :global(td) { border: 1px solid var(--rule, rgba(26,24,20,.18)); padding: 6px 10px; text-align: left; vertical-align: top; }
+                .md-preview :global(th) { background: var(--bone, #EEE9DD); font-weight: 600; }
+                .md-preview :global(code) { font-family: var(--m, monospace); font-size: 12px; background: var(--bone, #EEE9DD); padding: 1px 4px; border-radius: 2px; }
+                .md-preview :global(pre) { font-family: var(--m, monospace); font-size: 12px; background: var(--bone, #EEE9DD); padding: 10px; border-radius: 2px; overflow: auto; }
+                .md-preview :global(blockquote) { border-left: 3px solid var(--ink, #1A1814); margin: 10px 0; padding: 4px 12px; color: var(--ink3, #5C564C); }
+                .md-preview :global(hr) { border: none; border-top: 1px solid var(--rule, rgba(26,24,20,.18)); margin: 14px 0; }
+              `}</style>
+            </div>
+          )}
+          {data && data.content_type === "text" && (
             <pre
               style={{
                 whiteSpace: "pre-wrap",
-                fontFamily: data.content_type === "markdown" ? "var(--g, system-ui)" : "var(--m, monospace)",
+                fontFamily: "var(--m, monospace)",
                 fontSize: "13.5px",
                 lineHeight: 1.55,
                 color: "var(--ink2, #3A362F)",
