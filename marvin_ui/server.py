@@ -368,7 +368,19 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
             return
 
         config = {"configurable": {"thread_id": mission_id}}
-        next_input: Any = Command(resume=resume_payload)
+        target_gate_id = resume_payload.get("gate_id")
+        # If the graph already has a parked interrupt waiting for us, feed the
+        # resume payload immediately. Otherwise drive forward with no input
+        # until we *see* our target gate park, then feed the resume. This
+        # handles the case where validate_gate fires before _stream_chat had
+        # time to checkpoint the gate park (client disconnected mid-framing).
+        try:
+            _state0 = await graph.aget_state(config)
+            _has_parked = any(getattr(t, "interrupts", None) for t in _state0.tasks)
+        except Exception:  # noqa: BLE001 - defensive: aget_state shouldn't fail
+            _has_parked = False
+        next_input: Any = Command(resume=resume_payload) if _has_parked else None
+        fed_resume = _has_parked
         # F1-A: broadcast SSE strings as the graph runs so a passively-attached
         # /resume client (which cannot run its own astream while we hold the
         # lock) can relay agent_active / narration / phase_changed / agent_done
@@ -379,16 +391,26 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
         throttle_state: dict[tuple[str, str], float] = {}
         try:
             emit_graph_event(mission_id, await _emit_run_start())
-            while True:
-                interrupted = False
+            # Bounded loop. We pass through framing/gate_entry on the first
+            # turn (when the parked frame wasn't ready), then re-enter with
+            # Command(resume=...) to consume our gate's interrupt, then run
+            # forward to the next gate or completion.
+            for _step in range(4):
+                interrupted_for_target = False
+                interrupted_other = False
                 async for event in graph.astream(
                     next_input, config, stream_mode="updates"
                 ):
                     if isinstance(event, dict) and "__interrupt__" in event:
-                        interrupted = True
-                        # Stop driving on interrupt; the next /resume or
-                        # /chat will pick up the parked frame and emit the
-                        # gate_pending event to the user's UI.
+                        for it in event["__interrupt__"]:
+                            ipayload = getattr(it, "value", None)
+                            if not isinstance(ipayload, dict) and isinstance(it, dict):
+                                ipayload = it
+                            gid = ipayload.get("gate_id") if isinstance(ipayload, dict) else None
+                            if gid == target_gate_id and not fed_resume:
+                                interrupted_for_target = True
+                            else:
+                                interrupted_other = True
                         break
                     if isinstance(event, dict):
                         sse_strings, current_agent, current_phase, _is_int = await _emit_for_update(
@@ -397,11 +419,15 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                         for s in sse_strings:
                             if s:
                                 emit_graph_event(mission_id, s)
-                if not interrupted:
-                    break
-                # Detached driver does not wait for human input — bail out
-                # and let the user's next /resume reattach to the parked
-                # interrupt frame.
+                if interrupted_for_target:
+                    # Our gate just parked. Re-enter with the resume payload
+                    # to consume it and drive past gate_node.
+                    next_input = Command(resume=resume_payload)
+                    fed_resume = True
+                    continue
+                # Either no interrupt (graph completed) or interrupt on a
+                # different gate (next workflow checkpoint) — exit and let
+                # the user's next /resume attach to the new parked frame.
                 break
             if current_agent is not None:
                 emit_graph_event(mission_id, await _emit_agent_done(current_agent))
