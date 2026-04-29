@@ -766,10 +766,17 @@ export default function MissionControl({
             setLatestNarration(null);
             setRunState(missionId, { isStreaming: false });
             setGateActionInFlight(null);
-            window.setTimeout(() => {
-              void refreshProgress();
-              void refreshMissionEvents();
-            }, 500);
+            // Multi-stage refresh: a detached driver may emit deliverables
+            // (notably the final IC memo from papyrus_delivery) AFTER
+            // run_end fires on the user's stream. announceDeliverableReady
+            // dedupes via Ref, so polling at 0.5s/3s/10s catches stragglers
+            // without spamming chat.
+            for (const delay of [500, 3000, 10000]) {
+              window.setTimeout(() => {
+                void refreshProgress();
+                void refreshMissionEvents();
+              }, delay);
+            }
             break;
           default:
             break;
@@ -927,7 +934,27 @@ export default function MissionControl({
       setGateModal(null);
       setPausedForGate(false);
       setRunState(mission.id, { isStreaming: true });
-      setLatestNarration("Workflow — Gate approved. Starting the research workstreams.");
+      // Pick narration based on which gate just unlocked. G1=research,
+      // G2=synthesis, G3=final delivery — using a single hard-coded line
+      // confused users at G3 by claiming research was restarting.
+      const gateMeta = (progress?.gates ?? []).find((g) => g.id === gateId);
+      const gatePayload = gatePayloads[gateId];
+      const unlocks = gatePayload?.unlocksOnApprove?.trim();
+      const approveNarration = unlocks
+        ? `Workflow — Gate approved. ${unlocks}`
+        : (() => {
+            switch (gateMeta?.gate_type) {
+              case "hypothesis_confirmation":
+                return "Workflow — Gate approved. Starting the research workstreams.";
+              case "manager_review":
+                return "Workflow — Gate approved. Synthesising the verdict.";
+              case "final_review":
+                return "Workflow — Gate approved. Generating the final IC memo.";
+              default:
+                return "Workflow — Gate approved. Continuing the mission.";
+            }
+          })();
+      setLatestNarration(approveNarration);
 
       try {
         // For HTTP repository, call the API
