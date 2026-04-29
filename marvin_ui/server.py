@@ -1091,6 +1091,19 @@ async def _stream_chat(
                     # decisions need a discrete option — both must use the UI.
                     if g.format in ("clarification_questions", "data_decision"):
                         continue
+                    # Fix B: a DB row marked status='pending' is a *seeded*
+                    # row, not necessarily the gate the graph is parked at.
+                    # G1/G3 are seeded pending at mission init; while research
+                    # is running, G3's row says pending even though merlin
+                    # hasn't produced a verdict yet. Use evaluate_gate_material
+                    # to filter for gates that actually have all required
+                    # material — those are the gates the graph would
+                    # interrupt on. This stops orchestrator_qa from claiming
+                    # "G3 is pending" mid-research and stops chat-driven
+                    # approve from delivering verdicts to the wrong gate.
+                    material = evaluate_gate_material(store, mission_id, g)
+                    if not material.is_open:
+                        continue
                     pending_gate = g
                     break
 
