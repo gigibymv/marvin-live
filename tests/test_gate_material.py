@@ -41,7 +41,12 @@ def test_gate_node_does_not_interrupt_without_required_material(store: MissionSt
         )
     )
 
-    assert result == {"phase": "idle", "pending_gate_id": None}
+    assert result["phase"] == "idle"
+    assert result["pending_gate_id"] is None
+    blocked = result["phase_blocked"]
+    assert blocked["gate_id"] == "gate-m-gate-hyp-confirm"
+    assert blocked["gate_type"] == "hypothesis_confirmation"
+    assert blocked["missing_material"]
     gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-hyp-confirm")
     assert gate.status == "pending"
 

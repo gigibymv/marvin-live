@@ -60,7 +60,22 @@ async def gate_node(state: MarvinState, config=None) -> dict:
             gate_id,
             ", ".join(material.missing_material),
         )
-        return {"phase": "idle", "pending_gate_id": None}
+        # Surface the blocker through the standard updates stream so the SSE
+        # handler can emit an explicit phase_blocked event instead of letting
+        # the run terminate silently (CLAUDE.md §1: no silent degradation).
+        return {
+            "phase": "idle",
+            "pending_gate_id": None,
+            "phase_blocked": {
+                "gate_id": gate_id,
+                "gate_type": gate.gate_type,
+                "missing_material": material.missing_material,
+                "message": (
+                    f"Cannot open {gate.gate_type}: "
+                    f"{', '.join(material.missing_material) or 'insufficient material'}."
+                ),
+            },
+        }
 
     payload = dict(material.review_payload)
     research_findings = payload.get("research_findings", [])
