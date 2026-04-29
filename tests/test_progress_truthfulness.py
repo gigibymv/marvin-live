@@ -368,6 +368,12 @@ def test_validate_gate_persists_decision_without_active_stream(
         )
     )
     monkeypatch.setattr(srv, "_deliver_resume", lambda mission_id, payload: False)
+    spawned: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        srv,
+        "_spawn_detached_resume",
+        lambda mission_id, payload: spawned.append((mission_id, payload)),
+    )
 
     response = asyncio.run(
         srv.validate_gate(
@@ -378,8 +384,26 @@ def test_validate_gate_persists_decision_without_active_stream(
     )
 
     gate = next(g for g in store.list_gates("m-progress") if g.id == "gate-m-progress-hyp-confirm")
-    assert response.status == "validated_no_stream"
-    assert gate.status == "completed"
-    assert gate.completion_notes == "approve without stream"
+    # No parked stream → detached driver spawned. Per commit 38bda2e
+    # (race fix), validate_gate must NOT pre-write gate.status='completed'
+    # for the standard verdict path: gate_node owns that write at
+    # gates.py:141, AFTER interrupt() returns the verdict. Pre-writing
+    # caused gate_node's replay to take the missing-material early-exit
+    # branch and terminate the graph. Status remains 'pending' here;
+    # gate_node flips it to 'completed' once the detached driver replays.
+    assert response.status == "resumed_detached"
+    assert spawned == [
+        (
+            "m-progress",
+            {
+                "approved": True,
+                "verdict": "APPROVED",
+                "notes": "approve without stream",
+                "gate_id": "gate-m-progress-hyp-confirm",
+            },
+        )
+    ]
+    assert gate.status == "pending"
+    assert gate.completion_notes is None or gate.completion_notes == ""
     assert srv._gate_decisions_in_flight == {}
     assert srv._gate_decision_by_mission == {}

@@ -7,7 +7,7 @@ from typing import Any
 
 from marvin.artifacts import artifact_file_readiness_errors
 from marvin.events import emit_deliverable_persisted
-from marvin.mission.schema import Deliverable, Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief
+from marvin.mission.schema import Deliverable, Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore
 from marvin.tools.common import InjectedStateArg, ensure_output_dir, get_store, require_mission_id, utc_now_iso
 
@@ -41,9 +41,16 @@ def _source_type_label(finding: Finding) -> str:
 def _serialize_finding_for_prompt(
     finding: Finding,
     hypothesis_label_by_id: dict[str, str],
+    sources_by_id: dict[str, Source] | None = None,
 ) -> dict[str, Any]:
-    """Strip IDs; expose only fields safe for the prompt."""
-    return {
+    """Strip IDs; expose only fields safe for the prompt.
+
+    When `sources_by_id` resolves the finding's source_id, the real URL
+    and supporting quote are surfaced so Papyrus can cite them in the
+    deliverables. Internal source ids are still stripped — only the
+    user-safe URL + quote text reach the prompt.
+    """
+    payload: dict[str, Any] = {
         "claim": finding.claim_text,
         "confidence": finding.confidence,
         "hypothesis": hypothesis_label_by_id.get(finding.hypothesis_id or "", "unassigned"),
@@ -51,6 +58,13 @@ def _serialize_finding_for_prompt(
         "source_type": _source_type_label(finding),
         "impact": finding.impact or "supporting",
     }
+    source = (sources_by_id or {}).get(finding.source_id) if finding.source_id else None
+    if source is not None:
+        if source.url_or_ref:
+            payload["source_url"] = source.url_or_ref
+        if source.quote:
+            payload["source_quote"] = source.quote[:500]
+    return payload
 
 
 def _build_papyrus_context(
@@ -63,6 +77,12 @@ def _build_papyrus_context(
 ) -> str:
     """Assemble the human prompt sent to Papyrus. Strips all internal IDs."""
     label_by_id = {h.id: _hypothesis_label(h, i) for i, h in enumerate(hypotheses)}
+    # Hydrate source URLs/quotes so KNOWN/REASONED findings can cite the
+    # real URL Dora retrieved (vs. the generic "web research" label).
+    store = get_store(_STORE_FACTORY)
+    sources_by_id: dict[str, Source] = {
+        s.id: s for s in store.list_sources(mission.id)
+    }
 
     payload: dict[str, Any] = {
         "deliverable_type": deliverable_type,
@@ -81,7 +101,10 @@ def _build_papyrus_context(
             }
             for i, h in enumerate(hypotheses)
         ],
-        "findings": [_serialize_finding_for_prompt(f, label_by_id) for f in findings],
+        "findings": [
+            _serialize_finding_for_prompt(f, label_by_id, sources_by_id)
+            for f in findings
+        ],
     }
     if mission_brief is not None:
         payload["framing"] = {

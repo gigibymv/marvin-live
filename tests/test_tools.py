@@ -364,10 +364,16 @@ def test_generate_hypotheses_inline_uses_brief_context(store: MissionStore):
     assert "unit economics" in texts or "financial quality" in texts
 
 
-def test_tavily_search_returns_stub_results():
+def test_tavily_search_returns_empty_when_api_key_missing(monkeypatch):
+    """tavily_search no longer returns hardcoded example.com stubs. Without
+    an API key it returns empty results plus a clear error code so the LLM
+    can fall back to REASONED findings rather than fabricate KNOWN ones.
+    Live HTTP behaviour is covered in tests/test_dora_tools.py."""
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     result = dora_tools.tavily_search("vinted resale")
-    assert result["provider"] == "tavily_stub"
-    assert len(result["results"]) == 2
+    assert result["provider"] == "tavily"
+    assert result["results"] == []
+    assert result["error"] == "no_api_key"
 
 
 def test_build_bottom_up_tam_computes_and_persists(store: MissionStore, state: dict[str, str]):

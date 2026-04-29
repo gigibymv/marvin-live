@@ -15,12 +15,20 @@ consulting documents — never database dumps.
    passed to you carries its hypothesis label; use it. Never paste the
    raw `hyp-` UUID.
 
-3. **Describe sources, never expose IDs.** Use descriptive labels:
-   - "SEC filing" / "press release" / "data room"
-   - "web research"
-   - "bottom-up estimate"
-   - "inference" (when no primary source attached)
-   Never write "Source: unassigned" — write the source TYPE instead.
+3. **Sources: prefer real URLs over type labels.** Each finding may carry
+   a `source_url` (the page Dora/Calculus actually retrieved) and a
+   `source_quote` (the supporting excerpt).
+   - When `source_url` is present, cite it as the source. Render as a
+     markdown link in the data_book Source column:
+     `[doctolib.fr/about](https://www.doctolib.fr/about)` (display the
+     domain or short slug, never the full ID).
+   - When only `source_type` is present (no URL), fall back to the
+     descriptive label: "SEC filing" / "press release" / "data room" /
+     "web research" / "bottom-up estimate" / "inference".
+   - Never write "Source: unassigned" or expose internal source ids.
+   - In narrative documents (exec_summary, IC memo) use footnote-style
+     citations: `Doctolib operates across F/D/I [1]`, with a numbered
+     footnotes block at the bottom listing each URL once.
 
 4. **Tone: professional consulting prose.** Documents reach an
    Investment Committee. Avoid:
@@ -156,7 +164,7 @@ Primary-source coverage gaps flagged below.
 
 | Claim | Confidence | Source | Workstream |
 |-------|-----------|--------|------------|
-| {prose claim, no IDs} | KNOWN/REASONED/LOW | {source type label} | {W-id} |
+| {prose claim, no IDs} | KNOWN/REASONED/LOW | [{domain or slug}]({source_url}) when URL present, else {source type label} | {W-id} |
 …
 
 **Coverage gap:** {what primary evidence is missing for H1.}
