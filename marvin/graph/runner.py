@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
@@ -218,6 +218,11 @@ def phase_router(state: MarvinState) -> str | list[Send]:
 
     if phase == "synthesis_done":
         return "gate_entry"
+
+    if phase == "merlin_failed":
+        # Merlin ran but did not persist a verdict. Do not advance to G3 with
+        # an empty verdict. Terminate the run; user must re-trigger synthesis.
+        return END
 
     if phase == "gate_g3_passed":
         return "papyrus_delivery"
@@ -445,7 +450,24 @@ async def merlin_node(state: MarvinState) -> dict:
     result = await _merlin_agent_node({**state, "messages": messages + [msg]})
     store = MissionStore()
     verdict_row = store.get_latest_merlin_verdict(mission_id)
-    verdict = verdict_row.verdict if verdict_row else "MINOR_FIXES"
+    if not verdict_row:
+        # No silent default. A missing verdict means Merlin's LLM never called
+        # set_merlin_verdict — defaulting to MINOR_FIXES would let phase
+        # advance to synthesis_done and open G3 with zero merlin_verdicts
+        # rows, exactly the failure mode this guard prevents.
+        logger.error(
+            "merlin_node: no verdict persisted for %s; blocking phase "
+            "advancement so G3 cannot open without a verdict",
+            mission_id,
+        )
+        err = AIMessage(
+            content=(
+                "Merlin did not produce a verdict for this synthesis pass. "
+                "G3 cannot open without a verdict. Re-run synthesis to retry."
+            )
+        )
+        return {**result, "phase": "merlin_failed", "messages": [err]}
+    verdict = verdict_row.verdict
 
     findings = store.list_findings(mission_id)
     adversus_count = sum(1 for f in findings if f.agent_id == "adversus")
