@@ -17,10 +17,24 @@ def check_mece(storyline_json: Any, state: InjectedStateArg = None) -> dict[str,
     """
     require_mission_id(state)
     payload = coerce_jsonish(storyline_json)
-    sections = payload.get("sections", [])
-    normalized = [section.get("title", "").strip().lower() for section in sections]
+    # The LLM occasionally passes a literal null / empty string / non-dict
+    # value when it is uncertain about the storyline shape. Treat that as
+    # "no sections to check" rather than crashing the merlin node — the
+    # whole graph used to abort here with `'NoneType' object has no
+    # attribute 'get'`, leaving G3 stuck pending and the mission frozen.
+    if not isinstance(payload, dict):
+        return {"is_mece": False, "duplicates": [], "empty_sections": [], "error": "storyline_json was not an object"}
+    sections = payload.get("sections", []) or []
+    normalized = [
+        (section.get("title", "") if isinstance(section, dict) else "").strip().lower()
+        for section in sections
+    ]
     duplicates = sorted({title for title in normalized if title and normalized.count(title) > 1})
-    empty_sections = [section.get("title", "") for section in sections if not section.get("claims")]
+    empty_sections = [
+        (section.get("title", "") if isinstance(section, dict) else "")
+        for section in sections
+        if not (isinstance(section, dict) and section.get("claims"))
+    ]
     return {"is_mece": not duplicates and not empty_sections, "duplicates": duplicates, "empty_sections": empty_sections}
 
 

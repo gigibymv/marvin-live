@@ -961,7 +961,7 @@ export default function MissionControl({
   const handleGateClose = useCallback(() => {
     if (gateModal && mission) {
       appendGateMessage(gateModal.gateId, "deferred", {
-        id: `${gateModal.gateId}-deferred`,
+        id: `${gateModal.gateId}-deferred-${Date.now()}`,
         from: "m",
         text: `Gate "${gateModal.title}" deferred. The mission is paused and your decision is preserved — reopen anytime to approve or reject.`,
       });
@@ -1711,7 +1711,7 @@ export default function MissionControl({
                   </button>
                 </div>
               ) : (
-              <div style={{ display: "flex", gap: "10px", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
                 <button
                   onClick={handleGateClose}
                   style={{
@@ -1724,44 +1724,10 @@ export default function MissionControl({
                     color: "#78716A",
                     textDecoration: "underline",
                   }}
-                  title="Close without losing the pending gate. State is preserved — you can decide later."
+                  title="Close without losing the pending gate. Use the banner Approve/Reject to decide."
                 >
                   Decide later
                 </button>
-                <div style={{ display: "flex", gap: "12px" }}>
-                  <button
-                    onClick={() => handleGateReject(gateModal.gateId, "")}
-                    style={{
-                      padding: "10px 20px",
-                      background: "#fff",
-                      border: "1px solid #d5d2ce",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      fontFamily: '"Geist Mono", monospace',
-                      fontSize: "13px",
-                      fontWeight: 500,
-                      color: "#5a5854",
-                    }}
-                  >
-                    Reject
-                  </button>
-                  <button
-                    onClick={() => handleGateApprove(gateModal.gateId, "")}
-                    style={{
-                      padding: "10px 20px",
-                      background: "#1a1814",
-                      border: "none",
-                      borderRadius: "8px",
-                      cursor: "pointer",
-                      fontFamily: '"Geist Mono", monospace',
-                      fontSize: "13px",
-                      fontWeight: 500,
-                      color: "#fff",
-                    }}
-                  >
-                    Approve
-                  </button>
-                </div>
               </div>
               )}
             </div>
