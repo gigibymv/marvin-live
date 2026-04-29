@@ -144,7 +144,14 @@ interface MissionControlViewProps {
     findings: Array<{ id: string; claim_text: string; confidence: string | null; agent_id: string | null }>;
     milestones: Array<{ id: string; label: string; status: string }>;
   }[];
-  pendingGateBanner?: { onResume: () => void; title?: string; summary?: string } | null;
+  pendingGateBanner?: {
+    onResume: () => void;
+    onApprove?: () => void;
+    onReject?: () => void;
+    title?: string;
+    summary?: string;
+    gateId?: string;
+  } | null;
   briefStatus?: "pending" | "now" | "completed";
   nextCheckpointLabel?: string | null;
 }
@@ -1223,9 +1230,12 @@ export default function MissionControl({
         activeAgent={activeAgent}
         workstreamContent={workstreamContent}
         pendingGateBanner={
-          showDeferredBanner
+          showDeferredBanner && pendingGate
             ? {
                 onResume: reopenGateFromCheckpoint,
+                onApprove: () => handleGateApprove(pendingGate.id, ""),
+                onReject: () => handleGateReject(pendingGate.id, ""),
+                gateId: pendingGate.id,
                 title: pendingGateModal?.title,
                 summary: pendingGateModal?.summary,
               }

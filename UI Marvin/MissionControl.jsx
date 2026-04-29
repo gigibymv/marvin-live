@@ -660,15 +660,37 @@ export default function MissionControl(props) {
             React.createElement("strong", { style: { fontWeight: 600 } }, pendingGateBanner.title || "Validation required"),
             pendingGateBanner.summary ? " · " + pendingGateBanner.summary : " · Mission is paused until you decide."
           ),
-          React.createElement("button", {
-            onClick: pendingGateBanner.onResume,
-            style: {
-              fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600,
-              letterSpacing: ".12em", textTransform: "uppercase",
-              padding: "6px 12px", background: "var(--ink)", color: "var(--paper)",
-              border: "none", cursor: "pointer", borderRadius: "4px",
-            }
-          }, "Review now")
+          React.createElement("div", { style: { display: "flex", gap: "8px", alignItems: "center" } },
+            pendingGateBanner.onApprove ? React.createElement("button", {
+              onClick: pendingGateBanner.onApprove,
+              "aria-label": "Approve gate",
+              style: {
+                fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600,
+                letterSpacing: ".12em", textTransform: "uppercase",
+                padding: "6px 12px", background: "#1a1814", color: "var(--paper)",
+                border: "none", cursor: "pointer", borderRadius: "4px",
+              }
+            }, "Approve") : null,
+            pendingGateBanner.onReject ? React.createElement("button", {
+              onClick: pendingGateBanner.onReject,
+              "aria-label": "Reject gate",
+              style: {
+                fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600,
+                letterSpacing: ".12em", textTransform: "uppercase",
+                padding: "6px 12px", background: "var(--paper)", color: "var(--ink)",
+                border: "1px solid var(--ruleh)", cursor: "pointer", borderRadius: "4px",
+              }
+            }, "Reject") : null,
+            React.createElement("button", {
+              onClick: pendingGateBanner.onResume,
+              style: {
+                fontFamily: "var(--m)", fontSize: "10px", fontWeight: 600,
+                letterSpacing: ".12em", textTransform: "uppercase",
+                padding: "6px 12px", background: "transparent", color: "var(--ink2)",
+                border: "1px solid var(--ruleh)", cursor: "pointer", borderRadius: "4px",
+              }
+            }, "Review")
+          )
         ) : null,
         React.createElement(Feed, { feedRef: feedRef, activity: props.activity, findings: props.findings, nextCheckpointLabel: props.nextCheckpointLabel })
       ),
