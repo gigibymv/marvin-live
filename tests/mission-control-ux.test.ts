@@ -13,9 +13,20 @@ import {
   formatGatePendingChatMessage,
   formatGatePendingFeedSignal,
 } from "@/lib/missions/adapters";
+import { shouldAttachResumeStream } from "@/lib/missions/gate-resume";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
 
 describe("MissionControl UX slice", () => {
+  it("reattaches the resume stream after any backend-resumed gate result", () => {
+    expect(shouldAttachResumeStream({ status: "resumed" })).toBe(true);
+    expect(shouldAttachResumeStream({ status: "resumed_detached" })).toBe(true);
+    expect(shouldAttachResumeStream({ status: "resume_pending" })).toBe(true);
+    expect(shouldAttachResumeStream({ status: "already_processed" })).toBe(false);
+    expect(shouldAttachResumeStream({ status: undefined })).toBe(false);
+    expect(shouldAttachResumeStream(null)).toBe(false);
+    expect(shouldAttachResumeStream(undefined)).toBe(false);
+  });
+
   it("getDeliverableDownloadUrl encodes rel_path safely", () => {
     expect(getDeliverableDownloadUrl("memo.pdf")).toBe(
       "/api/v1/deliverables/download?rel_path=memo.pdf",

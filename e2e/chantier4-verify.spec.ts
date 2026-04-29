@@ -184,7 +184,7 @@ test.describe('Chantier 4 — CP1/CP2/CP3 verification', () => {
       console.log(`CP3.2: Sidebar finding count: ${sidebarFindings}, Total finding elements: ${totalFindingBadge}`);
 
       // Try to count via text
-      const modalText = await page.locator('[role="dialog"], [class*="modal"], [class*="Modal"]').textContent().catch(() => '');
+      const modalText = await page.locator('[role="dialog"], [class*="modal"], [class*="Modal"]').textContent().catch(() => '') ?? '';
       console.log('Modal contains "finding":', (modalText.match(/finding/gi) || []).length, 'occurrences');
 
       await ss(page, 'cp3-02-sidebar-findings');

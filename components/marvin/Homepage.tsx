@@ -51,9 +51,9 @@ section.tight{padding:72px 0}
 .reveal-delay-4{transition-delay:.32s}
 .reveal-delay-5{transition-delay:.4s}
 
-.nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 32px;background:rgba(244,240,234,.82);backdrop-filter:blur(14px) saturate(1.2);border-bottom:1px solid transparent;transition:border-color .3s}
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:18px 0;background:rgba(244,240,234,.82);backdrop-filter:blur(14px) saturate(1.2);border-bottom:1px solid transparent;transition:border-color .3s}
 .nav.scrolled{border-bottom-color:var(--rule)}
-.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-inner{max-width:1200px;margin:0 auto;padding:0 32px;display:flex;align-items:center;justify-content:space-between}
 .brand{font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:-.02em}
 .brand-badge{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.08em;border:1px solid var(--rule-m);padding:3px 7px;border-radius:4px;margin-left:10px}
 .nav-links{display:flex;gap:28px;align-items:center}
@@ -210,13 +210,13 @@ export default function Homepage() {
 
       {/* 1. Hero */}
       <section className="hero" style={{ background: "var(--paper)", padding: 0, display: "block", minHeight: 0 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "40% 60%", minHeight: "auto", alignItems: "center", width: "100%", maxWidth: "100%", overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", minHeight: "auto", alignItems: "center", width: "100%", maxWidth: "100%", overflow: "hidden" }}>
           {/* Left: text */}
-          <div style={{ padding: "120px 5% 80px 32px" }}>
+          <div style={{ padding: "120px 5% 80px calc(max(32px, (100vw - 1200px) / 2 + 32px))" }}>
             <div style={{ fontFamily: "var(--mono)", fontSize: "9.5px", fontWeight: 600, color: "var(--muted)", letterSpacing: ".12em", textTransform: "uppercase", marginBottom: "24px" }}>
               AI-AUGMENTED CONSULTING OPERATIONS
             </div>
-            <h1 style={{ fontFamily: "'Bricolage Grotesque',var(--display)", fontSize: "clamp(44px,4vw,72px)", fontWeight: 700, lineHeight: 1.01, letterSpacing: "-.04em", color: "var(--ink)", margin: "0 0 18px 0" }}>
+            <h1 style={{ fontFamily: "'Bricolage Grotesque',var(--display)", fontSize: "clamp(44px,4vw,72px)", fontWeight: 700, lineHeight: 1.01, letterSpacing: "-.04em", color: "var(--ink)", margin: "0 0 18px 0", whiteSpace: "nowrap" }}>
               Do more for more clients.
             </h1>
             <p style={{ fontFamily: "'Bricolage Grotesque',var(--display)", fontSize: "clamp(20px,2vw,26px)", fontWeight: 700, letterSpacing: "-.02em", color: "var(--ink2)", margin: "0 0 40px 0", lineHeight: 1.2 }}>
@@ -268,24 +268,17 @@ export default function Homepage() {
         </div>
       </section>
 
-      {/* 2. Quote */}
-      <section className="s-quote">
-        <div className="wrap">
-          <blockquote className="reveal">
-            MARVIN runs the mechanical work so your consultants can focus on the thinking,
-            <br />gather more insights from experts and build stronger connections with clients.
-          </blockquote>
-        </div>
-      </section>
-
       {/* 3. What Changes + Core Value */}
       <section className="s-changes">
         <div className="wrap">
           <div className="eyebrow reveal">WHAT CHANGES</div>
-          <h2 className="reveal reveal-delay-1">
-            When the mechanical work runs itself,
+          <h2 className="reveal reveal-delay-1" style={{ marginBottom: "20px" }}>
+            When MARVIN runs the mechanical work,
             <br />your team can do more of what matters.
           </h2>
+          <p className="reveal reveal-delay-2" style={{ fontSize: "17px", color: "var(--ink2)", maxWidth: "760px", lineHeight: 1.6, marginBottom: "64px" }}>
+            MARVIN runs the numbers, does the desk research, writes the documents, so your consultants can focus on the thinking, gather more insights from experts and build stronger connections with clients.
+          </p>
 
           <div className="benefits">
             {[

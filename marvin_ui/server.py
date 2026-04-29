@@ -815,11 +815,22 @@ _PHASE_LABELS: dict[str, str] = {
     "done": "Mission complete",
 }
 
-# Hard-coded intent strings per node. Emitted immediately when a node becomes
-# active so the live feed has something to show during the LLM round-trip.
-# Only nodes with a user-facing display name (i.e., not in _DISPLAY_NAME with
-# value None) should appear here. System/control-flow nodes are excluded.
-_NODE_INTENT: dict[str, str] = {
+_PHASE_NARRATION: dict[str, str] = {
+    "setup": "Preparing the mission workspace",
+    "framing": "Turning the brief into a structured diligence frame",
+    "awaiting_clarification": "Waiting for the missing context before framing continues",
+    "awaiting_confirmation": "Initial hypotheses are ready for review",
+    "confirmed": "Starting the research workstreams",
+    "research_done": "Research is complete and ready for manager review",
+    "gate_g1_passed": "Manager review passed; starting the red-team challenge",
+    "redteam_done": "Red-team challenge complete; moving into synthesis",
+    "synthesis_retry": "Synthesis needs another challenge pass before final review",
+    "synthesis_done": "Synthesis is complete and ready for final review",
+    "gate_g3_passed": "Final review passed; assembling deliverables",
+    "done": "Mission complete; deliverables are ready for review",
+}
+
+_AGENT_NARRATION: dict[str, str] = {
     "dora": "Mapping the competitive landscape",
     "calculus": "Crunching financial signals",
     "adversus": "Stress-testing the hypothesis",
@@ -834,15 +845,49 @@ _NODE_INTENT: dict[str, str] = {
 }
 
 
-async def _emit_narration(agent: str, intent: str) -> str:
-    """Emit a narration event paired with agent_active.
+def _narration_agent(agent: str | None = None) -> str:
+    display = get_display_name(agent)
+    return display or "MARVIN"
 
-    Unlike agent_active this is NOT throttled — each activation carries a
-    unique intent string that the feed should always show.
-    """
-    import datetime
-    ts = datetime.datetime.utcnow().isoformat() + "Z"
-    return _sse_event("narration", {"agent": agent, "intent": intent, "ts": ts})
+
+def _agent_narration(agent: str) -> str | None:
+    return _AGENT_NARRATION.get(agent)
+
+
+def _phase_narration(phase: str) -> str | None:
+    return _PHASE_NARRATION.get(phase)
+
+
+def _heartbeat_narration() -> str:
+    return "Still working — analysis in progress"
+
+
+def _gate_narration(payload: dict) -> str:
+    title = str(payload.get("title") or payload.get("gate_type") or "Validation required").strip()
+    if not title:
+        title = "Validation required"
+    return f"Human review needed: {title}"
+
+
+def _phase_blocked_narration(payload: dict) -> str:
+    message = str(payload.get("message") or "").strip()
+    if message:
+        return message
+    missing = payload.get("missing_material")
+    if isinstance(missing, (list, tuple)):
+        missing_text = ", ".join(str(item) for item in missing if item)
+    else:
+        missing_text = ""
+    gate_type = str(payload.get("gate_type") or "gate").replace("_", " ")
+    if missing_text:
+        return f"Cannot open {gate_type}: missing {missing_text}"
+    return f"Cannot open {gate_type}: missing required material"
+
+
+async def _emit_narration(agent: str, intent: str) -> str:
+    """Emit deterministic user-facing narration for the live rail."""
+    ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return _sse_event("narration", {"agent": _narration_agent(agent), "intent": intent, "ts": ts})
 
 
 _LIVE_FEED_HEARTBEAT_INTERVAL = 15.0
@@ -871,7 +916,7 @@ async def _astream_with_heartbeat(graph, next_input, config, *, current_agent_re
         except asyncio.TimeoutError:
             agent = current_agent_ref[0] if current_agent_ref else None
             if agent:
-                yield ("heartbeat", await _emit_narration(agent, "Still working — analysis in progress"))
+                yield ("heartbeat", await _emit_narration(agent, _heartbeat_narration()))
             else:
                 yield ("heartbeat", _sse_heartbeat())
             continue
@@ -921,6 +966,7 @@ async def _emit_for_update(
             interrupt_value = getattr(interrupts[0], "value", None)
             if isinstance(interrupt_value, dict):
                 out.append(await _emit_gate_pending(interrupt_value))
+                out.append(await _emit_narration("workflow", _gate_narration(interrupt_value)))
         return out, current_agent, current_phase, True
 
     for node_name, output in event.items():
@@ -930,7 +976,22 @@ async def _emit_for_update(
         new_phase = output.get("phase")
         if isinstance(new_phase, str) and new_phase and new_phase != current_phase:
             out.append(await _emit_phase_changed(new_phase))
+            phase_intent = _phase_narration(new_phase)
+            if phase_intent:
+                out.append(await _emit_narration("workflow", phase_intent))
             current_phase = new_phase
+
+        if "gate_pending" in output:
+            gate_payload = output["gate_pending"]
+            out.append(await _emit_gate_pending(gate_payload))
+            if isinstance(gate_payload, dict):
+                out.append(await _emit_narration("workflow", _gate_narration(gate_payload)))
+
+        if output.get("phase_blocked"):
+            blocked_payload = output["phase_blocked"]
+            out.append(await _emit_phase_blocked(blocked_payload))
+            if isinstance(blocked_payload, dict):
+                out.append(await _emit_narration("workflow", _phase_blocked_narration(blocked_payload)))
 
         display = get_display_name(node_name)
         if display is None:
@@ -959,7 +1020,7 @@ async def _emit_for_update(
                 if throttle_state is not None:
                     throttle_state[_throttle_key_active] = _now
             # Always emit narration (not throttled) — unique signal per activation.
-            _intent = _NODE_INTENT.get(node_name)
+            _intent = _agent_narration(node_name)
             if _intent:
                 out.append(await _emit_narration(node_name, _intent))
 
@@ -1006,12 +1067,6 @@ async def _emit_for_update(
                         out.append(await _emit_milestone_done(payload))
                     elif event_type == "deliverable_ready":
                         out.append(await _emit_deliverable_ready(payload))
-
-        if "gate_pending" in output:
-            out.append(await _emit_gate_pending(output["gate_pending"]))
-
-        if output.get("phase_blocked"):
-            out.append(await _emit_phase_blocked(output["phase_blocked"]))
 
     return out, current_agent, current_phase, False
 

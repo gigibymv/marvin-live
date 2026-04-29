@@ -43,6 +43,7 @@ import {
   getDeliverableDownloadUrl,
 } from "@/lib/missions/api";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
+import { shouldAttachResumeStream } from "@/lib/missions/gate-resume";
 import { normalizeAgentName } from "@/lib/missions/agent-display";
 import { DeliverablePreview } from "./DeliverablePreview";
 
@@ -223,6 +224,7 @@ export default function MissionControl({
   // Chantier 4 CP3: deliverable inline preview modal state.
   const [previewDeliverableId, setPreviewDeliverableId] = useState<string | null>(null);
   const [clarificationSubmitting, setClarificationSubmitting] = useState(false);
+  const resumeTimerRef = useRef<number | null>(null);
 
   const chatDraft = useMissionUiStore((state) => selectChatDraft(state, missionId));
   const selectedTab = useMissionUiStore((state) => selectWorkspaceTab(state, missionId));
@@ -644,6 +646,15 @@ export default function MissionControl({
     setRunState(missionId, { isStreaming: false });
   }, [missionId, setRunState]);
 
+  useEffect(() => {
+    return () => {
+      if (resumeTimerRef.current !== null) {
+        window.clearTimeout(resumeTimerRef.current);
+        resumeTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // Handle sending a message
   const handleSendMessage = useCallback(
     async (text: string) => {
@@ -721,6 +732,21 @@ export default function MissionControl({
     [],
   );
 
+  const scheduleResumeStream = useCallback(() => {
+    if (eventStream.kind !== "fetch" || typeof eventStream.resume !== "function") return;
+    const resumeStream = eventStream.resume;
+    if (resumeTimerRef.current !== null) {
+      window.clearTimeout(resumeTimerRef.current);
+    }
+    // Gate validation may spawn a detached driver that holds the mission lock.
+    // Re-attach shortly after the API response so _stream_resume_passive can
+    // relay graph + persistence events into the live rail.
+    resumeTimerRef.current = window.setTimeout(() => {
+      resumeTimerRef.current = null;
+      void resumeStream();
+    }, 300);
+  }, [eventStream]);
+
   // Handle gate approval
   const handleGateApprove = useCallback(
     async (gateId: string, notes: string = "") => {
@@ -775,19 +801,10 @@ export default function MissionControl({
             text: `Approved. Launching the next phase.`,
           });
 
-          // F1-A: after the backend accepts the verdict it spawns a detached
-          // driver that holds the per-mission lock and broadcasts SSE events
-          // through marvin.events. Force a /resume reconnect so a new
-          // _stream_resume_passive subscriber attaches to that broadcast and
-          // relays agent_active / narration / finding_added etc. to the UI.
-          // 300ms delay lets the driver register its task before we re-attach.
-          if (eventStream.kind === "fetch" && eventStream.resume) {
-            const resumeStream = eventStream.resume;
-            window.setTimeout(() => {
-              void resumeStream();
-            }, 300);
-          }
-          if (result.status !== "resumed" && result.status !== "resume_pending") {
+          const shouldResume = shouldAttachResumeStream(result);
+          if (shouldResume) {
+            scheduleResumeStream();
+          } else {
             setRunState(mission.id, { isStreaming: false });
           }
         }
@@ -797,7 +814,7 @@ export default function MissionControl({
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [mission, repository.kind, eventStream, setRunState, appendGateMessage]
+    [mission, repository.kind, setRunState, appendGateMessage, scheduleResumeStream]
   );
 
   // Handle gate rejection
@@ -808,14 +825,6 @@ export default function MissionControl({
       setGateModal(null);
       setPausedForGate(false);
       setRunState(mission.id, { isStreaming: true });
-
-      // Add user action message
-      // Agent status tracking for text events
-      appendGateMessage(gateId, "reject", {
-        id: makeMessageId(mission.id, "reject"),
-        from: "u",
-        text: `✗ Gate rejected: ${gateId}`,
-      });
 
       try {
         // For HTTP repository, call the API
@@ -845,7 +854,16 @@ export default function MissionControl({
           // now emits a specific AIMessage (per gate_type) describing what
           // re-runs next. Adding a generic placeholder here would race the
           // real message and confuse the user.
-          if (result.status !== "resumed" && result.status !== "resume_pending") {
+          appendGateMessage(gateId, "reject", {
+            id: makeMessageId(mission.id, "reject"),
+            from: "u",
+            text: `Gate rejected: ${gateId}`,
+          });
+
+          const shouldResume = shouldAttachResumeStream(result);
+          if (shouldResume) {
+            scheduleResumeStream();
+          } else {
             setRunState(mission.id, { isStreaming: false });
           }
         }
@@ -855,7 +873,7 @@ export default function MissionControl({
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [mission, repository.kind, setRunState, appendGateMessage]
+    [mission, repository.kind, setRunState, appendGateMessage, scheduleResumeStream]
   );
 
   // CP2 (chantier 2.6.1): data_decision gate handler. Posts a `decision`
@@ -903,7 +921,10 @@ export default function MissionControl({
             setRunState(mission.id, { isStreaming: false });
             return;
           }
-          if (result.status !== "resumed" && result.status !== "resume_pending") {
+          const shouldResume = shouldAttachResumeStream(result);
+          if (shouldResume) {
+            scheduleResumeStream();
+          } else {
             setRunState(mission.id, { isStreaming: false });
           }
         }
@@ -913,7 +934,7 @@ export default function MissionControl({
         setStreamError(error instanceof Error ? error.message : "Failed to record decision");
       }
     },
-    [mission, repository.kind, setRunState],
+    [mission, repository.kind, setRunState, scheduleResumeStream],
   );
 
   // Submit clarification answers for a clarification_request gate.
@@ -942,7 +963,10 @@ export default function MissionControl({
       setClarificationGate(null);
       setClarificationAnswers([]);
       setPausedForGate(false);
-      if (result.status !== "resumed" && result.status !== "resume_pending") {
+      const shouldResume = shouldAttachResumeStream(result);
+      if (shouldResume) {
+        scheduleResumeStream();
+      } else {
         setRunState(mission.id, { isStreaming: false });
       }
     } catch (error) {
@@ -953,7 +977,7 @@ export default function MissionControl({
     } finally {
       setClarificationSubmitting(false);
     }
-  }, [mission, clarificationGate, clarificationAnswers, setRunState]);
+  }, [mission, clarificationGate, clarificationAnswers, setRunState, scheduleResumeStream]);
 
   // Deferring closes the modal but does NOT call the validate API.
   // The pending gate state is preserved server-side in the LangGraph checkpoint
