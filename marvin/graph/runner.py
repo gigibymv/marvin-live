@@ -79,11 +79,32 @@ def _check_data_availability(mission_id: str) -> dict:
 
 
 def _resolve_gate_by_day(mission_id: str, day: int) -> str:
+    """Return the gate id to open for a given day.
+
+    Prefers the most recently created pending row so that retry rows
+    seeded by gate_node on rejection (suffixed -retry-N) win over the
+    original failed row that would refuse to re-open.
+    """
     store = MissionStore()
-    for gate in store.list_gates(mission_id):
-        if gate.scheduled_day == day:
-            return gate.id
+    candidates = [gate for gate in store.list_gates(mission_id) if gate.scheduled_day == day]
+    pending = [gate for gate in candidates if gate.status == "pending"]
+    if pending:
+        return pending[-1].id
+    if candidates:
+        return candidates[-1].id
     raise KeyError(f"gate not found for mission={mission_id} day={day}")
+
+
+def _resolve_gate_by_type(mission_id: str, gate_type: str) -> str:
+    """Same selection logic as _resolve_gate_by_day, keyed on gate_type."""
+    store = MissionStore()
+    candidates = [gate for gate in store.list_gates(mission_id) if gate.gate_type == gate_type]
+    pending = [gate for gate in candidates if gate.status == "pending"]
+    if pending:
+        return pending[-1].id
+    if candidates:
+        return candidates[-1].id
+    raise KeyError(f"gate not found for mission={mission_id} type={gate_type}")
 
 
 def phase_router(state: MarvinState) -> str | list[Send]:
@@ -348,7 +369,10 @@ async def gate_entry_node(state: MarvinState) -> dict:
     mission_id = state.get("mission_id", "")
 
     if phase == "awaiting_confirmation":
-        gate_id = f"gate-{mission_id}-hyp-confirm"
+        # After a rejection-and-retry, gate_node has seeded a new pending
+        # hyp-confirm row; resolve to that one (or the original) instead of
+        # hard-coding the base id.
+        gate_id = _resolve_gate_by_type(mission_id, "hypothesis_confirmation")
         return {"pending_gate_id": gate_id}
 
     if phase == "research_done":

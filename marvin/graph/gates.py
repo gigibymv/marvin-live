@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import interrupt
 
 from marvin.graph.gate_material import evaluate_gate_material, human_gate_copy
 from marvin.graph.state import MarvinState
+from marvin.mission.schema import Gate
 from marvin.mission.store import MissionStore
 from marvin.tools.arbiter_tools import check_internal_consistency
 
@@ -124,11 +125,74 @@ async def gate_node(state: MarvinState, config=None) -> dict:
     approved = decision.get("approved", False) or decision.get("verdict") == "APPROVED"
     store.update_gate_status(gate_id, "completed" if approved else "failed", notes=decision.get("notes", ""))
 
+    extra_messages: list = []
+    if not approved:
+        # A rejected gate must (a) tell the user what re-runs next instead of
+        # the dead-end "Awaiting further instructions" frontend message, and
+        # (b) leave a fresh pending gate row for the retry pass to land on —
+        # the just-failed row would refuse to re-open in evaluate_gate_material.
+        retry_msg = _retry_message_for(gate)
+        if retry_msg:
+            extra_messages.append(AIMessage(content=retry_msg))
+        _seed_retry_gate(store, gate)
+
     return {
         "gate_passed": approved,
         "pending_gate_id": None,
         "phase": _gate_to_next_phase(gate_id, gate, approved),
+        "messages": extra_messages,
     }
+
+
+def _retry_message_for(gate) -> str:
+    if gate is None:
+        return ""
+    if gate.gate_type == "hypothesis_confirmation":
+        return (
+            "Hypotheses sent back for revision. Re-running framing to produce "
+            "updated hypotheses."
+        )
+    if gate.gate_type == "manager_review":
+        return (
+            "Research claims rejected. Looping W1 and W2 back for additional "
+            "passes — G1 will fire again once the next round completes."
+        )
+    if gate.gate_type == "final_review":
+        return (
+            "Synthesis sent back for another pass. Merlin will re-run with the "
+            "rejection notes — G3 will fire again with a new verdict."
+        )
+    return ""
+
+
+def _seed_retry_gate(store: MissionStore, original_gate: Gate) -> str:
+    """Create a fresh pending gate row so the retry pass has somewhere to land.
+
+    The original failed row stays on the audit trail. Re-using it as pending
+    would erase the rejection notes; creating a sibling row keeps history
+    intact while letting evaluate_gate_material re-open the gate cleanly.
+    """
+    siblings = [
+        gate
+        for gate in store.list_gates(original_gate.mission_id)
+        if gate.scheduled_day == original_gate.scheduled_day
+        and gate.gate_type == original_gate.gate_type
+    ]
+    retry_count = sum(1 for gate in siblings if "-retry-" in gate.id) + 1
+    new_id = f"{original_gate.id}-retry-{retry_count}"
+    store.save_gate(
+        Gate(
+            id=new_id,
+            mission_id=original_gate.mission_id,
+            gate_type=original_gate.gate_type,
+            scheduled_day=original_gate.scheduled_day,
+            validator_role=original_gate.validator_role,
+            status="pending",
+            format=original_gate.format,
+            questions=original_gate.questions,
+        )
+    )
+    return new_id
 
 
 def _gate_to_next_phase(gate_id: str, gate, approved: bool) -> str:
@@ -139,7 +203,10 @@ def _gate_to_next_phase(gate_id: str, gate, approved: bool) -> str:
         return "confirmed" if approved else "framing"
 
     if gate.scheduled_day <= 3:
-        return "gate_g1_passed" if approved else "research_done"
+        # G1 reject re-triggers the W1+W2 fan-out via the "confirmed" phase.
+        # phase_router's confirmed branch is idempotent on data_decision, so
+        # the retry pass goes straight to dora+calculus and back to G1.
+        return "gate_g1_passed" if approved else "confirmed"
 
     if gate.scheduled_day <= 10:
         return "gate_g3_passed" if approved else "redteam_done"

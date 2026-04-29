@@ -818,12 +818,10 @@ export default function MissionControl({
             return;
           }
 
-          // Agent status tracking for text events
-          appendGateMessage(gateId, "reject-stopped", {
-            id: makeMessageId(mission.id, "stopped"),
-            from: "m",
-            text: `Gate rejected. Awaiting further instructions.`,
-          });
+          // No local "Awaiting further instructions" message: the backend
+          // now emits a specific AIMessage (per gate_type) describing what
+          // re-runs next. Adding a generic placeholder here would race the
+          // real message and confuse the user.
           if (result.status !== "resumed" && result.status !== "resume_pending") {
             setRunState(mission.id, { isStreaming: false });
           }
