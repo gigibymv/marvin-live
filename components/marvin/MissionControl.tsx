@@ -766,10 +766,17 @@ export default function MissionControl({
             text: `Approved. Launching the next phase.`,
           });
 
-          // If there's an active stream, send a system message to continue
-          if (eventStream.kind === "fetch" && eventStream.sendMessage) {
-            // The graph should resume automatically, but we can also send a message
-            // to continue the conversation
+          // F1-A: after the backend accepts the verdict it spawns a detached
+          // driver that holds the per-mission lock and broadcasts SSE events
+          // through marvin.events. Force a /resume reconnect so a new
+          // _stream_resume_passive subscriber attaches to that broadcast and
+          // relays agent_active / narration / finding_added etc. to the UI.
+          // 300ms delay lets the driver register its task before we re-attach.
+          if (eventStream.kind === "fetch" && eventStream.resume) {
+            const resumeStream = eventStream.resume;
+            window.setTimeout(() => {
+              void resumeStream();
+            }, 300);
           }
           if (result.status !== "resumed" && result.status !== "resume_pending") {
             setRunState(mission.id, { isStreaming: false });
