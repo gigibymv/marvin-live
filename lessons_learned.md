@@ -1,5 +1,59 @@
 # MARVIN — Lessons Learned
 
+## 2026-04-29 — Real Tavily integration: KNOWN findings were structurally impossible
+
+**Symptom observed:** Across every mission MARVIN had ever run, Dora
+typically produced 0–1 findings, missions consistently froze at G1
+(`manager_review` requires `research_findings` non-empty), and any
+`KNOWN`-confidence finding was effectively unreachable.
+
+**Root cause:** `marvin/tools/dora_tools.tavily_search` was a stub
+returning hardcoded `https://example.com/...` URLs. `TAVILY_API_KEY`
+was set in `.env` but the code never read it. Dora's prompt correctly
+forbids fabricating findings on unverifiable sources, so the LLM saw
+`example.com` and (correctly) skipped persistence — leaving G1 with
+nothing to review.
+
+**Investigation pattern that worked:** when the user reports
+"mission stuck at gate X", do *not* assume the prior gate-fix is
+broken. Verify with: latest checkpoint state, the gate's
+`missing_material` payload, and the table of findings per agent for
+the stuck mission vs a recently-completed one. The empty
+`missing_material` array combined with `phase=idle` was the tell that
+gate_node terminated via the lifecycle guard, not the material check.
+
+**Fix shipped (commits cbcbf87 → a4a9bc4):**
+1. `tavily_search` now POSTs `https://api.tavily.com/search`, reads
+   `TAVILY_API_KEY`, with structured error fallbacks
+   (`no_api_key` / `network` / `rate_limited` / `http_NNN`). Returns
+   empty `results` on failure so callers degrade to REASONED rather
+   than crash.
+2. `add_finding_to_mission` accepts inline `source_url` +
+   `source_quote`. When set, a Source row is created automatically
+   and linked. The schema validator's `source_id required for KNOWN`
+   guard now has a single-tool-call satisfier.
+3. Dora prompt: new `WEB RESEARCH — REAL TAVILY RESULTS` section
+   tells her to pass `source_url`/`source_quote` directly when
+   results land, with cross-check rules (one source → REASONED,
+   aggregator domains → REASONED, two independent sources → KNOWN).
+4. Papyrus prompt + `_build_papyrus_context` hydrate sources by id
+   and surface the real URL in the `data_book` Source column +
+   footnote-style citations in `exec_summary`/IC memo. Internal ids
+   stay stripped.
+5. `tests/integration/test_tavily_live.py` (gated behind
+   `pytest -m integration`) hits the real API to catch contract
+   drift; cheap (~$0.005/run) and skipped by default.
+
+**Out of scope (next chantier):** `search_sec_filings` in
+`calculus_tools.py:294-318` is still a stub. KNOWN financial findings
+will remain unreachable for Calculus until SEC EDGAR (or equivalent)
+is wired up the same way.
+
+**Cost note:** each Tavily call ≈ $0.005; a typical mission makes
+10–30 search calls. Incremental cost per run: ~$0.05–0.15. No
+runaway-loop guard needed today; revisit if a mission ever exceeds
+~50 calls.
+
 ## 2026-04-29 — Multi-mode astream breaks `interrupt()` traversal
 
 **Attempted change:** Switch `graph.astream(stream_mode="updates")` to

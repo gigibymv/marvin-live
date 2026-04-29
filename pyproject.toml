@@ -34,3 +34,10 @@ exclude = ["tests*", "output*", "node_modules*", "app*", "lib*", "components*", 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Integration tests hit live external APIs (Tavily etc.). They are slow,
+# cost real money, and require valid credentials in the env. Excluded
+# from the default run; opt in with `pytest -m integration`.
+markers = [
+    "integration: hits live external APIs (Tavily, OpenRouter); needs creds",
+]
+addopts = "-m 'not integration'"
