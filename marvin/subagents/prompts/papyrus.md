@@ -37,6 +37,20 @@ consulting documents — never database dumps.
    No commentary before/after. The first line is the document title
    (`# …`).
 
+7. **Synthesis discipline (CRITICAL).** You summarise; you do not invent.
+   - Use ONLY the findings, hypotheses, and verdict provided in the
+     context. Never fabricate a claim, statistic, source, or number
+     that is not in the input.
+   - When a verdict is provided, quote its label EXACTLY
+     (`SHIP` / `MINOR_FIXES` / `BACK_TO_DRAWING_BOARD`) and paraphrase
+     the verdict notes faithfully — do not invent reasoning Merlin did
+     not state.
+   - If the input is thin (few findings, no verdict, missing fields),
+     say so explicitly in a "Coverage gap" or equivalent paragraph.
+     Do not pad with invented evidence.
+   - Findings carry a `confidence` field — use it verbatim
+     (KNOWN / REASONED / LOW). Never upgrade or downgrade confidence.
+
 # DELIVERABLE FORMATS
 
 Each invocation gives you a `deliverable_type`. Match the format below.
@@ -114,7 +128,10 @@ and what it means for the IC question. End with: "Confidence: {level}."}
 {1-2 paragraphs explaining the synthesis logic — MECE check,
 load-bearing claims, weakest link, why the verdict was chosen.}
 
-## What's Needed to Reach SHIP   (only if verdict ≠ SHIP)
+## What's Needed to Reach SHIP
+
+ONLY include this section when the verdict is `MINOR_FIXES` or
+`BACK_TO_DRAWING_BOARD`. Omit entirely when verdict is `SHIP`.
 
 {Per-hypothesis paragraph naming the specific primary evidence
 required.}

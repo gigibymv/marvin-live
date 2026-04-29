@@ -78,6 +78,28 @@ def _stub_papyrus_llm_generate(
             "Gate G1 should validate that these hypotheses capture the binding "
             "risks before research begins.\n"
         )
+    if deliverable_type == "exec_summary":
+        verdict = (extra or {}).get("verdict")
+        verdict_label = verdict.verdict if verdict else "MINOR_FIXES"
+        finding_block = "\n\n".join(
+            f"**{i + 1}. {f.claim_text[:64].rstrip('.')}.**\n\n"
+            f"{f.claim_text} Confidence: {f.confidence}."
+            for i, f in enumerate(findings[:5])
+        ) or "No findings provided in context."
+        body = (
+            f"# Executive Summary — {mission.target}\n\n"
+            f"**Mission:** {mission.client} — {mission.target}\n"
+            f"**Verdict:** {verdict_label}\n"
+            f"**Date:** 2026-04-28\n\n"
+            "## Headline\n\n"
+            f"Verdict {verdict_label}. The diligence dossier reflects the "
+            "current evidence base.\n\n"
+            f"## Key Findings\n\n{finding_block}\n\n"
+            "## Verdict Reasoning\n\n"
+            "Synthesis of the evidence and weakest-link analysis above.\n\n"
+            "## Recommendation\n\nProceed to next gate.\n"
+        )
+        return body
     raise NotImplementedError(f"stub does not yet handle {deliverable_type}")
 
 

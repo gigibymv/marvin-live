@@ -7,7 +7,7 @@ from typing import Any
 
 from marvin.artifacts import artifact_file_readiness_errors
 from marvin.events import emit_deliverable_persisted
-from marvin.mission.schema import Deliverable, Finding, Hypothesis, Mission, MissionBrief
+from marvin.mission.schema import Deliverable, Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief
 from marvin.mission.store import MissionStore
 from marvin.tools.common import InjectedStateArg, ensure_output_dir, get_store, require_mission_id, utc_now_iso
 
@@ -91,7 +91,14 @@ def _build_papyrus_context(
             "workstream_plan": json.loads(mission_brief.workstream_plan_json),
         }
     if extra:
-        payload["extra"] = extra
+        verdict = extra.pop("verdict", None) if isinstance(extra, dict) else None
+        if isinstance(verdict, MerlinVerdict):
+            payload["verdict"] = {
+                "outcome": verdict.verdict,
+                "notes": verdict.notes or "",
+            }
+        if extra:
+            payload["extra"] = extra
     return (
         f"Produce the `{deliverable_type}` deliverable using the structure "
         f"defined in the system prompt. Use ONLY the context below. "
@@ -433,45 +440,39 @@ def _generate_exec_summary_impl(mission_id: str) -> dict[str, Any]:
 
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / "exec_summary.md"
-    lines = [
-        f"# Executive Summary: {mission.target}",
-        "",
-        f"Mission: {mission.client} / {mission.target}",
-        "",
-        "## Decision Context",
-        "This summary is generated only from persisted mission findings. Each bullet links "
-        "back to a finding identifier so reviewers can trace the claim to the mission record.",
-        "",
-        "## Key Findings",
-    ]
-    lines.extend(
-        [
-            f"- Finding ID: {finding.id}. Confidence: {finding.confidence}. Claim: {finding.claim_text}"
-            for finding in findings[:10]
-        ]
-    )
-    verdict = store.get_latest_merlin_verdict(mission_id)
-    if verdict:
-        verdict_notes = (verdict.notes or "").strip()
-        verdict_line = f"Verdict ID: {verdict.id}. Outcome: {verdict.verdict}."
-        if verdict_notes:
-            verdict_line = f"{verdict_line} {verdict_notes}"
-        lines.extend(["", "## Merlin Verdict", verdict_line])
-    lines.extend(
-        [
-            "",
-            "## Review Use",
-            "This document should be used as a concise orientation layer, not as a substitute "
-            "for the underlying findings, sources, and gate review payloads.",
-        ]
-    )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-exec-summary"
     deliverable_type = "exec_summary"
+
+    if path.exists():
+        return {
+            "mission_id": mission_id,
+            "file_path": str(path.resolve()),
+            "status": "skipped",
+            "deliverable_id": deliverable_id,
+            "deliverable_type": deliverable_type,
+        }
+
+    hypotheses = store.list_hypotheses(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+    verdict = store.get_latest_merlin_verdict(mission_id)
+    extra: dict[str, Any] = {}
+    if verdict is not None:
+        extra["verdict"] = verdict
+
+    body = _papyrus_llm_generate(
+        deliverable_type=deliverable_type,
+        mission=mission,
+        hypotheses=hypotheses,
+        findings=findings,
+        mission_brief=mission_brief,
+        extra=extra or None,
+    )
+    path.write_text(body, encoding="utf-8")
     _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path)
     return {
         "mission_id": mission_id,
         "file_path": str(path.resolve()),
+        "status": "generated",
         "deliverable_id": deliverable_id,
         "deliverable_type": deliverable_type,
     }

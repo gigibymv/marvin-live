@@ -70,6 +70,25 @@ def _stub_papyrus_llm_generate(
             "Gate G1 should validate that these hypotheses capture the binding "
             "risks before research begins.\n"
         )
+    if deliverable_type == "exec_summary":
+        verdict = (extra or {}).get("verdict")
+        verdict_label = verdict.verdict if verdict else "MINOR_FIXES"
+        finding_block = "\n\n".join(
+            f"**{i + 1}. {f.claim_text[:64].rstrip('.')}.**\n\n"
+            f"{f.claim_text} Confidence: {f.confidence}."
+            for i, f in enumerate(findings[:5])
+        ) or "No findings provided in context."
+        return (
+            f"# Executive Summary — {mission.target}\n\n"
+            f"**Mission:** {mission.client} — {mission.target}\n"
+            f"**Verdict:** {verdict_label}\n"
+            f"**Date:** 2026-04-28\n\n"
+            "## Headline\n\n"
+            f"Verdict {verdict_label}.\n\n"
+            f"## Key Findings\n\n{finding_block}\n\n"
+            "## Verdict Reasoning\n\nSynthesis paragraph.\n\n"
+            "## Recommendation\n\nProceed.\n"
+        )
     raise NotImplementedError(f"stub does not yet handle {deliverable_type}")
 
 
@@ -357,14 +376,16 @@ def test_generated_engagement_summary_and_data_book_include_traceability(store: 
     summary = papyrus_tools._generate_exec_summary_impl("m-dlv")
     data_book = papyrus_tools._generate_data_book_impl("m-dlv")
 
-    # engagement_brief is now LLM-driven (new-mode): structural markers,
-    # NO internal IDs. exec_summary and data_book are still deterministic
-    # (legacy mode) until C5/C6.
+    # engagement_brief and exec_summary are LLM-driven (new-mode):
+    # structural markers, NO internal IDs. data_book remains deterministic
+    # (legacy mode) until C6.
     engagement_body = Path(engagement["file_path"]).read_text(encoding="utf-8")
     assert "## IC Question" in engagement_body
     assert "## Hypotheses to Test" in engagement_body
     assert "hyp-" not in engagement_body
-    assert "Finding ID: f-w1" in Path(summary["file_path"]).read_text(encoding="utf-8")
+    summary_body = Path(summary["file_path"]).read_text(encoding="utf-8")
+    assert "## Key Findings" in summary_body
+    assert "f-w1" not in summary_body
     assert "Finding ID: f-w1" in Path(data_book["file_path"]).read_text(encoding="utf-8")
 
 
