@@ -690,6 +690,25 @@ export default function MissionControl({
     [mission, repository.kind, eventStream, setChatDraft, setRunState]
   );
 
+  // Per-gate, per-event-type dedup with a 2s window. Live missions surfaced
+  // triple-emission of "✓ Gate approved" and double "Gate deferred" when the
+  // same handler fired twice in quick succession (fast double-click, race
+  // between SSE replay and user click). Keying on (gateId, eventType) lets a
+  // legitimate later re-action through after the window expires.
+  const recentGateEventsRef = useRef<Map<string, number>>(new Map());
+  const GATE_DEDUP_WINDOW_MS = 2000;
+  const appendGateMessage = useCallback(
+    (gateId: string, eventType: string, message: MissionChatMessage) => {
+      const key = `${gateId}:${eventType}`;
+      const now = Date.now();
+      const last = recentGateEventsRef.current.get(key) ?? 0;
+      if (now - last < GATE_DEDUP_WINDOW_MS) return;
+      recentGateEventsRef.current.set(key, now);
+      setMessages((current) => current.concat(message));
+    },
+    [],
+  );
+
   // Handle gate approval
   const handleGateApprove = useCallback(
     async (gateId: string, notes: string = "") => {
@@ -701,13 +720,11 @@ export default function MissionControl({
 
       // Add user action message
       // Agent status tracking for text events
-      setMessages((current) =>
-        current.concat({
-          id: makeMessageId(mission.id, "approve"),
-          from: "u",
-          text: `✓ Gate approved: ${gateId}`,
-        }),
-      );
+      appendGateMessage(gateId, "approve", {
+        id: makeMessageId(mission.id, "approve"),
+        from: "u",
+        text: `✓ Gate approved: ${gateId}`,
+      });
 
       try {
         // For HTTP repository, call the API
@@ -717,36 +734,30 @@ export default function MissionControl({
           // Bug 4 (chantier 2.6): idempotent / conflict responses are 200,
           // not errors. Show a quiet toast-style status message and stop.
           if (result.idempotent) {
-            setMessages((current) =>
-              current.concat({
-                id: makeMessageId(mission.id, "idem"),
-                from: "m",
-                text: result.message ?? "Gate already validated.",
-              }),
-            );
+            appendGateMessage(gateId, "approve-idem", {
+              id: makeMessageId(mission.id, "idem"),
+              from: "m",
+              text: result.message ?? "Gate already validated.",
+            });
             setRunState(mission.id, { isStreaming: false });
             return;
           }
           if (result.conflict) {
-            setMessages((current) =>
-              current.concat({
-                id: makeMessageId(mission.id, "conflict"),
-                from: "m",
-                text: result.message ?? "Gate already completed; cannot change.",
-              }),
-            );
+            appendGateMessage(gateId, "approve-conflict", {
+              id: makeMessageId(mission.id, "conflict"),
+              from: "m",
+              text: result.message ?? "Gate already completed; cannot change.",
+            });
             setRunState(mission.id, { isStreaming: false });
             return;
           }
 
           // Agent status tracking for text events
-          setMessages((current) =>
-            current.concat({
-              id: makeMessageId(mission.id, "resumed"),
-              from: "m",
-              text: `Approved. Launching the next phase.`,
-            }),
-          );
+          appendGateMessage(gateId, "approve-resumed", {
+            id: makeMessageId(mission.id, "resumed"),
+            from: "m",
+            text: `Approved. Launching the next phase.`,
+          });
 
           // If there's an active stream, send a system message to continue
           if (eventStream.kind === "fetch" && eventStream.sendMessage) {
@@ -763,7 +774,7 @@ export default function MissionControl({
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [mission, repository.kind, eventStream, setRunState]
+    [mission, repository.kind, eventStream, setRunState, appendGateMessage]
   );
 
   // Handle gate rejection
@@ -777,13 +788,11 @@ export default function MissionControl({
 
       // Add user action message
       // Agent status tracking for text events
-      setMessages((current) =>
-        current.concat({
-          id: makeMessageId(mission.id, "reject"),
-          from: "u",
-          text: `✗ Gate rejected: ${gateId}`,
-        }),
-      );
+      appendGateMessage(gateId, "reject", {
+        id: makeMessageId(mission.id, "reject"),
+        from: "u",
+        text: `✗ Gate rejected: ${gateId}`,
+      });
 
       try {
         // For HTTP repository, call the API
@@ -791,36 +800,30 @@ export default function MissionControl({
           const result = await apiValidateGate(mission.id, gateId, "REJECTED", notes);
 
           if (result.idempotent) {
-            setMessages((current) =>
-              current.concat({
-                id: makeMessageId(mission.id, "idem"),
-                from: "m",
-                text: result.message ?? "Gate already rejected.",
-              }),
-            );
+            appendGateMessage(gateId, "reject-idem", {
+              id: makeMessageId(mission.id, "idem"),
+              from: "m",
+              text: result.message ?? "Gate already rejected.",
+            });
             setRunState(mission.id, { isStreaming: false });
             return;
           }
           if (result.conflict) {
-            setMessages((current) =>
-              current.concat({
-                id: makeMessageId(mission.id, "conflict"),
-                from: "m",
-                text: result.message ?? "Gate already completed; cannot change.",
-              }),
-            );
+            appendGateMessage(gateId, "reject-conflict", {
+              id: makeMessageId(mission.id, "conflict"),
+              from: "m",
+              text: result.message ?? "Gate already completed; cannot change.",
+            });
             setRunState(mission.id, { isStreaming: false });
             return;
           }
 
           // Agent status tracking for text events
-          setMessages((current) =>
-            current.concat({
-              id: makeMessageId(mission.id, "stopped"),
-              from: "m",
-              text: `Gate rejected. Awaiting further instructions.`,
-            }),
-          );
+          appendGateMessage(gateId, "reject-stopped", {
+            id: makeMessageId(mission.id, "stopped"),
+            from: "m",
+            text: `Gate rejected. Awaiting further instructions.`,
+          });
           if (result.status !== "resumed" && result.status !== "resume_pending") {
             setRunState(mission.id, { isStreaming: false });
           }
@@ -831,7 +834,7 @@ export default function MissionControl({
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [mission, repository.kind, setRunState]
+    [mission, repository.kind, setRunState, appendGateMessage]
   );
 
   // CP2 (chantier 2.6.1): data_decision gate handler. Posts a `decision`
@@ -936,19 +939,15 @@ export default function MissionControl({
   // and will re-interrupt on the next chat turn or page reload.
   const handleGateClose = useCallback(() => {
     if (gateModal && mission) {
-      const deferredMsgId = `${gateModal.gateId}-deferred`;
-      setMessages((current) => {
-        if (current.some((m) => m.id === deferredMsgId)) return current;
-        return current.concat({
-          id: deferredMsgId,
-          from: "m",
-          text: `Gate "${gateModal.title}" deferred. The mission is paused and your decision is preserved — reopen anytime to approve or reject.`,
-        });
+      appendGateMessage(gateModal.gateId, "deferred", {
+        id: `${gateModal.gateId}-deferred`,
+        from: "m",
+        text: `Gate "${gateModal.title}" deferred. The mission is paused and your decision is preserved — reopen anytime to approve or reject.`,
       });
     }
     setGateModal(null);
     setRunState(missionId, { isStreaming: false });
-  }, [gateModal, mission, missionId, setRunState]);
+  }, [gateModal, mission, missionId, setRunState, appendGateMessage]);
 
   // Re-open a deferred gate from the checkpoint surface.
   const reopenGateFromCheckpoint = useCallback(() => {
