@@ -47,8 +47,38 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore:
     monkeypatch.setattr(papyrus_tools, "_STORE_FACTORY", lambda: store)
     monkeypatch.setattr(arbiter_tools, "_STORE_FACTORY", lambda: store)
     monkeypatch.setattr(papyrus_tools, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(papyrus_tools, "_papyrus_llm_generate", _stub_papyrus_llm_generate)
     yield store
     store.close()
+
+
+def _stub_papyrus_llm_generate(
+    deliverable_type, mission, hypotheses, findings, mission_brief=None, extra=None,
+):
+    """Test stub for the Papyrus LLM helper. Returns a deterministic body
+    that satisfies new-mode validation (structural markers, no internal IDs)."""
+    if deliverable_type == "engagement_brief":
+        hyp_block = "\n\n".join(
+            f"**H{i + 1} — {h.text[:48].rstrip('.')}**.\n\n{h.text}"
+            for i, h in enumerate(hypotheses)
+        )
+        return (
+            f"# Engagement Brief — {mission.target}\n\n"
+            f"**Client:** {mission.client}\n"
+            f"**Target:** {mission.target}\n"
+            f"**Date:** 2026-04-28\n\n"
+            f"## IC Question\n\n{mission.ic_question}\n\n"
+            f"## Context\n\n"
+            "This diligence frames the binding constraints on the investment thesis "
+            "and sets the testable hypotheses ahead of any field research.\n\n"
+            f"## Hypotheses to Test\n\n{hyp_block}\n\n"
+            "## Workstream Plan\n\n"
+            "- **W1 Market analysis** — Tests H1 through market evidence.\n\n"
+            "## Validation Focus\n\n"
+            "Gate G1 should validate that these hypotheses capture the binding "
+            "risks before research begins.\n"
+        )
+    raise NotImplementedError(f"stub does not yet handle {deliverable_type}")
 
 
 @pytest.fixture
@@ -404,6 +434,12 @@ def test_generate_engagement_brief_is_idempotent(store: MissionStore, state: dic
     assert second["status"] == "skipped"
     assert Path(first["file_path"]).is_absolute()
     assert len(store.list_deliverables("m-test")) == 1
+    body = Path(first["file_path"]).read_text(encoding="utf-8")
+    # New-mode (LLM) format: structural markers present, NO internal IDs.
+    assert "## IC Question" in body
+    assert "## Hypotheses to Test" in body
+    assert "hyp-" not in body
+    assert "Hypothesis ID:" not in body
 
 
 def test_generate_workstream_report_writes_markdown(store: MissionStore, state: dict[str, str]):

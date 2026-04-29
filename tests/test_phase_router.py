@@ -33,8 +33,38 @@ def graph_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore
     monkeypatch.setattr(papyrus_tools, "_STORE_FACTORY", lambda: store)
     monkeypatch.setattr(arbiter_tools, "_STORE_FACTORY", lambda: store)
     monkeypatch.setattr(papyrus_tools, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(papyrus_tools, "_papyrus_llm_generate", _stub_papyrus_llm_generate)
     yield store
     store.close()
+
+
+def _stub_papyrus_llm_generate(
+    deliverable_type, mission, hypotheses, findings, mission_brief=None, extra=None,
+):
+    """Test stub matching new-mode validation: structural markers, no IDs."""
+    if deliverable_type == "engagement_brief":
+        hyp_block = "\n\n".join(
+            f"**H{i + 1} — {h.text[:48].rstrip('.')}**.\n\n{h.text}"
+            for i, h in enumerate(hypotheses)
+        )
+        raw_recap = (mission_brief.raw_brief if mission_brief else "")
+        return (
+            f"# Engagement Brief — {mission.target}\n\n"
+            f"**Client:** {mission.client}\n"
+            f"**Target:** {mission.target}\n"
+            f"**Date:** 2026-04-28\n\n"
+            f"## IC Question\n\n{mission.ic_question}\n\n"
+            f"## Context\n\n{raw_recap}\n\n"
+            "This diligence frames the binding constraints on the investment "
+            "thesis and sets the testable hypotheses ahead of any field research.\n\n"
+            f"## Hypotheses to Test\n\n{hyp_block}\n\n"
+            "## Workstream Plan\n\n"
+            "- **W1 Market analysis** — Tests H1 through market evidence.\n\n"
+            "## Validation Focus\n\n"
+            "Gate G1 should validate that these hypotheses capture the binding "
+            "risks before research begins.\n"
+        )
+    raise NotImplementedError(f"stub does not yet handle {deliverable_type}")
 
 
 def test_phase_router_setup_routes_to_framing():
@@ -74,9 +104,13 @@ def test_phase_router_framing_generates_hypotheses(graph_store: MissionStore):
     deliverable = graph_store.list_deliverables("m-test")[0]
     assert deliverable.deliverable_type == "engagement_brief"
     content = Path(deliverable.file_path or "").read_text(encoding="utf-8")
-    assert "## Mission Angle" in content
-    assert "pricing power" in content
+    # Engagement brief is now LLM-driven (Path B). Validate new structure.
+    assert "## IC Question" in content
+    assert "## Hypotheses to Test" in content
     assert "## Workstream Plan" in content
+    # No internal database IDs leak into client-facing deliverables.
+    assert "hyp-" not in content
+    assert "Hypothesis ID:" not in content
 
 
 def test_framing_waits_for_non_empty_human_brief(graph_store: MissionStore):

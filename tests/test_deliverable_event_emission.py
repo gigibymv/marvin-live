@@ -39,8 +39,38 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore:
     _seed_standard_workplan("m-dlv", s)
     monkeypatch.setattr(papyrus_tools, "_STORE_FACTORY", lambda: s)
     monkeypatch.setattr(papyrus_tools, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(papyrus_tools, "_papyrus_llm_generate", _stub_papyrus_llm_generate)
     yield s
     s.close()
+
+
+def _stub_papyrus_llm_generate(
+    deliverable_type, mission, hypotheses, findings, mission_brief=None, extra=None,
+):
+    """Test stub for the Papyrus LLM helper. Returns a deterministic body
+    that satisfies new-mode validation (structural markers, no internal IDs)."""
+    if deliverable_type == "engagement_brief":
+        hyp_block = "\n\n".join(
+            f"**H{i + 1} — {h.text[:48].rstrip('.')}**.\n\n{h.text}"
+            for i, h in enumerate(hypotheses)
+        )
+        return (
+            f"# Engagement Brief — {mission.target}\n\n"
+            f"**Client:** {mission.client}\n"
+            f"**Target:** {mission.target}\n"
+            f"**Date:** 2026-04-28\n\n"
+            f"## IC Question\n\n{mission.ic_question}\n\n"
+            f"## Context\n\n"
+            "This diligence frames the binding constraints on the investment thesis "
+            "and sets the testable hypotheses ahead of any field research.\n\n"
+            f"## Hypotheses to Test\n\n{hyp_block}\n\n"
+            "## Workstream Plan\n\n"
+            "- **W1 Market analysis** — Tests H1 through market evidence.\n\n"
+            "## Validation Focus\n\n"
+            "Gate G1 should validate that these hypotheses capture the binding "
+            "risks before research begins.\n"
+        )
+    raise NotImplementedError(f"stub does not yet handle {deliverable_type}")
 
 
 def _state() -> dict:
@@ -327,7 +357,13 @@ def test_generated_engagement_summary_and_data_book_include_traceability(store: 
     summary = papyrus_tools._generate_exec_summary_impl("m-dlv")
     data_book = papyrus_tools._generate_data_book_impl("m-dlv")
 
-    assert "Hypothesis ID: hyp-dlv" in Path(engagement["file_path"]).read_text(encoding="utf-8")
+    # engagement_brief is now LLM-driven (new-mode): structural markers,
+    # NO internal IDs. exec_summary and data_book are still deterministic
+    # (legacy mode) until C5/C6.
+    engagement_body = Path(engagement["file_path"]).read_text(encoding="utf-8")
+    assert "## IC Question" in engagement_body
+    assert "## Hypotheses to Test" in engagement_body
+    assert "hyp-" not in engagement_body
     assert "Finding ID: f-w1" in Path(summary["file_path"]).read_text(encoding="utf-8")
     assert "Finding ID: f-w1" in Path(data_book["file_path"]).read_text(encoding="utf-8")
 

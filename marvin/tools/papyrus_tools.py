@@ -206,55 +206,33 @@ def _generate_engagement_brief_impl(mission_id: str) -> dict[str, Any]:
 
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / "engagement_brief.md"
-    existed = path.exists()
-    lines = [
-        f"# Engagement Brief: {mission.target}",
-        "",
-        f"Client: {mission.client}",
-        f"Target: {mission.target}",
-        f"Mission Type: {mission.mission_type}",
-        f"IC Question: {mission.ic_question}",
-        "",
-        "## Mission Angle",
-        mission_brief.mission_angle,
-        "",
-        "## Brief Summary",
-        mission_brief.brief_summary,
-        "",
-        "## Hypotheses",
-    ]
-    lines.extend(
-        [
-            f"- Hypothesis ID: {hypothesis.id} - {hypothesis.text} (status: {hypothesis.status})"
-            for hypothesis in hypotheses
-        ]
-    )
-    lines.extend(["", "## Workstream Plan"])
-    for item in json.loads(mission_brief.workstream_plan_json):
-        lines.append(f"- {item['id']} - {item['label']}: {item['focus']}")
-    lines.extend(
-        [
-            "",
-            "## Validation Focus",
-            "This engagement brief is ready because it ties the mission angle, IC question, "
-            "and initial hypotheses into named diligence workstreams. Gate 1 should validate "
-            "whether these hypotheses are the right questions before research begins.",
-        ]
-    )
-    next_body = "\n".join(lines) + "\n"
-    status = "generated"
-    if existed:
-        current_body = path.read_text(encoding="utf-8")
-        status = "skipped" if current_body == next_body else "updated"
-    if status != "skipped":
-        path.write_text(next_body, encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-engagement-brief"
     deliverable_type = "engagement_brief"
+
+    # Idempotent short-circuit: if a ready deliverable already exists on
+    # disk we skip the LLM round-trip. To regenerate, delete the file first.
+    if path.exists():
+        return {
+            "mission_id": mission_id,
+            "file_path": str(path.resolve()),
+            "status": "skipped",
+            "deliverable_id": deliverable_id,
+            "deliverable_type": deliverable_type,
+        }
+
+    body = _papyrus_llm_generate(
+        deliverable_type=deliverable_type,
+        mission=mission,
+        hypotheses=hypotheses,
+        findings=[],  # engagement brief is pre-research; findings not yet meaningful
+        mission_brief=mission_brief,
+    )
+    path.write_text(body, encoding="utf-8")
     _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path)
     return {
         "mission_id": mission_id,
         "file_path": str(path.resolve()),
-        "status": status,
+        "status": "generated",
         "deliverable_id": deliverable_id,
         "deliverable_type": deliverable_type,
     }
