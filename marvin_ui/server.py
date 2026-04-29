@@ -700,6 +700,41 @@ async def _emit_narration(agent: str, intent: str) -> str:
     return _sse_event("narration", {"agent": agent, "intent": intent, "ts": ts})
 
 
+_LIVE_FEED_HEARTBEAT_INTERVAL = 15.0
+
+
+async def _astream_with_heartbeat(graph, next_input, config, *, current_agent_ref):
+    """Yield graph.astream events, emitting a wall-clock 'still working'
+    narration every _LIVE_FEED_HEARTBEAT_INTERVAL seconds of silence.
+
+    Live missions reported the live feed appearing frozen during long LLM
+    calls because LangGraph's "updates" stream only fires on node completion.
+    A 30s adversus pass produced zero events for 30s. This wrapper guarantees
+    the user sees something every 15s — either a real graph update or a
+    heartbeat narration tagged with the currently-active agent.
+
+    current_agent_ref is a single-element list used as a mutable cell so the
+    consumer can update the active agent name without re-entering this
+    iterator (Python closures over loop-local rebinds don't work otherwise).
+    """
+    iterator = graph.astream(next_input, config, stream_mode="updates").__aiter__()
+    while True:
+        try:
+            event = await asyncio.wait_for(
+                iterator.__anext__(), timeout=_LIVE_FEED_HEARTBEAT_INTERVAL,
+            )
+        except asyncio.TimeoutError:
+            agent = current_agent_ref[0] if current_agent_ref else None
+            if agent:
+                yield ("heartbeat", await _emit_narration(agent, "Still working — analysis in progress"))
+            else:
+                yield ("heartbeat", _sse_heartbeat())
+            continue
+        except StopAsyncIteration:
+            return
+        yield ("event", event)
+
+
 async def _emit_phase_changed(phase: str) -> str:
     payload = {"phase": phase, "label": _PHASE_LABELS.get(phase, phase)}
     return _sse_event("phase_changed", payload)
@@ -1043,8 +1078,15 @@ async def _stream_chat(
             interrupted = False
             clearing_resume_payload = resume_payload_to_clear
             resume_payload_to_clear = None
+            agent_ref: list[str | None] = [current_agent]
             try:
-                async for event in graph.astream(next_input, config, stream_mode="updates"):
+                async for kind, payload in _astream_with_heartbeat(
+                    graph, next_input, config, current_agent_ref=agent_ref,
+                ):
+                    if kind == "heartbeat":
+                        yield payload
+                        continue
+                    event = payload
                     heartbeat_counter += 1
                     if heartbeat_counter % 10 == 0:
                         yield _sse_heartbeat()
@@ -1055,6 +1097,7 @@ async def _stream_chat(
                     sse_strings, current_agent, current_phase, is_interrupt = await _emit_for_update(
                         event, current_agent, current_phase, throttle_state
                     )
+                    agent_ref[0] = current_agent
                     for s in sse_strings:
                         if s:
                             yield s
@@ -1224,8 +1267,15 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             interrupted = False
             clearing_resume_payload = resume_payload_to_clear
             resume_payload_to_clear = None
+            agent_ref: list[str | None] = [current_agent]
             try:
-                async for event in graph.astream(next_input, config, stream_mode="updates"):
+                async for kind, payload in _astream_with_heartbeat(
+                    graph, next_input, config, current_agent_ref=agent_ref,
+                ):
+                    if kind == "heartbeat":
+                        yield payload
+                        continue
+                    event = payload
                     heartbeat_counter += 1
                     if heartbeat_counter % 10 == 0:
                         yield _sse_heartbeat()
@@ -1234,6 +1284,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                     sse_strings, current_agent, current_phase, is_interrupt = await _emit_for_update(
                         event, current_agent, current_phase, throttle_state
                     )
+                    agent_ref[0] = current_agent
                     for s in sse_strings:
                         if s:
                             yield s
