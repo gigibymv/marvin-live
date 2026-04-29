@@ -1001,11 +1001,15 @@ export default function MissionControl({
 
           // Now — and only now — emit the user's "✓ Gate approved" bubble
           // and the system follow-up, so the chat log reflects backend
-          // truth instead of optimistic UI state.
+          // truth instead of optimistic UI state. Use the API response's
+          // gate_id (authoritative) over the local `gateId` to avoid the
+          // stale-state duplicate where the previous gate's id leaked into
+          // the next approval bubble.
+          const confirmedGateId = result.gate_id ?? gateId;
           appendGateMessage(gateId, "approve", {
             id: makeMessageId(mission.id, "approve"),
             from: "u",
-            text: `✓ Gate approved: ${gateId}`,
+            text: `✓ Gate approved: ${confirmedGateId}`,
           });
           appendGateMessage(gateId, "approve-resumed", {
             id: makeMessageId(mission.id, "resumed"),
@@ -1420,25 +1424,36 @@ export default function MissionControl({
     final: "Final deliverables",
   };
   const workstreamLabel = sectionLabelById[selectedSectionId] ?? "section";
-  const normalizeFinding = (f: any) => ({
-    id: f.id,
-    kind: f.kind ?? "finding",
-    ag: normalizeAgentName(f.agent ?? f.agent_id ?? f.ag),
-    text: f.claim_text ?? f.text ?? "",
-    ts: f.ts ?? f.created_at ?? "",
-    confidence: f.confidence,
-    section_id: f.section_id ?? f.sectionId ?? null,
-    workstream_id: f.workstream_id ?? f.workstreamId,
-    agent_id: f.agent ?? f.agent_id,
-    claim_text: f.claim_text,
-    href: f.href,
-    // Chantier 4 CP2: enrich for FindingCard.
-    hypothesis_id: f.hypothesis_id ?? f.hypothesisId ?? null,
-    hypothesis_label: f.hypothesis_label ?? null,
-    source_id: f.source_id ?? null,
-    source_type: f.source_type ?? f.sourceType ?? null,
-    impact: f.impact ?? null,
-  });
+  // Lifted so both `normalizeFinding` (output filter) and
+  // `workstreamContent.findings` (per-tab content) agree on which agent
+  // owns which workstream. Without this, merlin/adversus findings with a
+  // null workstream_id never reach the Synthesis / Stress testing tabs.
+  const AGENT_TO_WS: Record<string, string> = {
+    dora: "W1", calculus: "W2", merlin: "W3", adversus: "W4",
+  };
+  const normalizeFinding = (f: any) => {
+    const agentRaw = String(f.agent ?? f.agent_id ?? f.ag ?? "").toLowerCase();
+    const explicitWs = f.workstream_id ?? f.workstreamId ?? null;
+    return {
+      id: f.id,
+      kind: f.kind ?? "finding",
+      ag: normalizeAgentName(f.agent ?? f.agent_id ?? f.ag),
+      text: f.claim_text ?? f.text ?? "",
+      ts: f.ts ?? f.created_at ?? "",
+      confidence: f.confidence,
+      section_id: f.section_id ?? f.sectionId ?? null,
+      workstream_id: explicitWs ?? AGENT_TO_WS[agentRaw] ?? null,
+      agent_id: f.agent ?? f.agent_id,
+      claim_text: f.claim_text,
+      href: f.href,
+      // Chantier 4 CP2: enrich for FindingCard.
+      hypothesis_id: f.hypothesis_id ?? f.hypothesisId ?? null,
+      hypothesis_label: f.hypothesis_label ?? null,
+      source_id: f.source_id ?? null,
+      source_type: f.source_type ?? f.sourceType ?? null,
+      impact: f.impact ?? null,
+    };
+  };
   const allFindings = (progress?.findings ?? []).map(normalizeFinding);
   // Newest-on-top: the rail is a live feed; users want the most recent event
   // visible without scrolling. liveFindings is appended in arrival order;
@@ -1513,9 +1528,6 @@ export default function MissionControl({
   // Bug 6 (chantier 2.6): tabs are content-driven (DB findings), not the
   // SSE meta-event stream. Fall back to the agent → workstream map so a
   // finding with workstream_id=null still surfaces in the right tab.
-  const AGENT_TO_WS: Record<string, string> = {
-    dora: "W1", calculus: "W2", merlin: "W3", adversus: "W4",
-  };
   const workstreamContent = (progress?.workstreams ?? []).map((ws) => {
     const wsMilestones = (progress?.milestones ?? []).filter((m: any) => m.workstream_id === ws.id);
     const wsDelivered = wsMilestones.filter((m: any) => {
@@ -1524,12 +1536,25 @@ export default function MissionControl({
     }).length;
     const agentKey = ws.assigned_agent?.toLowerCase() ?? ws.id.toLowerCase();
     const liveStatus = agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
+    // Status is also satisfied if a deliverable for this workstream is
+    // ready and the assigned agent is no longer active. Without this,
+    // a single blocked milestone (e.g. LOW_CONFIDENCE financial finding)
+    // pinned the section header on `●` even after the deliverable shipped
+    // and the gate moved on.
+    const wsHasReadyDeliverable = seedDeliverables.some((d) => {
+      if (d.status !== "ready") return false;
+      return routeDeliverableToSectionId({
+        deliverable_type: d.deliverable_type,
+        file_path: d.file_path,
+      }) === ws.id;
+    });
     const status: WorkstreamViewStatus =
-      wsMilestones.length > 0 && wsDelivered === wsMilestones.length
+      (wsMilestones.length > 0 && wsDelivered === wsMilestones.length) ||
+      (wsHasReadyDeliverable && liveStatus !== "active")
         ? "completed"
         : liveStatus === "active"
           ? "now"
-          : wsDelivered > 0
+          : wsDelivered > 0 || wsHasReadyDeliverable
             ? "in_progress"
             : "pending";
     return {
