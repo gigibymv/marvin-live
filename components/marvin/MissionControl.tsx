@@ -198,7 +198,8 @@ export default function MissionControl({
         | "agent_message"
         | "tool_call"
         | "tool_result"
-        | "narration";
+        | "narration"
+        | "token_stream";
       claim_text: string;
       confidence?: string;
       agent?: string;
@@ -437,6 +438,32 @@ export default function MissionControl({
               });
             });
             break;
+          case "token_stream":
+            // Per-token deltas from the LLM stream. Accumulate into a single
+            // rail entry per agent so the user sees prose grow in place
+            // rather than a flood of one-token cards. The entry is dropped
+            // when agent_done fires for that agent.
+            setLiveFindings((current) => {
+              const idx = current.findIndex(
+                (e) => e.kind === "token_stream" && e.agent === event.agent,
+              );
+              if (idx === -1) {
+                return current.concat({
+                  id: makeMessageId(missionId, "token-stream"),
+                  kind: "token_stream",
+                  claim_text: event.delta,
+                  agent: event.agent,
+                });
+              }
+              const existing = current[idx];
+              const next = [...current];
+              next[idx] = {
+                ...existing,
+                claim_text: (existing.claim_text + event.delta).slice(-1200),
+              };
+              return next;
+            });
+            break;
           case "gate_pending": {
             // Chat-first gate UX. The modal no longer auto-opens; instead the
             // gate is announced in chat and signalled in the live feed. The
@@ -523,15 +550,25 @@ export default function MissionControl({
                 [event.label!.toLowerCase()]: "done",
               }));
             }
-            setLiveFindings((current) =>
-              current.concat({
+            const finishedAgent = event.label;
+            setLiveFindings((current) => {
+              const cleared = finishedAgent
+                ? current.filter(
+                    (e) =>
+                      !(
+                        e.kind === "token_stream" &&
+                        e.agent === finishedAgent
+                      ),
+                  )
+                : current;
+              return cleared.concat({
                 id: makeMessageId(missionId, "agent-done"),
                 kind: "agent",
                 claim_text: `${display} finished`,
                 confidence: "done",
                 agent: display,
-              }),
-            );
+              });
+            });
             break;
           }
           case "phase_changed":
