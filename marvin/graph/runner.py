@@ -509,12 +509,18 @@ async def papyrus_delivery_node(state: MarvinState) -> dict:
     """Generate final deliverables, mark mission complete, and emit completion message."""
     mission_id = state.get("mission_id", "")
 
-    from marvin.tools.papyrus_tools import _generate_data_book_impl, _generate_exec_summary_impl, _generate_report_pdf_impl
+    from marvin.tools.papyrus_tools import (
+        _generate_data_book_impl,
+        _generate_exec_summary_impl,
+        _generate_report_pdf_impl,
+        _generate_workstream_report_impl,
+    )
     from marvin.mission.store import MissionStore
 
     _generate_report_pdf_impl(mission_id)
     _generate_exec_summary_impl(mission_id)
     _generate_data_book_impl(mission_id)
+    _generate_workstream_report_impl("W4", mission_id)
 
     # Persist mission completion so reconnects and API calls see the final state.
     try:
