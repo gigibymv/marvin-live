@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Newsreader:ital,opsz,wght@1,6..72,300&family=Geist+Mono:wght@400;500;600&family=Geist:wght@300;400;500;600&display=swap');
@@ -337,7 +337,12 @@ export default function MissionDashboard({
   backendNotice,
 }) {
   const [showNew, setShowNew] = useState(false);
-  const today = "April 26, 2026";
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("new") === "1") {
+      setShowNew(true);
+    }
+  }, []);
+  const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   return (
     <>
@@ -346,12 +351,12 @@ export default function MissionDashboard({
 
         {/* Top nav */}
         <div style={{ height:"52px", borderBottom:"1px solid var(--ruleh)", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 28px" }}>
-          <div style={{ display:"flex", flexDirection:"column", gap:"1px" }}>
+          <a href="/" style={{ display:"flex", flexDirection:"column", gap:"1px", textDecoration:"none", color:"inherit" }}>
               <span style={{ fontFamily:"var(--d)", fontSize:"16px", fontWeight:700, letterSpacing:"-.02em", lineHeight:1 }}>MARVIN</span>
               <span style={{ fontFamily:"var(--m)", fontSize:"9px", fontWeight:500, letterSpacing:".12em", textTransform:"uppercase", color:"var(--muted)" }}>
                 by H<em style={{ fontFamily:"var(--s)", fontStyle:"italic", fontWeight:300, textTransform:"none", letterSpacing:"-.01em" }}>&amp;ai</em>
               </span>
-            </div>
+            </a>
           <div style={{ display:"flex", alignItems:"center", gap:"20px" }}>
             <span style={{ fontFamily:"var(--m)", fontSize:"9.5px", color:"var(--muted)" }}>{today}</span>
             <div style={{ width:"28px", height:"28px", borderRadius:"50%", background:"var(--ink)", display:"grid", placeItems:"center" }}>
