@@ -1,17 +1,145 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from marvin.artifacts import artifact_file_readiness_errors
 from marvin.events import emit_deliverable_persisted
-from marvin.mission.schema import Deliverable
+from marvin.mission.schema import Deliverable, Finding, Hypothesis, Mission, MissionBrief
 from marvin.mission.store import MissionStore
 from marvin.tools.common import InjectedStateArg, ensure_output_dir, get_store, require_mission_id, utc_now_iso
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _STORE_FACTORY = MissionStore
+_PAPYRUS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "subagents" / "prompts" / "papyrus.md"
+
+
+def _hypothesis_label(h: Hypothesis, index: int) -> str:
+    """Return H1/H2/... label, falling back to position when unset."""
+    return h.label or f"H{index + 1}"
+
+
+def _source_type_label(finding: Finding) -> str:
+    """Translate a finding's source metadata into a prose label."""
+    raw = (finding.source_type or "").strip().lower()
+    mapping = {
+        "sec_filing": "SEC filing",
+        "web": "web research",
+        "data_room": "data room",
+        "press": "press release",
+        "inference": "inference",
+    }
+    if raw in mapping:
+        return mapping[raw]
+    if finding.source_id:
+        return "primary source"
+    return "inference"
+
+
+def _serialize_finding_for_prompt(
+    finding: Finding,
+    hypothesis_label_by_id: dict[str, str],
+) -> dict[str, Any]:
+    """Strip IDs; expose only fields safe for the prompt."""
+    return {
+        "claim": finding.claim_text,
+        "confidence": finding.confidence,
+        "hypothesis": hypothesis_label_by_id.get(finding.hypothesis_id or "", "unassigned"),
+        "workstream": finding.workstream_id or "unassigned",
+        "source_type": _source_type_label(finding),
+        "impact": finding.impact or "supporting",
+    }
+
+
+def _build_papyrus_context(
+    deliverable_type: str,
+    mission: Mission,
+    hypotheses: list[Hypothesis],
+    findings: list[Finding],
+    mission_brief: MissionBrief | None,
+    extra: dict[str, Any] | None = None,
+) -> str:
+    """Assemble the human prompt sent to Papyrus. Strips all internal IDs."""
+    label_by_id = {h.id: _hypothesis_label(h, i) for i, h in enumerate(hypotheses)}
+
+    payload: dict[str, Any] = {
+        "deliverable_type": deliverable_type,
+        "today": date.today().isoformat(),
+        "mission": {
+            "client": mission.client,
+            "target": mission.target,
+            "mission_type": mission.mission_type,
+            "ic_question": mission.ic_question or "",
+        },
+        "hypotheses": [
+            {
+                "label": _hypothesis_label(h, i),
+                "text": h.text,
+                "status": h.status,
+            }
+            for i, h in enumerate(hypotheses)
+        ],
+        "findings": [_serialize_finding_for_prompt(f, label_by_id) for f in findings],
+    }
+    if mission_brief is not None:
+        payload["framing"] = {
+            "mission_angle": mission_brief.mission_angle,
+            "brief_summary": mission_brief.brief_summary,
+            "raw_brief": mission_brief.raw_brief,
+            "workstream_plan": json.loads(mission_brief.workstream_plan_json),
+        }
+    if extra:
+        payload["extra"] = extra
+    return (
+        f"Produce the `{deliverable_type}` deliverable using the structure "
+        f"defined in the system prompt. Use ONLY the context below. "
+        f"Do not invent findings or confidence levels.\n\n"
+        f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    )
+
+
+def _papyrus_llm_generate(
+    deliverable_type: str,
+    mission: Mission,
+    hypotheses: list[Hypothesis],
+    findings: list[Finding],
+    mission_brief: MissionBrief | None = None,
+    extra: dict[str, Any] | None = None,
+) -> str:
+    """Invoke the Papyrus LLM and return clean markdown.
+
+    Imports are local to avoid a hard dependency on langchain at module
+    load time (tests stub `_STORE_FACTORY`/`PROJECT_ROOT` without needing
+    an LLM). Callers must handle exceptions; this helper does not catch.
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from marvin.llm_factory import get_chat_llm
+
+    llm = get_chat_llm("papyrus")
+    system_prompt = _PAPYRUS_PROMPT_PATH.read_text(encoding="utf-8")
+    human_prompt = _build_papyrus_context(
+        deliverable_type, mission, hypotheses, findings, mission_brief, extra
+    )
+
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=human_prompt),
+    ])
+    body = (response.content or "").strip()
+    # Strip accidental code fences around the whole document.
+    if body.startswith("```"):
+        lines = body.splitlines()
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        body = "\n".join(lines).strip()
+    if not body.endswith("\n"):
+        body += "\n"
+    return body
 
 
 class BriefPrerequisiteNotMet(ValueError):

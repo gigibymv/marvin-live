@@ -16,6 +16,8 @@ MODEL_BY_ROLE = {
     "merlin": "openai/gpt-5.4-nano",
     "orchestrator": "openai/gpt-5.4-nano",
     "framing": "openai/gpt-5.4-nano",
+    # Papyrus produces client-facing IC documents — quality > cost.
+    "papyrus": "anthropic/claude-sonnet-4.6",
 }
 
 
