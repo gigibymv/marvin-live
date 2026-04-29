@@ -744,7 +744,12 @@ async def _astream_with_heartbeat(graph, next_input, config, *, current_agent_re
     consumer can update the active agent name without re-entering this
     iterator (Python closures over loop-local rebinds don't work otherwise).
     """
-    iterator = graph.astream(next_input, config, stream_mode="updates").__aiter__()
+    # Multi-mode stream: "updates" delivers node-level state deltas (existing
+    # behavior); "messages" delivers per-token AIMessageChunk objects so the
+    # live feed can render LLM reasoning as it streams.
+    iterator = graph.astream(
+        next_input, config, stream_mode=["updates", "messages"]
+    ).__aiter__()
     while True:
         try:
             event = await asyncio.wait_for(
@@ -759,7 +764,13 @@ async def _astream_with_heartbeat(graph, next_input, config, *, current_agent_re
             continue
         except StopAsyncIteration:
             return
-        yield ("event", event)
+        # Multi-mode emits (mode, data) 2-tuples. Single-mode (legacy) emits
+        # bare data; tolerate both for safety.
+        if isinstance(event, tuple) and len(event) == 2 and event[0] in ("updates", "messages"):
+            mode, data = event
+            yield (mode, data)
+        else:
+            yield ("updates", event)
 
 
 async def _emit_phase_changed(phase: str) -> str:
@@ -774,6 +785,45 @@ async def _emit_error(message: str) -> str:
 # =============================================================================
 # SSE STREAM GENERATOR
 # =============================================================================
+
+async def _emit_for_message(
+    payload: tuple,
+    current_agent: str | None,
+) -> list[str]:
+    """Translate one graph.astream "messages"-mode payload into SSE strings.
+
+    LangGraph emits (message_chunk, metadata) tuples in messages mode, where
+    metadata["langgraph_node"] identifies which node produced the chunk.
+    We surface AIMessageChunk content as token_stream events so the live
+    feed can render LLM reasoning as it streams.
+
+    Throttling is handled in a later step; for now, every chunk emits an
+    event. Tool calls are still handled by _emit_for_update from the
+    "updates" stream — we do not double-emit here.
+    """
+    if not isinstance(payload, tuple) or len(payload) != 2:
+        return []
+    chunk, metadata = payload
+    if not isinstance(metadata, dict):
+        return []
+    node = metadata.get("langgraph_node") or current_agent or "agent"
+    delta = getattr(chunk, "content", None)
+    if not delta:
+        return []
+    # AIMessageChunk content is typically str; in some providers it is a list
+    # of content blocks. Coerce to plain string for the SSE delta field.
+    if isinstance(delta, list):
+        parts: list[str] = []
+        for block in delta:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and isinstance(block.get("text"), str):
+                parts.append(block["text"])
+        delta = "".join(parts)
+    if not isinstance(delta, str) or not delta:
+        return []
+    return [_sse_event("token_stream", {"agent": node, "delta": delta})]
+
 
 async def _emit_for_update(
     event: dict,
@@ -1113,6 +1163,11 @@ async def _stream_chat(
                     if kind == "heartbeat":
                         yield payload
                         continue
+                    if kind == "messages":
+                        for s in await _emit_for_message(payload, current_agent):
+                            if s:
+                                yield s
+                        continue
                     event = payload
                     heartbeat_counter += 1
                     if heartbeat_counter % 10 == 0:
@@ -1309,6 +1364,11 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                 ):
                     if kind == "heartbeat":
                         yield payload
+                        continue
+                    if kind == "messages":
+                        for s in await _emit_for_message(payload, current_agent):
+                            if s:
+                                yield s
                         continue
                     event = payload
                     heartbeat_counter += 1
