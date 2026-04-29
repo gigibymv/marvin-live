@@ -500,6 +500,56 @@ class MissionStore:
         )
         return milestone
 
+    def mark_milestone_blocked(
+        self,
+        milestone_id: str,
+        reason: str,
+        mission_id: str,
+    ) -> Milestone:
+        """Mark a milestone as blocked because the responsible agent produced
+        no findings. Distinct from 'delivered' (real progress) and 'pending'
+        (not yet attempted). Research coverage reports the count separately
+        so the UI can display "X delivered, Y blocked" honestly.
+        """
+        existing = self._execute(
+            "SELECT * FROM milestones WHERE mission_id = ? AND id = ?",
+            (mission_id, milestone_id),
+        ).fetchone()
+        if existing is None:
+            raise KeyError(f"milestone not found: {mission_id}/{milestone_id}")
+        # Idempotent: once blocked, stay blocked. A later finding could
+        # legitimately flip a milestone from blocked → delivered, but that
+        # transition belongs to mark_milestone_delivered, not here.
+        if existing["status"] in ("blocked", "delivered"):
+            return Milestone.model_validate(dict(existing))
+
+        self._execute(
+            """
+            UPDATE milestones
+            SET status = 'blocked', result_summary = ?
+            WHERE mission_id = ? AND id = ?
+            """,
+            (reason, mission_id, milestone_id),
+        )
+        row = self._execute(
+            "SELECT * FROM milestones WHERE mission_id = ? AND id = ?",
+            (mission_id, milestone_id),
+        ).fetchone()
+        milestone = Milestone.model_validate(dict(row))
+        from marvin.events import emit_milestone_persisted
+
+        emit_milestone_persisted(
+            mission_id,
+            {
+                "milestone_id": milestone.id,
+                "label": milestone.label,
+                "status": milestone.status,
+                "workstream_id": milestone.workstream_id,
+                "result_summary": milestone.result_summary,
+            },
+        )
+        return milestone
+
     def save_finding(self, finding: Finding) -> Finding:
         if finding.confidence == "KNOWN" and not finding.source_id:
             raise ValueError("source_id required for KNOWN findings")

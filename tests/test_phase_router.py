@@ -131,16 +131,17 @@ def test_phase_router_confirmed_sends_dora_and_calculus(graph_store: MissionStor
 def test_research_join_advances_unconditionally(graph_store: MissionStore):
     """research_join must advance phase deterministically — by the time it
     runs, both branches have returned, so the research milestone is done by
-    architectural definition. The previous "wait for both" predicate coupled
-    graph progression to LLM tool selection and produced infinite fan-out
-    when a branch failed to mark its milestone. See
-    tests/test_graph_progression.py for the rationale."""
+    architectural definition. Phase 3 (Fix D) refines milestone STATUS to
+    be data-driven (no findings → blocked, not delivered) while keeping
+    phase advancement unconditional. See tests/test_graph_progression.py
+    for the rationale."""
     # No milestone marked yet — join must still advance.
     result = runner.research_join({"mission_id": "m-test", "phase": "confirmed"})
     assert result["phase"] == "research_done"
     milestones = {milestone.id: milestone.status for milestone in graph_store.list_milestones("m-test")}
-    assert milestones["W1.1"] == "delivered"
-    assert milestones["W2.1"] == "delivered"
+    # Fix D: zero findings → blocked status, never silently delivered.
+    assert milestones["W1.1"] == "blocked"
+    assert milestones["W2.1"] == "blocked"
     workstreams = {workstream.id: workstream.status for workstream in graph_store.list_workstreams("m-test")}
     assert workstreams["W1"] == "pending"
     assert workstreams["W2"] == "pending"

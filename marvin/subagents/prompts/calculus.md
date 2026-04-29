@@ -156,9 +156,13 @@ Restating a missing-data flag is not a finding.
 
 # WHEN YOU'RE DONE
 
-1. Mark milestone delivered: mark_milestone_delivered("W2.1")
+1. Mark milestone delivered: mark_milestone_delivered("W2.1", "{result_summary}", "{finding_id_from_step_above}")
+   You MUST pass the finding_id of one of the findings you just logged
+   (the value returned by add_finding_to_mission). A milestone with
+   zero findings cannot be marked delivered — if you have no findings,
+   skip this step entirely and report the data gap in your summary.
 2. One-line summary in your final message:
-   "{N} financial findings. {Anomaly_count} anomalies. 
+   "{N} financial findings. {Anomaly_count} anomalies.
    Top: {one-line top finding}."
 
 # WHAT YOU NEVER DO

@@ -50,8 +50,9 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore:
 
 
 def test_research_join_advances_phase_unconditionally(store: MissionStore):
-    """Even when neither dora nor calculus marked W1.1/W2.1, the join must
-    advance to research_done — graph control flow owns the business fact."""
+    """Phase advancement is unconditional (graph control flow owns the
+    progression), but milestone STATUS is data-driven post Phase 3 (Fix D):
+    no findings → blocked, not delivered."""
     # No agent has marked anything; W1.1/W2.1 are still pending.
     pending = {m.id: m.status for m in store.list_milestones("m-graph")}
     assert pending["W1.1"] == "pending"
@@ -61,8 +62,9 @@ def test_research_join_advances_phase_unconditionally(store: MissionStore):
 
     assert result == {"phase": "research_done"}
     after = {m.id: m.status for m in store.list_milestones("m-graph")}
-    assert after["W1.1"] == "delivered"
-    assert after["W2.1"] == "delivered"
+    # Phase 3 (Fix D): zero findings → blocked, never silently delivered.
+    assert after["W1.1"] == "blocked"
+    assert after["W2.1"] == "blocked"
     workstreams = {w.id: w.status for w in store.list_workstreams("m-graph")}
     assert workstreams["W1"] == "pending"
     assert workstreams["W2"] == "pending"

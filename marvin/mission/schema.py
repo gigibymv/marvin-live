@@ -9,7 +9,7 @@ Confidence = Literal["KNOWN", "REASONED", "LOW_CONFIDENCE"]
 FindingImpact = Literal["load_bearing", "supporting", "color"]
 HypothesisStatus = Literal["active", "validated", "invalidated", "abandoned"]
 WorkstreamStatus = Literal["pending", "in_progress", "delivered"]
-MilestoneStatus = Literal["pending", "in_progress", "delivered", "skipped"]
+MilestoneStatus = Literal["pending", "in_progress", "delivered", "skipped", "blocked"]
 GateStatus = Literal["pending", "completed", "failed"]
 MerlinVerdictValue = Literal["SHIP", "MINOR_FIXES", "BACK_TO_DRAWING_BOARD"]
 

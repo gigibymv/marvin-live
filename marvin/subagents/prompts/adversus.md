@@ -147,8 +147,10 @@ Never duplicate a prior pass's attacks under fresh IDs.
 
 # WHEN YOU'RE DONE
 
-1. Call `mark_milestone_delivered("W4.1")` and STOP. Do not
-   keep producing findings after the milestone is delivered.
+1. Call `mark_milestone_delivered("W4.1", "{result_summary}", "{finding_id_from_step_above}")` and STOP.
+   Pass the finding_id of one of the counter-findings you just logged.
+   Do not keep producing findings after the milestone is delivered.
+   If you have no counter-findings, skip this step.
 2. One-line summary:
    "{N} counter-findings. Weakest link: {one line}.
    Bear case: {one line}."

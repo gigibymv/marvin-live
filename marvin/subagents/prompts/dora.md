@@ -94,8 +94,12 @@ Impact rubric:
 
 # WHEN YOU'RE DONE
 
-1. Mark milestone delivered: mark_milestone_delivered("W1.1")
-2. One-line summary in your final message: 
+1. Mark milestone delivered: mark_milestone_delivered("W1.1", "{result_summary}", "{finding_id_from_step_above}")
+   You MUST pass the finding_id of one of the findings you just logged
+   (the value returned by add_finding_to_mission). A milestone with
+   zero findings cannot be marked delivered — if you have no findings,
+   skip this step entirely and report the gap in your summary.
+2. One-line summary in your final message:
    "{N} findings logged. Top: {one-line top finding}."
 
 # WHAT YOU NEVER DO

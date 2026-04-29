@@ -221,8 +221,31 @@ def test_update_hypothesis_changes_status(store: MissionStore, state: dict[str, 
     assert store.list_hypotheses("m-test", status="validated")[0].id == "h-1"
 
 
+def _seed_w1_finding(store: MissionStore) -> str:
+    """Phase 3 (Fix D): mark_milestone_delivered now requires a finding_id.
+    Tests that exercise the tool seed a W1-scoped finding to anchor against.
+    """
+    from marvin.mission.schema import Finding
+
+    fid = "f-tool-test"
+    store.save_finding(
+        Finding(
+            id=fid,
+            mission_id="m-test",
+            workstream_id="W1",
+            hypothesis_id="h-1",
+            claim_text="anchor finding",
+            confidence="REASONED",
+            agent_id="dora",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    return fid
+
+
 def test_mark_milestone_delivered_updates_store(store: MissionStore, state: dict[str, str]):
-    result = mission_tools.mark_milestone_delivered("W1.1", "Delivered", state)
+    fid = _seed_w1_finding(store)
+    result = mission_tools.mark_milestone_delivered("W1.1", "Delivered", fid, state)
     assert result["status"] == "delivered"
     assert any(m.id == "W1.1" and m.status == "delivered" for m in store.list_milestones("m-test"))
 
@@ -231,9 +254,11 @@ def test_mark_milestone_delivered_recovers_id_from_label_noise(
     store: MissionStore,
     state: dict[str, str],
 ):
+    fid = _seed_w1_finding(store)
     result = mission_tools.mark_milestone_delivered(
         "W1 Market & Competitive Analysis (W1.1, W1.2, W1.3)",
         "Delivered",
+        fid,
         state,
     )
 
@@ -252,7 +277,8 @@ def test_mark_milestone_delivered_returns_error_for_unknown_id(
     of "W4.1". The uncaught KeyError terminated the graph run before
     Merlin could synthesize.
     """
-    result = mission_tools.mark_milestone_delivered("W4", "Done", state)
+    fid = _seed_w1_finding(store)
+    result = mission_tools.mark_milestone_delivered("W4", "Done", fid, state)
 
     assert result["status"] == "error"
     assert "W4" in result["reason"]
@@ -290,7 +316,8 @@ def test_mark_milestone_delivered_return_includes_label_for_sse(
     store: MissionStore, state: dict[str, str]
 ):
     """Phase 1A: streamer reads label from tool return to build milestone_done event."""
-    result = mission_tools.mark_milestone_delivered("W1.1", "Done", state)
+    fid = _seed_w1_finding(store)
+    result = mission_tools.mark_milestone_delivered("W1.1", "Done", fid, state)
     assert result["milestone_id"] == "W1.1"
     # label is the milestone's seeded label, sourced from the post-update store row
     assert isinstance(result.get("label"), str) and result["label"]

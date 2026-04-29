@@ -302,6 +302,7 @@ def _coverage_payload(
         ws_milestones = [m for m in milestones if m.workstream_id == workstream.id]
         ws_findings = [f for f in research_findings if f.workstream_id == workstream.id]
         delivered = [m for m in ws_milestones if m.status == "delivered"]
+        blocked = [m for m in ws_milestones if m.status == "blocked"]
         workstream_rows.append(
             {
                 "id": workstream.id,
@@ -309,6 +310,7 @@ def _coverage_payload(
                 "assigned_agent": workstream.assigned_agent,
                 "status": workstream.status,
                 "milestones_delivered": len(delivered),
+                "milestones_blocked": len(blocked),
                 "milestones_total": len(ws_milestones),
                 "findings_total": len(ws_findings),
                 "has_material": bool(ws_findings or delivered or workstream.status == "delivered"),
@@ -320,6 +322,7 @@ def _coverage_payload(
         "workstreams_total": len(workstreams),
         "workstreams_with_material": sum(1 for row in workstream_rows if row["has_material"]),
         "milestones_delivered": sum(1 for m in milestones if m.status == "delivered"),
+        "milestones_blocked": sum(1 for m in milestones if m.status == "blocked"),
         "milestones_total": len(milestones),
         "workstreams": workstream_rows,
     }

@@ -20,9 +20,27 @@ import pytest
 
 from marvin import events
 from marvin.graph import runner
-from marvin.mission.schema import Mission
+from marvin.mission.schema import Finding, Mission
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools import mission_tools, papyrus_tools
+
+
+def _seed_finding(store: MissionStore, fid: str, workstream_id: str) -> str:
+    """Helper: persist a minimal finding so mark_milestone_delivered can
+    anchor against it. Phase 3 (Fix D) requires finding_id to deliver."""
+    store.save_finding(
+        Finding(
+            id=fid,
+            mission_id="m-mile",
+            workstream_id=workstream_id,
+            hypothesis_id=None,
+            claim_text=f"seeded finding for {workstream_id}",
+            confidence="REASONED",
+            agent_id="dora",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    return fid
 
 
 @pytest.fixture
@@ -52,11 +70,12 @@ def _state() -> dict:
 
 
 def test_direct_tool_call_triggers_listener(store: MissionStore):
+    fid = _seed_finding(store, "f-1", "W1")
     seen: list[dict] = []
     listener = seen.append
     events.register_milestone_listener("m-mile", listener)
     try:
-        mission_tools.mark_milestone_delivered("W1.1", "done", _state())
+        mission_tools.mark_milestone_delivered("W1.1", "done", fid, _state())
     finally:
         events.unregister_milestone_listener("m-mile", listener)
     assert len(seen) == 1
@@ -66,9 +85,11 @@ def test_direct_tool_call_triggers_listener(store: MissionStore):
 
 
 def test_runner_research_join_triggers_listener_twice(store: MissionStore):
-    """runner.research_join calls store.mark_milestone_delivered as Python for
-    both W1.1 and W2.1. The listener must fire twice — that is the whole point
-    of moving event ownership to the persistence chokepoint."""
+    """Phase 3 (Fix D): research_join now gates milestone delivery on findings
+    count. With ≥1 finding per workstream, both milestones flip to delivered
+    and the listener fires twice."""
+    _seed_finding(store, "f-w1", "W1")
+    _seed_finding(store, "f-w2", "W2")
     seen: list[dict] = []
     listener = seen.append
     events.register_milestone_listener("m-mile", listener)
@@ -81,11 +102,27 @@ def test_runner_research_join_triggers_listener_twice(store: MissionStore):
     assert all(p["status"] == "delivered" for p in seen)
 
 
+def test_research_join_blocks_when_no_findings(store: MissionStore):
+    """Phase 3 (Fix D): with zero findings for W2, research_join must mark
+    W2.1 as blocked (not delivered) — the original silent-delivered bug."""
+    _seed_finding(store, "f-w1-only", "W1")
+    seen: list[dict] = []
+    events.register_milestone_listener("m-mile", seen.append)
+    try:
+        runner.research_join({"mission_id": "m-mile", "phase": "confirmed"})
+    finally:
+        events.unregister_milestone_listener("m-mile", seen.append)
+    by_id = {p["milestone_id"]: p["status"] for p in seen}
+    assert by_id["W1.1"] == "delivered"
+    assert by_id["W2.1"] == "blocked"
+
+
 def test_listener_scoped_to_mission_id(store: MissionStore):
+    fid = _seed_finding(store, "f-2", "W1")
     seen_other: list[dict] = []
     events.register_milestone_listener("m-different", seen_other.append)
     try:
-        mission_tools.mark_milestone_delivered("W1.1", "done", _state())
+        mission_tools.mark_milestone_delivered("W1.1", "done", fid, _state())
     finally:
         events.unregister_milestone_listener("m-different", seen_other.append)
     assert seen_other == []
@@ -97,12 +134,13 @@ def test_repeated_marks_emit_only_once(store: MissionStore):
     the second call returns the already-delivered row WITHOUT firing a second
     listener event. Otherwise the SSE stream double-signals a single business
     transition (pending → delivered)."""
+    fid = _seed_finding(store, "f-3", "W1")
     seen: list[dict] = []
     listener = seen.append
     events.register_milestone_listener("m-mile", listener)
     try:
-        first = mission_tools.mark_milestone_delivered("W1.1", "first", _state())
-        second = mission_tools.mark_milestone_delivered("W1.1", "second", _state())
+        first = mission_tools.mark_milestone_delivered("W1.1", "first", fid, _state())
+        second = mission_tools.mark_milestone_delivered("W1.1", "second", fid, _state())
     finally:
         events.unregister_milestone_listener("m-mile", listener)
     assert first["status"] == "delivered"
@@ -112,9 +150,31 @@ def test_repeated_marks_emit_only_once(store: MissionStore):
 
 
 def test_unregister_stops_listener(store: MissionStore):
+    fid = _seed_finding(store, "f-4", "W1")
     seen: list[dict] = []
     listener = seen.append
     events.register_milestone_listener("m-mile", listener)
     events.unregister_milestone_listener("m-mile", listener)
-    mission_tools.mark_milestone_delivered("W1.1", "done", _state())
+    mission_tools.mark_milestone_delivered("W1.1", "done", fid, _state())
     assert seen == []
+
+
+def test_tool_rejects_missing_finding_id(store: MissionStore):
+    """Phase 3 (Fix D): mark_milestone_delivered without a finding_id must
+    surface a structured error and NOT write the row."""
+    result = mission_tools.mark_milestone_delivered("W1.1", "done", None, _state())
+    assert result["status"] == "error"
+    assert "finding_id" in result["reason"]
+    # Row stayed pending
+    m = next(m for m in store.list_milestones("m-mile") if m.id == "W1.1")
+    assert m.status == "pending"
+
+
+def test_tool_rejects_workstream_mismatch(store: MissionStore):
+    """A finding from W2 cannot deliver a W1 milestone."""
+    fid = _seed_finding(store, "f-w2-mismatch", "W2")
+    result = mission_tools.mark_milestone_delivered("W1.1", "done", fid, _state())
+    assert result["status"] == "error"
+    assert "workstream" in result["reason"]
+    m = next(m for m in store.list_milestones("m-mile") if m.id == "W1.1")
+    assert m.status == "pending"

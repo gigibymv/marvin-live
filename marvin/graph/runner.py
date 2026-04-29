@@ -282,13 +282,33 @@ def research_join(state: MarvinState) -> dict:
     mission_id = state.get("mission_id", "")
     store = MissionStore()
 
-    for milestone_id in ("W1.1", "W2.1"):
+    # Phase 3 (Fix D): graph progression stays deterministic — we always
+    # advance phase to research_done regardless of findings. But milestone
+    # STATUS is now data-driven: a milestone is only "delivered" if its
+    # workstream actually produced ≥1 finding. Otherwise it transitions to
+    # "blocked" with a reason, so research coverage reports truth instead
+    # of rubber-stamping empty branches as complete.
+    findings = store.list_findings(mission_id)
+    findings_by_workstream: dict[str, int] = {}
+    for f in findings:
+        if f.workstream_id:
+            findings_by_workstream[f.workstream_id] = findings_by_workstream.get(f.workstream_id, 0) + 1
+
+    for milestone_id, workstream_id in (("W1.1", "W1"), ("W2.1", "W2")):
+        count = findings_by_workstream.get(workstream_id, 0)
         try:
-            store.mark_milestone_delivered(
-                milestone_id,
-                "research branch complete",
-                mission_id=mission_id,
-            )
+            if count >= 1:
+                store.mark_milestone_delivered(
+                    milestone_id,
+                    "research branch complete",
+                    mission_id=mission_id,
+                )
+            else:
+                store.mark_milestone_blocked(
+                    milestone_id,
+                    "agent produced no findings",
+                    mission_id=mission_id,
+                )
         except KeyError:
             # Milestone not seeded for this mission — defensive boundary only.
             pass

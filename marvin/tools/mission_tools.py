@@ -290,21 +290,77 @@ def update_hypothesis(
 def mark_milestone_delivered(
     milestone_id: str,
     result_summary: str,
+    finding_id: str | None = None,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
-    """Mark a milestone as delivered with a result summary.
+    """Mark a milestone as delivered with a result summary, anchored to a finding.
 
-    Tool-boundary contract: if the LLM passes an unknown id (e.g. the
-    workstream id "W4" instead of a real milestone "W4.1"), return a
-    structured error so the agent can correct itself on the next turn.
-    Letting the underlying KeyError bubble crashes the graph node and
-    terminates the entire mission run; the store still raises strictly
-    for internal callers.
+    Phase 3 (Fix D): a milestone can only be delivered if it is backed by a
+    real finding. The LLM must pass the finding_id of a finding it just
+    persisted via add_finding_to_mission. The tool verifies:
+      - finding exists for this mission
+      - finding's workstream_id matches the milestone's workstream
+    A milestone with zero findings cannot be marked delivered through this
+    tool at all — preventing the previous failure mode where Calculus
+    returned 0 findings yet still rubber-stamped W2.1 as delivered.
+
+    Tool-boundary contract: structured errors instead of KeyError so the
+    agent can correct itself on the next turn rather than crashing the run.
     """
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
     normalized = _normalize_milestone_id(milestone_id)
+
+    if not finding_id:
+        return {
+            "status": "error",
+            "reason": (
+                "finding_id is required. Pass the id of a finding you just "
+                "persisted via add_finding_to_mission for this milestone's "
+                "workstream. A milestone with zero findings cannot be "
+                "delivered."
+            ),
+            "milestone_id": milestone_id,
+        }
+
     try:
+        milestones = store.list_milestones(mission_id)
+        target = next((m for m in milestones if m.id == normalized), None)
+        if target is None:
+            return {
+                "status": "error",
+                "reason": (
+                    f"unknown milestone id {milestone_id!r}; "
+                    f"valid milestones for this mission: {[m.id for m in milestones]}"
+                ),
+                "milestone_id": milestone_id,
+            }
+
+        findings = store.list_findings(mission_id)
+        finding = next((f for f in findings if f.id == finding_id), None)
+        if finding is None:
+            return {
+                "status": "error",
+                "reason": (
+                    f"finding_id {finding_id!r} not found for this mission. "
+                    "Call add_finding_to_mission first, then pass the "
+                    "returned finding_id here."
+                ),
+                "milestone_id": milestone_id,
+                "finding_id": finding_id,
+            }
+        if finding.workstream_id != target.workstream_id:
+            return {
+                "status": "error",
+                "reason": (
+                    f"finding workstream {finding.workstream_id!r} does not "
+                    f"match milestone workstream {target.workstream_id!r}. "
+                    "Use a finding from the same workstream."
+                ),
+                "milestone_id": milestone_id,
+                "finding_id": finding_id,
+            }
+
         delivered = store.mark_milestone_delivered(
             normalized, result_summary, mission_id=mission_id,
         )
@@ -322,6 +378,7 @@ def mark_milestone_delivered(
         "milestone_id": normalized,
         "status": "delivered",
         "label": delivered.label,
+        "finding_id": finding_id,
     }
 
 
