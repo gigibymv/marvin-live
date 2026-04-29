@@ -725,21 +725,17 @@ export default function MissionControl({
       setPausedForGate(false);
       setRunState(mission.id, { isStreaming: true });
 
-      // Add user action message
-      // Agent status tracking for text events
-      appendGateMessage(gateId, "approve", {
-        id: makeMessageId(mission.id, "approve"),
-        from: "u",
-        text: `✓ Gate approved: ${gateId}`,
-      });
-
       try {
         // For HTTP repository, call the API
         if (repository.kind === "http") {
           const result = await apiValidateGate(mission.id, gateId, "APPROVED", notes);
 
           // Bug 4 (chantier 2.6): idempotent / conflict responses are 200,
-          // not errors. Show a quiet toast-style status message and stop.
+          // not errors. Surface a quiet status message — and skip the
+          // "✓ Gate approved" bubble, since this click did NOT cause a
+          // state transition. Without this, repeated clicks (or a banner
+          // click racing the chat-driven approve path) printed multiple
+          // "✓ Gate approved" lines that confused the user.
           if (result.idempotent) {
             appendGateMessage(gateId, "approve-idem", {
               id: makeMessageId(mission.id, "idem"),
@@ -759,7 +755,15 @@ export default function MissionControl({
             return;
           }
 
-          // Agent status tracking for text events
+          // Backend confirmed a real state transition (status === "resumed"
+          // or "resumed_detached"). Now — and only now — emit the user's
+          // "✓ Gate approved" bubble and the system follow-up, so the chat
+          // log reflects backend truth instead of optimistic UI state.
+          appendGateMessage(gateId, "approve", {
+            id: makeMessageId(mission.id, "approve"),
+            from: "u",
+            text: `✓ Gate approved: ${gateId}`,
+          });
           appendGateMessage(gateId, "approve-resumed", {
             id: makeMessageId(mission.id, "resumed"),
             from: "m",
