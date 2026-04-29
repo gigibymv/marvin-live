@@ -19,4 +19,4 @@ ENV MARVIN_DB_PATH=/data/marvin.db
 
 EXPOSE 8095
 
-CMD ["sh", "-c", "python -m uvicorn marvin_ui.server:app --host 0.0.0.0 --port ${PORT:-8095}"]
+CMD ["python", "-m", "marvin_ui.server"]

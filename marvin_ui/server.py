@@ -2512,7 +2512,9 @@ async def download_deliverable(rel_path: str = Query(...)):
 def run_server():
     """Run the server using uvicorn."""
     import uvicorn
-    uvicorn.run(app, host=os.getenv("MARVIN_HOST", "0.0.0.0"), port=int(os.getenv("MARVIN_PORT", "8095")))
+    # Railway injects PORT; MARVIN_PORT as fallback for local dev
+    port = int(os.getenv("PORT", os.getenv("MARVIN_PORT", "8095")))
+    uvicorn.run(app, host=os.getenv("MARVIN_HOST", "0.0.0.0"), port=port)
 
 
 if __name__ == "__main__":

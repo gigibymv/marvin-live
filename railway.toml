@@ -3,7 +3,7 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python -m uvicorn marvin_ui.server:app --host 0.0.0.0 --port ${PORT:-8095}"
+startCommand = "python -m marvin_ui.server"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
