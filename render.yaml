@@ -35,7 +35,10 @@ services:
     plan: starter
     region: oregon
     envVars:
-      - key: NEXT_PUBLIC_API_BASE_URL
-        sync: false   # set after backend URL is known
+      - key: BACKEND_INTERNAL_HOSTPORT
+        fromService:
+          type: web
+          name: marvin-backend
+          property: hostport
       - key: NODE_VERSION
         value: "20"
