@@ -304,7 +304,7 @@ def _generate_framing_memo_impl(
         ]
     )
     for hypothesis in hypotheses:
-        lines.append(f"- Hypothesis ID: {hypothesis.id} - {hypothesis.text}")
+        lines.append(f"- {hypothesis.text}")
     lines.extend(
         [
             "",
