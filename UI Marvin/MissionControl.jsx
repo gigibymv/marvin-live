@@ -517,6 +517,26 @@ export default function MissionControl(props) {
 
         // Mission
         React.createElement("div", { style: { padding: "13px 20px 14px", borderBottom: "1px solid var(--ruleh)" } },
+          React.createElement("a", {
+            href: "/missions",
+            "aria-label": "Back to missions board",
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              fontFamily: "var(--m)",
+              fontSize: "9.5px",
+              letterSpacing: ".06em",
+              color: "var(--muted)",
+              textDecoration: "none",
+              marginBottom: "8px",
+            },
+          },
+            React.createElement("svg", { width: "10", height: "10", viewBox: "0 0 14 14", fill: "none", "aria-hidden": "true" },
+              React.createElement("path", { d: "M9 2L4 7l5 5", stroke: "currentColor", strokeWidth: "1.5", strokeLinecap: "round", strokeLinejoin: "round" })
+            ),
+            "Missions"
+          ),
           React.createElement("div", { className: "k", style: { marginBottom: "5px" } }, "Mission"),
           React.createElement("div", { style: { fontFamily: "var(--d)", fontSize: "15px", fontWeight: 600, letterSpacing: "-.02em", lineHeight: 1.2, marginBottom: "3px" } }, mission.name),
           React.createElement("div", { style: { fontFamily: "var(--m)", fontSize: "9.5px", color: "var(--muted)", marginBottom: "12px" } }, mission.client),
