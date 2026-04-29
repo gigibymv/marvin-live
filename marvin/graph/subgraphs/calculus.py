@@ -13,6 +13,7 @@ from marvin.tools.calculus_tools import (
 from marvin.tools.mission_tools import (
     add_finding_to_mission,
     get_hypotheses,
+    mark_milestone_blocked,
     mark_milestone_delivered,
     persist_source_for_mission,
 )
@@ -29,6 +30,7 @@ _tools = [
     add_finding_to_mission,
     persist_source_for_mission,
     mark_milestone_delivered,
+    mark_milestone_blocked,
 ]
 _agent_factory = build_agent("calculus", _tools)
 

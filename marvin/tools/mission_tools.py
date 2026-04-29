@@ -382,6 +382,69 @@ def mark_milestone_delivered(
     }
 
 
+def mark_milestone_blocked(
+    milestone_id: str,
+    reason: str,
+    state: InjectedStateArg = None,
+) -> dict[str, Any]:
+    """Mark a milestone as BLOCKED when the underlying retrieval tools failed.
+
+    Use this instead of fabricating a finding with an invented citation.
+    Honest failure: the milestone is recorded as blocked with the reason,
+    coverage reports surface "X delivered, Y blocked", and the IC pack
+    documents the gap rather than papering it over.
+
+    Returns a structured error if the milestone id is unknown so the LLM
+    can correct itself.
+    """
+    mission_id = require_mission_id(state)
+    store = get_store(_STORE_FACTORY)
+    normalized = _normalize_milestone_id(milestone_id)
+
+    if not (reason or "").strip():
+        return {
+            "status": "error",
+            "reason": (
+                "reason is required. Describe what failed (e.g., "
+                "'SEC EDGAR returned no filing text for FY2024 10-K') "
+                "so the IC pack can document the gap honestly."
+            ),
+            "milestone_id": milestone_id,
+        }
+
+    try:
+        milestones = store.list_milestones(mission_id)
+        target = next((m for m in milestones if m.id == normalized), None)
+        if target is None:
+            return {
+                "status": "error",
+                "reason": (
+                    f"unknown milestone id {milestone_id!r}; "
+                    f"valid milestones for this mission: {[m.id for m in milestones]}"
+                ),
+                "milestone_id": milestone_id,
+            }
+        blocked = store.mark_milestone_blocked(
+            normalized, reason.strip(), mission_id=mission_id,
+        )
+    except KeyError:
+        valid_ids = [m.id for m in store.list_milestones(mission_id)]
+        return {
+            "status": "error",
+            "reason": (
+                f"unknown milestone id {milestone_id!r}; "
+                f"valid milestones for this mission: {valid_ids}"
+            ),
+            "milestone_id": milestone_id,
+        }
+    return {
+        "milestone_id": normalized,
+        "status": "blocked",
+        "label": blocked.label,
+        "block_reason": reason.strip(),
+    }
+
+
 def _normalize_finding_claim_text(claim_text: str) -> str:
     """Normalize only formatting noise; do not guess semantic equivalence."""
     return re.sub(r"\s+", " ", claim_text.casefold()).strip().rstrip(".!?;:")
@@ -473,6 +536,17 @@ def validate_finding_quality(
     return True, None, None
 
 
+def _detect_failure_patterns(text: str | None) -> list[str]:
+    """Return list of failure-pattern labels found in text (empty if clean)."""
+    if not text:
+        return []
+    detected: list[str] = []
+    for pattern, label in _ABSURD_FINDING_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            detected.append(label)
+    return detected
+
+
 def add_finding_to_mission(
     claim_text: str,
     confidence: str,
@@ -499,9 +573,37 @@ def add_finding_to_mission(
     separately. `source_quote` should carry the supporting snippet
     (e.g. Tavily result `content`). If `source_id` is also provided, the
     explicit id wins and the URL is ignored.
+
+    Source-quote quality gate: if source_quote contains a retrieval-failure
+    confession (matching _ABSURD_FINDING_PATTERNS), the finding is REJECTED
+    before any write. Storing a fabricated citation alongside the LLM's own
+    "[missing inputs: ...]" admission produces a finding that looks evidenced
+    but isn't — see CLAUDE.md §1 (no silent degradation).
     """
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
+
+    # Quality gate on source_quote BEFORE any persistence. Calculus has been
+    # observed routing SEC retrieval failures into source_quote while keeping
+    # claim_text clean enough to pass validate_finding_quality. Reject here
+    # so neither the source row nor the finding row is written.
+    quote_failures = _detect_failure_patterns(source_quote)
+    if quote_failures:
+        return {
+            "status": "rejected",
+            "reason": (
+                f"source_quote contains retrieval-failure markers "
+                f"({', '.join(quote_failures)}). A failure message is not a citation."
+            ),
+            "guidance": (
+                "If the underlying tool returned no usable data, do not "
+                "fabricate a finding with a fake citation. Either (a) call "
+                "mark_milestone_blocked with the failure reason so the "
+                "milestone is honestly recorded as blocked, or (b) skip "
+                "this hypothesis. Never persist a claim with an invented "
+                "source_url and a failure-confession source_quote."
+            ),
+        }
 
     if source_id is None and source_url:
         inline_source = Source(

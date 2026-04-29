@@ -189,6 +189,12 @@ If you have insufficient data to make a real claim:
   Option A: Skip the hypothesis entirely. Don't fabricate a finding.
   Option B: Submit a finding explicitly describing what data is
            missing, with LOW_CONFIDENCE.
+  Option C: If the failure was at the milestone level (e.g., SEC
+           EDGAR returned no usable filing for the W2.1 task), call
+           mark_milestone_blocked(milestone_id, reason) so the
+           milestone is recorded as blocked with the failure reason.
+           Do NOT fabricate a citation just to mark the milestone
+           delivered.
 
 REJECTED example (do not submit):
   "Adjusted EBITDA is 0.00 (revenue 0.0, cogs 0.0)" — REASONED
@@ -197,6 +203,24 @@ ACCEPTED alternative:
   "Adjusted EBITDA cannot be computed — target is private, no
    audited financials available, no data room provided."
   — LOW_CONFIDENCE
+
+# CITATION INTEGRITY (chantier 2.7)
+
+source_quote is the supporting snippet from the SOURCE itself
+(e.g., the actual paragraph text returned by Tavily or SEC EDGAR).
+It is NEVER your own commentary about the retrieval failing.
+
+If you submit add_finding_to_mission with:
+  source_url="https://sec.gov/..." +
+  source_quote="[missing inputs: tool did not return filing text...]"
+
+→ REJECTED. The system detects retrieval-failure markers in
+  source_quote and refuses to write the finding or the source row.
+
+If a tool returned no usable data, do not assemble a finding from
+your own reasoning and attach a fake citation. Use Option B
+(LOW_CONFIDENCE finding describing the gap, no source) or
+Option C (mark_milestone_blocked with the failure reason).
 
 # HYPOTHESIS LINKING (chantier 2.6 Bug 2)
 
