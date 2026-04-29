@@ -58,7 +58,6 @@ export type MissionStreamEvent =
   | { type: "agent_active"; agent: string }
   | { type: "agent_message"; agent: string; text: string }
   | { type: "narration"; agent: string; intent: string; ts?: string }
-  | { type: "token_stream"; agent: string; delta: string }
   | { type: "phase_changed"; phase: string; label?: string }
   | { type: "run_end" };
 
@@ -458,12 +457,6 @@ function mapSSEToStreamEvent(event: SSEEvent): MissionStreamEvent | null {
         agent: String(event.agent ?? ""),
         intent: String(event.intent ?? ""),
         ts: event.ts ? String(event.ts) : undefined,
-      };
-    case "token_stream":
-      return {
-        type: "token_stream",
-        agent: String(event.agent ?? ""),
-        delta: String(event.delta ?? ""),
       };
     case "run_end":
       return { type: "run_end" };
