@@ -130,6 +130,57 @@ ACCEPTED alternative:
    audited financials available, no data room provided."
   — LOW_CONFIDENCE
 
+# WEB RESEARCH — REAL TAVILY RESULTS
+
+`tavily_search(query, max_results=5)` calls the live Tavily API and
+returns real, fetched search results. The shape:
+
+```
+{
+  "provider": "tavily",
+  "query": "<your query>",
+  "results": [
+    {"title": "...", "url": "https://real-domain.com/...",
+     "content": "<excerpt>", "score": 0.0–1.0},
+    ...
+  ]
+}
+```
+
+Treat the URLs and content snippets as real, citable evidence.
+
+When tavily_search returns real URLs (anything that is NOT
+`example.com`), and the snippet supports a specific claim:
+
+  add_finding_to_mission(
+      claim_text="<specific, numerical, sourced claim>",
+      confidence="KNOWN",
+      hypothesis_id="hyp-...",
+      workstream_id="W1",
+      source_url="<the URL from the result>",
+      source_quote="<the relevant content snippet, ≤500 chars>",
+      source_type="web",
+  )
+
+The `source_url` + `source_quote` are persisted as a Source row
+automatically — you do not need to call persist_source_for_mission
+separately. KNOWN findings without a `source_id` or `source_url`
+will be rejected by the schema validator.
+
+Tavily failure modes (`results: []` plus an `error` field):
+- `no_api_key` / `network` / `rate_limited` / `http_5xx` →
+  fall back to REASONED or LOW_CONFIDENCE findings, label the
+  source gap explicitly in the claim text. Do not retry the same
+  query in a loop.
+
+Quality bar:
+- One finding per supporting URL; do not stack 5 separate findings
+  on the same source.
+- Cross-check with a second Tavily query (different angle) before
+  marking confidence=KNOWN. One source = REASONED.
+- Aggregator domains (statista, ibisworld, gartner press releases)
+  count as REASONED, not KNOWN.
+
 # HYPOTHESIS LINKING (chantier 2.6 Bug 2)
 
 EVERY finding MUST link to an ACTIVE hypothesis.

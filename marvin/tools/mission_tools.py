@@ -424,6 +424,8 @@ def add_finding_to_mission(
     hypothesis_id: str | None = None,
     source_id: str | None = None,
     source_type: str | None = None,
+    source_url: str | None = None,
+    source_quote: str | None = None,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
     """Add a finding to the mission.
@@ -433,9 +435,29 @@ def add_finding_to_mission(
     so the LLM tool-loop receives a corrective message instead of an opaque
     SQLite FOREIGN KEY error. Pass None when no link applies.
     source_type: classify origin (sec_filing/web/data_room/press/inference). Default inference.
+
+    Inline source persistence: if `source_url` is provided (typical when a
+    real Tavily result backs the finding), a Source row is created and
+    its id used — caller does not need to call persist_source_for_mission
+    separately. `source_quote` should carry the supporting snippet
+    (e.g. Tavily result `content`). If `source_id` is also provided, the
+    explicit id wins and the URL is ignored.
     """
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
+
+    if source_id is None and source_url:
+        inline_source = Source(
+            id=short_id("s"),
+            mission_id=mission_id,
+            url_or_ref=source_url,
+            quote=(source_quote or "")[:2000] or None,
+            retrieved_at=utc_now_iso(),
+        )
+        store.save_source(inline_source)
+        source_id = inline_source.id
+        if source_type is None:
+            source_type = "web"
 
     # Bug 1 (chantier 2.6): quality gate at write time. Reject absurd findings
     # outright; downgrade soft cases to LOW_CONFIDENCE before persist.
