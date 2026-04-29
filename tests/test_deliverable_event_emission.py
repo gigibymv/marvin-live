@@ -89,6 +89,42 @@ def _stub_papyrus_llm_generate(
             "## Verdict Reasoning\n\nSynthesis paragraph.\n\n"
             "## Recommendation\n\nProceed.\n"
         )
+    if deliverable_type == "data_book":
+        n = len(hypotheses) or 1
+        hyp_sections = "\n\n".join(
+            f"## H{i + 1} — {h.text[:48].rstrip('.')}\n\n"
+            "| Claim | Confidence | Source | Workstream |\n"
+            "|-------|-----------|--------|------------|\n"
+            + "\n".join(
+                f"| {f.claim_text[:60]}. | {f.confidence} | inference | {f.workstream_id or 'W1'} |"
+                for f in findings
+                if (f.hypothesis_id or "") == h.id
+            )
+            + ("\n| No findings for this hypothesis. | — | — | — |" if not any((f.hypothesis_id or "") == h.id for f in findings) else "")
+            + f"\n\n**Coverage gap:** Primary evidence not yet sourced for H{i + 1}."
+            for i, h in enumerate(hypotheses)
+        ) or (
+            "## H1 — Evidence\n\n"
+            "| Claim | Confidence | Source | Workstream |\n"
+            "|-------|-----------|--------|------------|\n"
+            "| Sample finding. | REASONED | inference | W1 |\n\n"
+            "**Coverage gap:** No hypotheses registered.\n"
+        )
+        return (
+            f"# Data Book — {mission.client} CDD\n\n"
+            f"**Mission:** {mission.client} — {mission.target}\n"
+            f"**Date:** 2026-04-28\n"
+            f"**Status:** Evidence registered for hypotheses H1 through H{n}. "
+            "Primary-source coverage gaps flagged below.\n\n"
+            f"{hyp_sections}\n\n"
+            "## Evidence Quality Summary\n\n"
+            f"- Total findings: {len(findings)}\n"
+            "- KNOWN (primary-sourced): 0\n"
+            f"- REASONED (logical inference): {len(findings)}\n"
+            "- LOW_CONFIDENCE (estimates): 0\n"
+            "- Adversus red-team challenges: 0\n\n"
+            "Evidence is predominantly inference-based.\n"
+        )
     raise NotImplementedError(f"stub does not yet handle {deliverable_type}")
 
 
@@ -376,9 +412,7 @@ def test_generated_engagement_summary_and_data_book_include_traceability(store: 
     summary = papyrus_tools._generate_exec_summary_impl("m-dlv")
     data_book = papyrus_tools._generate_data_book_impl("m-dlv")
 
-    # engagement_brief and exec_summary are LLM-driven (new-mode):
-    # structural markers, NO internal IDs. data_book remains deterministic
-    # (legacy mode) until C6.
+    # All three are now LLM-driven (new-mode): structural markers, NO internal IDs.
     engagement_body = Path(engagement["file_path"]).read_text(encoding="utf-8")
     assert "## IC Question" in engagement_body
     assert "## Hypotheses to Test" in engagement_body
@@ -386,7 +420,9 @@ def test_generated_engagement_summary_and_data_book_include_traceability(store: 
     summary_body = Path(summary["file_path"]).read_text(encoding="utf-8")
     assert "## Key Findings" in summary_body
     assert "f-w1" not in summary_body
-    assert "Finding ID: f-w1" in Path(data_book["file_path"]).read_text(encoding="utf-8")
+    data_book_body = Path(data_book["file_path"]).read_text(encoding="utf-8")
+    assert "## H1" in data_book_body
+    assert "f-w1" not in data_book_body
 
 
 def test_listener_scoped_to_mission_id(store: MissionStore):

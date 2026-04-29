@@ -497,38 +497,34 @@ def _generate_data_book_impl(mission_id: str) -> dict[str, Any]:
 
     output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
     path = output_dir / "data_book.md"
-    lines = [
-        "# Data Book",
-        "",
-        "## Purpose",
-        "The data book is an indexed evidence register. Every row below links to a persisted "
-        "finding identifier and preserves confidence, hypothesis, source, and agent metadata.",
-        "",
-        "## Findings",
-    ]
-    for finding in findings:
-        lines.append(
-            f"- Finding ID: {finding.id}. Workstream: {finding.workstream_id or 'unassigned'}. "
-            f"Hypothesis ID: {finding.hypothesis_id or 'unassigned'}. "
-            f"Source ID: {finding.source_id or 'unassigned'}. "
-            f"Agent: {finding.agent_id or 'unknown'}. Confidence: {finding.confidence}. "
-            f"Claim: {finding.claim_text}"
-        )
-    lines.extend(
-        [
-            "",
-            "## Traceability",
-            "If a row lacks source or hypothesis metadata, reviewers should treat that as an "
-            "explicit coverage gap rather than hidden evidence.",
-        ]
-    )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     deliverable_id = f"deliverable-{mission_id}-data-book"
     deliverable_type = "data_book"
+
+    if path.exists():
+        return {
+            "mission_id": mission_id,
+            "file_path": str(path.resolve()),
+            "status": "skipped",
+            "deliverable_id": deliverable_id,
+            "deliverable_type": deliverable_type,
+        }
+
+    hypotheses = store.list_hypotheses(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+
+    body = _papyrus_llm_generate(
+        deliverable_type=deliverable_type,
+        mission=store.get_mission(mission_id),
+        hypotheses=hypotheses,
+        findings=findings,
+        mission_brief=mission_brief,
+    )
+    path.write_text(body, encoding="utf-8")
     _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path)
     return {
         "mission_id": mission_id,
         "file_path": str(path.resolve()),
+        "status": "generated",
         "deliverable_id": deliverable_id,
         "deliverable_type": deliverable_type,
     }
