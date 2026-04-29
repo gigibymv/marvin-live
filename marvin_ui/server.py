@@ -330,6 +330,97 @@ def _get_mission_lock(mission_id: str) -> asyncio.Lock:
     return _mission_locks[mission_id]
 
 
+# Detached graph drivers spawned by validate_gate when no SSE consumer was
+# parked. Keyed by mission_id. Survive client tab close so the workflow
+# advances regardless of whether anyone is watching. CLAUDE.md §1: no silent
+# degradation — gate validation must always advance the graph.
+_detached_drivers: dict[str, asyncio.Task] = {}
+
+
+async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
+    """Drive `graph.astream(Command(resume=...))` to completion or next interrupt.
+
+    Runs after `validate_gate` could not deliver the resume to a parked
+    `_stream_chat`. Findings/deliverables/milestones still persist via the
+    agent tools' direct DB writes; the next `/resume` call replays the latest
+    checkpoint and surfaces any new gate_pending interrupt.
+    """
+    from langgraph.types import Command
+
+    lock = _get_mission_lock(mission_id)
+    try:
+        await asyncio.wait_for(lock.acquire(), timeout=5.0)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Detached resume aborted — mission already locked: mission=%s",
+            mission_id,
+        )
+        return
+    try:
+        try:
+            graph = await get_graph()
+        except Exception as exc:  # noqa: BLE001 - never crash the worker pool
+            logger.error("Detached resume could not load graph: %s", exc)
+            return
+
+        config = {"configurable": {"thread_id": mission_id}}
+        next_input: Any = Command(resume=resume_payload)
+        try:
+            while True:
+                interrupted = False
+                async for event in graph.astream(
+                    next_input, config, stream_mode="updates"
+                ):
+                    if isinstance(event, dict) and "__interrupt__" in event:
+                        interrupted = True
+                        # Stop driving on interrupt; the next /resume or
+                        # /chat will pick up the parked frame and emit the
+                        # gate_pending event to the user's UI.
+                        break
+                if not interrupted:
+                    break
+                # Detached driver does not wait for human input — bail out
+                # and let the user's next /resume reattach to the parked
+                # interrupt frame.
+                break
+            logger.info(
+                "Detached resume finished: mission=%s gate=%s",
+                mission_id,
+                resume_payload.get("gate_id"),
+            )
+        except asyncio.CancelledError:
+            logger.info("Detached resume cancelled: mission=%s", mission_id)
+            raise
+        except Exception as exc:  # noqa: BLE001 - log and exit cleanly
+            logger.exception(
+                "Detached resume failed: mission=%s gate=%s err=%s",
+                mission_id,
+                resume_payload.get("gate_id"),
+                exc,
+            )
+    finally:
+        lock.release()
+        existing = _detached_drivers.get(mission_id)
+        if existing is asyncio.current_task():
+            _detached_drivers.pop(mission_id, None)
+
+
+def _spawn_detached_resume(mission_id: str, resume_payload: dict) -> None:
+    """Schedule a detached resume task. Idempotent per mission."""
+    existing = _detached_drivers.get(mission_id)
+    if existing is not None and not existing.done():
+        logger.info(
+            "Detached resume already running for mission=%s — skipping spawn",
+            mission_id,
+        )
+        return
+    task = asyncio.create_task(
+        _drive_detached_resume(mission_id, resume_payload),
+        name=f"detached-resume-{mission_id}",
+    )
+    _detached_drivers[mission_id] = task
+
+
 _checkpoint_conn: aiosqlite.Connection | None = None
 
 
@@ -427,6 +518,7 @@ class GateValidateRequest(BaseModel):
 class GateValidateResponse(BaseModel):
     status: Literal[
         "resumed",
+        "resumed_detached",
         "validated_no_stream",
         "already_processed",
         "resume_pending",
@@ -484,6 +576,10 @@ async def _emit_tool_result(agent: str, text: str) -> str:
 
 async def _emit_gate_pending(payload: dict) -> str:
     return _sse_event("gate_pending", payload)
+
+
+async def _emit_phase_blocked(payload: dict) -> str:
+    return _sse_event("phase_blocked", payload)
 
 
 async def _emit_finding_added(payload: dict) -> str:
@@ -892,6 +988,9 @@ async def _emit_for_update(
         if "gate_pending" in output:
             out.append(await _emit_gate_pending(output["gate_pending"]))
 
+        if output.get("phase_blocked"):
+            out.append(await _emit_phase_blocked(output["phase_blocked"]))
+
     return out, current_agent, current_phase, False
 
 
@@ -1010,7 +1109,12 @@ async def _stream_chat(
                         f"— reply 'approve' to proceed or click Review] {text}"
                     )
                 try:
-                    reply = await respond_qa(mission_id, qa_input)
+                    reply = await respond_qa(
+                        mission_id,
+                        qa_input,
+                        interrupted_gate_id=(pending_gate.id if pending_gate else None),
+                        interrupt_known=True,
+                    )
                 except Exception as exc:  # noqa: BLE001 - defensive: never crash the SSE stream
                     logger.warning("orchestrator_qa failed: %s", exc)
                     reply = "Mission paused. Use the gate panel to continue."
@@ -2065,17 +2169,40 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
                     notes=body.notes or f"data_decision={decision_value}",
                 )
             else:
-                store.update_gate_status(gate_id, expected_status, notes=body.notes)
+                # Standard verdict (approve/reject): do NOT pre-write the gate
+                # row here. gate_node owns the write at gates.py:141 — it runs
+                # AFTER interrupt() returns the verdict. Pre-writing causes
+                # gate_node's replay to see status!='pending', take the
+                # missing-material early-exit branch in gate_material.py:229,
+                # and terminate the graph at phase=idle without consuming the
+                # resume payload or transitioning to "confirmed".
+                pass
         finally:
             _clear_gate_decision_in_flight(gate_id)
-        # No stream is parked on this mission. The DB has been updated, but
-        # without an active SSE consumer we deliberately do not start a
-        # detached graph run — events would have nowhere to go and would
-        # break the no-silent-degradation rule.
-        logger.warning(
-            f"Gate validated but no active stream to resume: mission={mission_id} gate={gate_id}"
-        )
-        status = "validated_no_stream"
+        # No SSE stream is parked. Persisting the verdict to the DB alone
+        # used to leave the LangGraph run frozen — the user closed the chat
+        # tab between gate emission and approval, and dora/calculus/merlin
+        # never executed. Spawn a detached driver that picks up the parked
+        # interrupt frame and runs the graph forward to the next interrupt
+        # or to completion. Findings/deliverables persist via the agent
+        # tools' direct DB writes; the next /resume reattaches and surfaces
+        # the new state to the UI.
+        if not is_clarification and not is_data_decision:
+            # Clarification / data_decision verdicts re-enter framing or
+            # re-fan-out; the existing /resume + /chat flow handles those
+            # without a detached driver.
+            _spawn_detached_resume(mission_id, resume_payload)
+            logger.info(
+                "Gate validated, detached driver spawned: "
+                f"mission={mission_id} gate={gate_id}"
+            )
+            status = "resumed_detached"
+        else:
+            logger.warning(
+                "Gate validated but no active stream to resume: "
+                f"mission={mission_id} gate={gate_id}"
+            )
+            status = "validated_no_stream"
 
     return GateValidateResponse(
         status=status,
