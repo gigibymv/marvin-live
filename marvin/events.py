@@ -20,11 +20,13 @@ from typing import Any, Callable
 FindingListener = Callable[[dict[str, Any]], None]
 DeliverableListener = Callable[[dict[str, Any]], None]
 MilestoneListener = Callable[[dict[str, Any]], None]
+GraphEventListener = Callable[[str], None]
 
 _lock = threading.Lock()
 _listeners: dict[str, list[FindingListener]] = {}
 _deliverable_listeners: dict[str, list[DeliverableListener]] = {}
 _milestone_listeners: dict[str, list[MilestoneListener]] = {}
+_graph_event_listeners: dict[str, list[GraphEventListener]] = {}
 
 
 def register_finding_listener(mission_id: str, listener: FindingListener) -> None:
@@ -112,5 +114,49 @@ def emit_milestone_persisted(mission_id: str, payload: dict[str, Any]) -> None:
     for listener in bucket:
         try:
             listener(payload)
+        except Exception:  # noqa: BLE001 — defensive boundary
+            pass
+
+
+def register_graph_event_listener(mission_id: str, listener: GraphEventListener) -> None:
+    """Subscribe to pre-formatted SSE strings emitted by a detached graph driver.
+
+    Used by the F1-A passive-listener branch in `_stream_resume`: when a client
+    re-attaches while a detached driver holds the mission lock, it cannot run
+    its own `graph.astream`. Instead it subscribes here and relays every SSE
+    string the driver broadcasts (agent_active, narration, phase_changed, etc.).
+    Persistence-derived events (finding/deliverable/milestone) flow through
+    their own listener channels, not this one.
+    """
+    with _lock:
+        _graph_event_listeners.setdefault(mission_id, []).append(listener)
+
+
+def unregister_graph_event_listener(mission_id: str, listener: GraphEventListener) -> None:
+    with _lock:
+        bucket = _graph_event_listeners.get(mission_id)
+        if not bucket:
+            return
+        try:
+            bucket.remove(listener)
+        except ValueError:
+            return
+        if not bucket:
+            _graph_event_listeners.pop(mission_id, None)
+
+
+def emit_graph_event(mission_id: str, sse_string: str) -> None:
+    """Broadcast a pre-formatted SSE string to all graph-event listeners.
+
+    Cheap when nobody is listening (common case: detached driver running with
+    no client attached). Listener exceptions are swallowed.
+    """
+    with _lock:
+        bucket = list(_graph_event_listeners.get(mission_id, ()))
+    if not bucket:
+        return
+    for listener in bucket:
+        try:
+            listener(sse_string)
         except Exception:  # noqa: BLE001 — defensive boundary
             pass

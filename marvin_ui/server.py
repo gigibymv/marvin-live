@@ -38,11 +38,14 @@ from pydantic import BaseModel
 
 from marvin.artifacts import artifact_file_is_ready
 from marvin.events import (
+    emit_graph_event,
     register_deliverable_listener,
     register_finding_listener,
+    register_graph_event_listener,
     register_milestone_listener,
     unregister_deliverable_listener,
     unregister_finding_listener,
+    unregister_graph_event_listener,
     unregister_milestone_listener,
 )
 from marvin.graph.gate_material import evaluate_gate_material
@@ -365,7 +368,16 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
 
         config = {"configurable": {"thread_id": mission_id}}
         next_input: Any = Command(resume=resume_payload)
+        # F1-A: broadcast SSE strings as the graph runs so a passively-attached
+        # /resume client (which cannot run its own astream while we hold the
+        # lock) can relay agent_active / narration / phase_changed / agent_done
+        # events to the user. Persistence-derived events (finding_added etc.)
+        # flow through marvin.events listeners independently.
+        current_agent: str | None = None
+        current_phase: str | None = None
+        throttle_state: dict[tuple[str, str], float] = {}
         try:
+            emit_graph_event(mission_id, await _emit_run_start())
             while True:
                 interrupted = False
                 async for event in graph.astream(
@@ -377,12 +389,22 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                         # /chat will pick up the parked frame and emit the
                         # gate_pending event to the user's UI.
                         break
+                    if isinstance(event, dict):
+                        sse_strings, current_agent, current_phase, _is_int = await _emit_for_update(
+                            event, current_agent, current_phase, throttle_state
+                        )
+                        for s in sse_strings:
+                            if s:
+                                emit_graph_event(mission_id, s)
                 if not interrupted:
                     break
                 # Detached driver does not wait for human input — bail out
                 # and let the user's next /resume reattach to the parked
                 # interrupt frame.
                 break
+            if current_agent is not None:
+                emit_graph_event(mission_id, await _emit_agent_done(current_agent))
+            emit_graph_event(mission_id, await _emit_run_end())
             logger.info(
                 "Detached resume finished: mission=%s gate=%s",
                 mission_id,
@@ -1295,6 +1317,119 @@ async def _stream_chat(
         mission_lock.release()
 
 
+async def _stream_resume_passive(
+    mission_id: str, detached_task: asyncio.Task
+) -> AsyncIterator[str]:
+    """Relay events from a running detached driver to a re-attached SSE client.
+
+    F1-A. The detached driver (`_drive_detached_resume`) holds the mission lock
+    for the entire graph run, so a re-attaching `/resume` cannot acquire it and
+    cannot run its own `graph.astream`. Instead we subscribe to:
+
+      * the graph-event channel (`emit_graph_event`) for SSE strings the driver
+        broadcasts (agent_active, narration, phase_changed, text, agent_done,
+        run_start/run_end);
+      * the persistence channels (finding/deliverable/milestone) for events
+        the agent tools emit when writing to the store.
+
+    We yield to the client until the detached task completes, then return.
+    """
+    sse_q: "queue.Queue[str]" = queue.Queue()
+    finding_q: "queue.Queue[dict]" = queue.Queue()
+    deliverable_q: "queue.Queue[dict]" = queue.Queue()
+    milestone_q: "queue.Queue[dict]" = queue.Queue()
+
+    def _on_sse(s: str) -> None:
+        sse_q.put_nowait(s)
+
+    def _on_finding(payload: dict) -> None:
+        finding_q.put_nowait(payload)
+
+    def _on_deliverable(payload: dict) -> None:
+        deliverable_q.put_nowait(payload)
+
+    def _on_milestone(payload: dict) -> None:
+        milestone_q.put_nowait(payload)
+
+    register_graph_event_listener(mission_id, _on_sse)
+    register_finding_listener(mission_id, _on_finding)
+    register_deliverable_listener(mission_id, _on_deliverable)
+    register_milestone_listener(mission_id, _on_milestone)
+
+    try:
+        # The driver may already have emitted run_start before we attached.
+        # Emit a defensive run_start so the client's UI flips out of stalled
+        # state regardless of attach timing.
+        yield await _emit_run_start()
+        while True:
+            drained_any = False
+            while True:
+                try:
+                    yield sse_q.get_nowait()
+                    drained_any = True
+                except queue.Empty:
+                    break
+            while True:
+                try:
+                    payload = finding_q.get_nowait()
+                except queue.Empty:
+                    break
+                yield _sse_event("finding_added", _build_finding_added_from_emit(payload))
+                drained_any = True
+            while True:
+                try:
+                    payload = deliverable_q.get_nowait()
+                except queue.Empty:
+                    break
+                yield _sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload))
+                drained_any = True
+            while True:
+                try:
+                    payload = milestone_q.get_nowait()
+                except queue.Empty:
+                    break
+                yield _sse_event("milestone_done", _build_milestone_done_from_emit(payload))
+                drained_any = True
+
+            if detached_task.done():
+                break
+            # Tight poll when events were just drained; back off when idle so
+            # we don't burn CPU. 50ms keeps the feed visually live.
+            await asyncio.sleep(0.0 if drained_any else 0.05)
+
+        # Final drain after the driver finishes.
+        while not sse_q.empty():
+            try:
+                yield sse_q.get_nowait()
+            except queue.Empty:
+                break
+        while not finding_q.empty():
+            try:
+                payload = finding_q.get_nowait()
+            except queue.Empty:
+                break
+            yield _sse_event("finding_added", _build_finding_added_from_emit(payload))
+        while not deliverable_q.empty():
+            try:
+                payload = deliverable_q.get_nowait()
+            except queue.Empty:
+                break
+            yield _sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload))
+        while not milestone_q.empty():
+            try:
+                payload = milestone_q.get_nowait()
+            except queue.Empty:
+                break
+            yield _sse_event("milestone_done", _build_milestone_done_from_emit(payload))
+
+        yield await _emit_run_end()
+    finally:
+        unregister_graph_event_listener(mission_id, _on_sse)
+        unregister_finding_listener(mission_id, _on_finding)
+        unregister_deliverable_listener(mission_id, _on_deliverable)
+        unregister_milestone_listener(mission_id, _on_milestone)
+
+
 async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
     """Re-attach to a checkpointed mission and continue streaming.
 
@@ -1326,6 +1461,14 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
     try:
         await asyncio.wait_for(mission_lock.acquire(), timeout=5.0)
     except asyncio.TimeoutError:
+        # F1-A: if a detached driver is running, attach as a passive listener
+        # instead of erroring out. The driver does the driving; we relay its
+        # broadcast SSE strings + persistence-bus events to this client.
+        detached = _detached_drivers.get(mission_id)
+        if detached is not None and not detached.done():
+            async for s in _stream_resume_passive(mission_id, detached):
+                yield s
+            return
         yield await _emit_error("Mission is active in another stream — close the other tab")
         return
 
