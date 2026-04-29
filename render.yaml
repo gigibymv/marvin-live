@@ -6,6 +6,7 @@ services:
     dockerfilePath: ./Dockerfile
     plan: starter
     region: oregon
+    healthCheckPath: /health
     envVars:
       - key: OPENROUTER_API_KEY
         sync: false
