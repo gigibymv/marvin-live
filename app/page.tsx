@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import Homepage from "@/components/marvin/Homepage";
 
 export default function HomePage() {
-  redirect("/missions");
+  return <Homepage />;
 }
