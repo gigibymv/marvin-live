@@ -1,0 +1,41 @@
+services:
+  # ─── Backend (FastAPI + LangGraph) ────────────────────────────────────────
+  - type: web
+    name: marvin-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: MARVIN_DB_PATH
+        value: /data/marvin.db
+      - key: MARVIN_HOST
+        value: 0.0.0.0
+      - key: ALLOW_LOCALHOST_ANY_PORT
+        value: "0"
+      - key: CORS_ORIGINS
+        sync: false   # set after frontend URL is known
+    disk:
+      name: marvin-data
+      mountPath: /data
+      sizeGB: 1
+
+  # ─── Frontend (Next.js) ───────────────────────────────────────────────────
+  - type: web
+    name: marvin-frontend
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: starter
+    region: oregon
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false   # set after backend URL is known
+      - key: NODE_VERSION
+        value: "20"
