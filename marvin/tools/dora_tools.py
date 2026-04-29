@@ -1,30 +1,77 @@
 from __future__ import annotations
 
+import logging
+import os
 from statistics import mean
 from typing import Any
+
+import httpx
 
 from marvin.mission.store import MissionStore
 from marvin.tools.common import InjectedStateArg, coerce_jsonish, get_store, require_mission_id
 from marvin.tools.mission_tools import add_finding_to_mission
 
+logger = logging.getLogger(__name__)
+
 _STORE_FACTORY = MissionStore
 
+_TAVILY_ENDPOINT = "https://api.tavily.com/search"
+_TAVILY_TIMEOUT_S = 30.0
+# Built so tests can override with httpx.MockTransport without monkeypatching.
+_HTTP_CLIENT_FACTORY = httpx.Client
 
-def tavily_search(query: str) -> dict[str, Any]:
+
+def tavily_search(query: str, max_results: int = 5) -> dict[str, Any]:
     """Search the web for market and competitive intelligence on a topic.
 
     Use when you need exogenous evidence (market sizing, competitor moves,
     sector signals) before forming a finding. Input: a focused search query.
-    Returns a provider tag, the query, and a list of result stubs.
+    Returns provider, query, and a list of {title, url, content, score}
+    results from Tavily. On missing key / network error / API error the
+    response carries an `error` field with empty `results` so the caller
+    can fall back gracefully — this never raises.
     """
-    return {
-        "provider": "tavily_stub",
+    api_key = os.environ.get("TAVILY_API_KEY")
+    if not api_key:
+        logger.error("TAVILY_API_KEY not set; tavily_search returning empty results")
+        return {
+            "provider": "tavily",
+            "query": query,
+            "results": [],
+            "error": "no_api_key",
+        }
+
+    payload = {
+        "api_key": api_key,
         "query": query,
-        "results": [
-            {"title": f"{query} market overview", "url": "https://example.com/market-overview"},
-            {"title": f"{query} competitor landscape", "url": "https://example.com/competitors"},
-        ],
+        "max_results": max_results,
+        "search_depth": "basic",
+        "include_answer": False,
     }
+    try:
+        with _HTTP_CLIENT_FACTORY(timeout=_TAVILY_TIMEOUT_S) as client:
+            response = client.post(_TAVILY_ENDPOINT, json=payload)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        err = "rate_limited" if status == 429 else f"http_{status}"
+        logger.warning("Tavily search HTTP %s for %r: %s", status, query, exc)
+        return {"provider": "tavily", "query": query, "results": [], "error": err}
+    except httpx.HTTPError as exc:
+        logger.warning("Tavily search network error for %r: %s", query, exc)
+        return {"provider": "tavily", "query": query, "results": [], "error": "network"}
+
+    results = [
+        {
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "content": (r.get("content") or "")[:500],
+            "score": r.get("score", 0.0),
+        }
+        for r in data.get("results", [])
+    ]
+    return {"provider": "tavily", "query": query, "results": results}
 
 
 def build_bottom_up_tam(
