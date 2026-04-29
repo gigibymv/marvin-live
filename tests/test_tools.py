@@ -241,6 +241,29 @@ def test_mark_milestone_delivered_recovers_id_from_label_noise(
     assert any(m.id == "W1.1" and m.status == "delivered" for m in store.list_milestones("m-test"))
 
 
+def test_mark_milestone_delivered_returns_error_for_unknown_id(
+    store: MissionStore,
+    state: dict[str, str],
+):
+    """Unknown milestone id must return a structured error, not raise.
+
+    Live mission m-uber-eats-...-89fc01f6 crashed mid-Adversus when the
+    LLM called mark_milestone_delivered("W4") (the workstream id) instead
+    of "W4.1". The uncaught KeyError terminated the graph run before
+    Merlin could synthesize.
+    """
+    result = mission_tools.mark_milestone_delivered("W4", "Done", state)
+
+    assert result["status"] == "error"
+    assert "W4" in result["reason"]
+    assert "valid milestones" in result["reason"].lower()
+    # No state mutation: nothing should have been marked delivered
+    assert all(
+        m.status != "delivered" or m.id.startswith("W1.1")
+        for m in store.list_milestones("m-test")
+    )
+
+
 def test_add_finding_to_mission_requires_state():
     with pytest.raises(KeyError, match="mission_id not in state"):
         mission_tools.add_finding_to_mission("Claim", "REASONED", "dora", state=None)

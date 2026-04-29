@@ -292,13 +292,34 @@ def mark_milestone_delivered(
     result_summary: str,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
-    """Mark a milestone as delivered with a result summary."""
+    """Mark a milestone as delivered with a result summary.
+
+    Tool-boundary contract: if the LLM passes an unknown id (e.g. the
+    workstream id "W4" instead of a real milestone "W4.1"), return a
+    structured error so the agent can correct itself on the next turn.
+    Letting the underlying KeyError bubble crashes the graph node and
+    terminates the entire mission run; the store still raises strictly
+    for internal callers.
+    """
     mission_id = require_mission_id(state)
     store = get_store(_STORE_FACTORY)
-    milestone_id = _normalize_milestone_id(milestone_id)
-    delivered = store.mark_milestone_delivered(milestone_id, result_summary, mission_id=mission_id)
+    normalized = _normalize_milestone_id(milestone_id)
+    try:
+        delivered = store.mark_milestone_delivered(
+            normalized, result_summary, mission_id=mission_id,
+        )
+    except KeyError:
+        valid_ids = [m.id for m in store.list_milestones(mission_id)]
+        return {
+            "status": "error",
+            "reason": (
+                f"unknown milestone id {milestone_id!r}; "
+                f"valid milestones for this mission: {valid_ids}"
+            ),
+            "milestone_id": milestone_id,
+        }
     return {
-        "milestone_id": milestone_id,
+        "milestone_id": normalized,
         "status": "delivered",
         "label": delivered.label,
     }
