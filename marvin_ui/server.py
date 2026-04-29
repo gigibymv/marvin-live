@@ -655,6 +655,33 @@ async def _emit_run_end() -> str:
     return _sse_event("run_end", {})
 
 
+_MISSION_COMPLETE_TEXT = (
+    "Mission complete. The executive summary, data book, and workstream "
+    "reports are ready for review. All deliverables have been generated "
+    "and persisted."
+)
+
+
+async def _maybe_emit_mission_complete(mission_id: str) -> str:
+    """Defensive emit: when papyrus_delivery flips status to complete but
+    LangGraph drops its final state delta (stream_mode=updates loses the
+    last node's emit when it routes straight to END), the user never sees
+    the completion message. We check status here and re-emit the standard
+    text so the chat reflects truth.
+
+    Idempotent: phase=done is the trigger, mission status=complete is the
+    confirmation. Both must hold or this is a no-op.
+    """
+    try:
+        store = get_store()
+        mission = store.get_mission(mission_id)
+        if mission and mission.status == "complete":
+            return await _emit_text("papyrus_delivery", _MISSION_COMPLETE_TEXT)
+    except Exception:  # noqa: BLE001 — never crash the SSE stream
+        pass
+    return ""
+
+
 _PHASE_LABELS: dict[str, str] = {
     "setup": "Setup",
     "framing": "Framing",
@@ -1133,8 +1160,11 @@ async def _stream_chat(
         if current_agent is not None:
             yield await _emit_agent_done(current_agent)
 
+        completion = await _maybe_emit_mission_complete(mission_id)
+        if completion:
+            yield completion
         yield await _emit_run_end()
-    
+
     except Exception as e:
         import traceback as _tb
         tb_text = _tb.format_exc()
@@ -1179,7 +1209,12 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
 
     mission = store.get_mission(mission_id)
     if mission.status != "active":
-        # Done/archived missions need no live stream.
+        # Done/archived missions need no live stream — but a re-attach should
+        # still show the user the final completion state, otherwise the chat
+        # log on a refresh ends mid-flow.
+        if mission.status == "complete":
+            yield await _emit_phase_changed("done")
+            yield await _emit_text("papyrus_delivery", _MISSION_COMPLETE_TEXT)
         yield await _emit_run_end()
         return
 
@@ -1319,6 +1354,9 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
 
         if current_agent is not None:
             yield await _emit_agent_done(current_agent)
+        completion = await _maybe_emit_mission_complete(mission_id)
+        if completion:
+            yield completion
         yield await _emit_run_end()
 
     except Exception as e:
