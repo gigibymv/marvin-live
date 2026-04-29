@@ -69,7 +69,7 @@ def _derive_mission_angle(raw_brief: str) -> str:
 
 def _brief_summary(raw_brief: str) -> str:
     cleaned = _clean_brief_text(raw_brief)
-    return cleaned[:360] if cleaned else "Initial mission brief captured."
+    return cleaned if cleaned else "Initial mission brief captured."
 
 
 def _workstream_plan(mission: Mission, mission_angle: str) -> list[dict[str, str]]:
