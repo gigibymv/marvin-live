@@ -212,7 +212,7 @@ export default function Homepage() {
       <section className="hero" style={{ background: "var(--paper)", padding: 0, display: "block", minHeight: 0 }}>
         <div style={{ display: "grid", gridTemplateColumns: "40% 60%", minHeight: "auto", alignItems: "center", width: "100%", maxWidth: "100%", overflow: "hidden" }}>
           {/* Left: text */}
-          <div style={{ padding: "120px 5% 80px 8%" }}>
+          <div style={{ padding: "120px 5% 80px 32px" }}>
             <div style={{ fontFamily: "var(--mono)", fontSize: "9.5px", fontWeight: 600, color: "var(--muted)", letterSpacing: ".12em", textTransform: "uppercase", marginBottom: "24px" }}>
               AI-AUGMENTED CONSULTING OPERATIONS
             </div>
