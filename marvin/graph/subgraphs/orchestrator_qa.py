@@ -34,7 +34,20 @@ _PHASE_LABEL = {
 }
 
 
-def _summarize_state(mission_id: str) -> dict:
+def _summarize_state(
+    mission_id: str,
+    *,
+    interrupted_gate_id: str | None = None,
+    interrupt_known: bool = False,
+) -> dict:
+    """Build a Q&A context view.
+
+    If the caller passes `interrupt_known=True`, the `pending_gate` field
+    reflects the *actually-parked* interrupt (or None) rather than the lowest
+    DB row with status='pending'. DB rows for future gates (G1/G3) are seeded
+    at mission init and would otherwise produce false "G1 is pending" replies
+    while research is still running.
+    """
     store = MissionStore()
     try:
         mission = store.get_mission(mission_id)
@@ -44,7 +57,13 @@ def _summarize_state(mission_id: str) -> dict:
     findings = store.list_findings(mission_id)
     hypotheses = store.list_hypotheses(mission_id, status="active")
     gates = store.list_gates(mission_id)
-    pending_gates = [g for g in gates if g.status == "pending"]
+    if interrupt_known:
+        if interrupted_gate_id:
+            pending_gates = [g for g in gates if g.id == interrupted_gate_id]
+        else:
+            pending_gates = []
+    else:
+        pending_gates = [g for g in gates if g.status == "pending"]
     verdict = store.get_latest_merlin_verdict(mission_id)
     deliverables = store.list_deliverables(mission_id)
 
@@ -160,15 +179,32 @@ def _deterministic_response(state: dict, user_text: str) -> str:
     # Default
     if pending:
         return f"{_gate_label(pending['type'])} is pending. Click 'Review now' to advance."
-    return "Mission paused. Use the gate panel to continue."
+    return (
+        "No gate is open right now — the workflow is still running. "
+        "You'll see a Review now button when the next gate is ready."
+    )
 
 
-async def respond_qa(mission_id: str, user_text: str) -> str:
+async def respond_qa(
+    mission_id: str,
+    user_text: str,
+    *,
+    interrupted_gate_id: str | None = None,
+    interrupt_known: bool = False,
+) -> str:
     """Generate a Q&A reply. Never modifies mission state.
 
     Tries LLM first; falls back to deterministic response if no API key.
+
+    `interrupted_gate_id` / `interrupt_known` let the caller (the SSE chat
+    handler) inject the truth from the LangGraph snapshot so this Q&A path
+    cannot falsely claim "G1 is pending" when the graph is still mid-fan-out.
     """
-    state = _summarize_state(mission_id)
+    state = _summarize_state(
+        mission_id,
+        interrupted_gate_id=interrupted_gate_id,
+        interrupt_known=interrupt_known,
+    )
 
     try:
         from marvin.llm_factory import get_chat_llm
