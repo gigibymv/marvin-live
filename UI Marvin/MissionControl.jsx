@@ -478,8 +478,10 @@ function Feed({ feedRef, ...props }) {
           borderBottom: feedCollapsed ? "none" : "1px solid rgba(139,98,0,.2)"
         }
       },
-        React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--amber)" } }, "In progress"),
-        React.createElement("span", { style: { color: "var(--amber)", animation: "pulse 1.4s ease-in-out infinite", fontSize: "8px" } }, "\u25cf"),
+        React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--amber)" } }, waitState && waitState.isWorking ? "In progress" : "Activity"),
+        waitState && waitState.isWorking
+          ? React.createElement("span", { style: { color: "var(--amber)", animation: "pulse 1.4s ease-in-out infinite", fontSize: "8px" } }, "\u25cf")
+          : null,
         waitState && waitState.isWorking
           ? React.createElement("span", { style: { fontFamily: "var(--m)", fontSize: "9px", color: "var(--amber)", letterSpacing: ".06em" } }, waitState.elapsedLabel)
           : null,

@@ -197,6 +197,11 @@ export async function getMissionProgress(missionId: string): Promise<{
     assigned_agent: string | null;
     status: string;
   }>;
+  merlin_verdict?: {
+    verdict: string;
+    notes: string | null;
+    created_at: string | null;
+  } | null;
 }> {
   const response = await fetch(`${API_BASE}/missions/${missionId}/progress`);
 

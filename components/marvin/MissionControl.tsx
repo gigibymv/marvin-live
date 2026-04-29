@@ -1512,8 +1512,31 @@ export default function MissionControl({
       workstream_id: m.workstream_id,
       ts: "",
     }));
+  // Synthesis (W3) is verdict-driven, not finding-driven: merlin doesn't
+  // call add_finding_to_mission, so without surfacing the verdict the
+  // tab would be permanently empty. Build a synthetic output card from
+  // /progress.merlin_verdict so the user sees what merlin concluded.
+  const synthesisOutputs: any[] = (() => {
+    const v = (progress as any)?.merlin_verdict;
+    if (!v?.verdict) return [];
+    const verdictLine = `Verdict: ${v.verdict}`;
+    const text = v.notes ? `${verdictLine}\n\n${v.notes}` : verdictLine;
+    return [{
+      id: `synthesis-verdict-${v.created_at ?? "current"}`,
+      kind: "finding" as const,
+      ag: "Merlin",
+      text,
+      claim_text: text,
+      confidence: v.verdict,
+      section_id: null,
+      workstream_id: "W3",
+      agent_id: "merlin",
+      ts: v.created_at ?? "",
+    }];
+  })();
   const allSectionOutputs = dedupeByKey([
     ...allFindings,
+    ...synthesisOutputs,
     ...deliverableOutputs,
     ...milestoneOutputs,
   ], (output) => `${output.kind}:${output.id}`);

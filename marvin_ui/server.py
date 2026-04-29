@@ -2044,6 +2044,18 @@ async def get_mission_progress(mission_id: str):
             }
             for w in workstreams
         ],
+        # Merlin verdict, if any. Surfaced here so the Synthesis (W3) tab
+        # can render it as content — merlin doesn't add findings, so the
+        # tab would otherwise stay empty even after the verdict shipped.
+        "merlin_verdict": (
+            {
+                "verdict": v.verdict,
+                "notes": v.notes,
+                "created_at": v.created_at,
+            }
+            if (v := store.get_latest_merlin_verdict(mission_id))
+            else None
+        ),
     }
 
 
