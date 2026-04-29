@@ -15,6 +15,8 @@ services:
         sync: false
       - key: MARVIN_DB_PATH
         value: /data/marvin.db
+      - key: MARVIN_CHECKPOINT_DB
+        value: /data/checkpoints.db
       - key: MARVIN_HOST
         value: 0.0.0.0
       - key: ALLOW_LOCALHOST_ANY_PORT
@@ -40,5 +42,7 @@ services:
           type: web
           name: marvin-backend
           property: hostport
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false   # set to backend public URL + /api/v1 to bypass Next rewrite (SSE buffering)
       - key: NODE_VERSION
         value: "20"

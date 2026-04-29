@@ -963,10 +963,18 @@ export default function MissionControl({
             return;
           }
 
-          // Backend confirmed a real state transition (status === "resumed"
-          // or "resumed_detached"). Now — and only now — emit the user's
-          // "✓ Gate approved" bubble and the system follow-up, so the chat
-          // log reflects backend truth instead of optimistic UI state.
+          // Backend confirmed a real state transition. Prune the rail so
+          // stale "gate pending" / "human review" lines disappear instead
+          // of accumulating in the In progress history.
+          setLiveFindings((current) =>
+            current.filter(
+              (event) => !(event.kind === "gate" && event.id.includes(gateId))
+            )
+          );
+
+          // Now — and only now — emit the user's "✓ Gate approved" bubble
+          // and the system follow-up, so the chat log reflects backend
+          // truth instead of optimistic UI state.
           appendGateMessage(gateId, "approve", {
             id: makeMessageId(mission.id, "approve"),
             from: "u",
@@ -1035,6 +1043,15 @@ export default function MissionControl({
             clearGateResolving(gateId);
             return;
           }
+
+          // Prune stale gate signals from the rail before emitting the
+          // user-visible "rejected" line so the In progress block reflects
+          // backend truth.
+          setLiveFindings((current) =>
+            current.filter(
+              (event) => !(event.kind === "gate" && event.id.includes(gateId))
+            )
+          );
 
           // No local "Awaiting further instructions" message: the backend
           // now emits a specific AIMessage (per gate_type) describing what

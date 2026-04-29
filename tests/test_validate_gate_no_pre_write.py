@@ -77,7 +77,7 @@ def test_detached_path_does_not_pre_write_gate_status(
 
     spawned: list[dict] = []
 
-    def fake_spawn(mission_id: str, payload: dict) -> None:
+    def fake_spawn(mission_id: str, payload: dict) -> str:
         # Snapshot the gate row at the EXACT moment the detached driver
         # would start. Must still be "pending" so gate_node's replay reaches
         # interrupt() and consumes the verdict.
@@ -85,6 +85,7 @@ def test_detached_path_does_not_pre_write_gate_status(
             g for g in store.list_gates(mission_id) if g.id == gate_id
         )
         spawned.append({"status_at_spawn": snap.status, "payload": payload})
+        return "spawned"
 
     monkeypatch.setattr(srv, "_spawn_detached_resume", fake_spawn)
 

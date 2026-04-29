@@ -369,11 +369,12 @@ def test_validate_gate_persists_decision_without_active_stream(
     )
     monkeypatch.setattr(srv, "_deliver_resume", lambda mission_id, payload: False)
     spawned: list[tuple[str, dict]] = []
-    monkeypatch.setattr(
-        srv,
-        "_spawn_detached_resume",
-        lambda mission_id, payload: spawned.append((mission_id, payload)),
-    )
+
+    def _fake_spawn(mission_id: str, payload: dict) -> str:
+        spawned.append((mission_id, payload))
+        return "spawned"
+
+    monkeypatch.setattr(srv, "_spawn_detached_resume", _fake_spawn)
 
     response = asyncio.run(
         srv.validate_gate(
