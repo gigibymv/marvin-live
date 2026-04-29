@@ -16,7 +16,7 @@ dependencies = [
     "langchain-core>=1,<2",
     "langchain-openai>=1,<2",
     "aiosqlite>=0.19,<1",
-    "langgraph-checkpoint-sqlite>=2,<3",
+    "langgraph-checkpoint-sqlite>=3,<4",
 ]
 
 [project.optional-dependencies]
