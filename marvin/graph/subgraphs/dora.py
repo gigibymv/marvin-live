@@ -40,4 +40,10 @@ async def dora_agent_node(state):
         if "OPENROUTER_API_KEY is not set" in str(exc):
             return dict(state)
         raise
+    # C-CONV: drain any pending user steering and surface it to the
+    # agent before it picks up the task brief.
+    from marvin.conversational.steering import apply_pending_steering
+    extra = apply_pending_steering(state.get("mission_id", ""))
+    if extra:
+        state = {**state, "messages": list(state.get("messages", [])) + extra}
     return await agent.ainvoke(state)

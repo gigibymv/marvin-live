@@ -1236,6 +1236,33 @@ async def _stream_chat(
                     mission_id, pending_gate.id,
                 )
             else:
+                # C-CONV — when the graph is *running* (not interrupted) the
+                # user can either ask a question (read-only QA) or send a
+                # steering instruction. Classify and queue if instruction.
+                if not is_interrupted:
+                    from marvin.conversational.steering import (
+                        classify_message,
+                        queue_steering,
+                    )
+
+                    intent = classify_message(text)
+                    if intent == "steer":
+                        try:
+                            queue_steering(mission_id, text)
+                            yield await _emit_text(
+                                "orchestrator",
+                                "Got it. The next agent that runs will pick "
+                                "up your instruction. To stop the mission "
+                                "and re-frame, reject the next gate.",
+                            )
+                            yield await _emit_run_end()
+                            return
+                        except Exception as exc:  # noqa: BLE001
+                            logger.warning(
+                                "queue_steering failed: %s — falling through to QA",
+                                exc,
+                            )
+
                 from marvin.graph.subgraphs.orchestrator_qa import respond_qa
 
                 qa_input = text

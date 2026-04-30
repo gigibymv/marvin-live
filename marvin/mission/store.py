@@ -240,6 +240,30 @@ class MissionStore:
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
                 self._conn.execute(ddl)
+        # C-CONV: mission_steering table is additive on existing DBs that
+        # were created before the table appeared in 001_init.sql.
+        existing_tables = {
+            row["name"]
+            for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if "mission_steering" not in existing_tables:
+            self._conn.execute(
+                """
+                CREATE TABLE mission_steering (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+                    instruction TEXT NOT NULL,
+                    created_at TEXT,
+                    consumed_at TEXT
+                )
+                """
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mission_steering_pending "
+                "ON mission_steering(mission_id, consumed_at)"
+            )
         self._conn.commit()
 
     def _execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
@@ -465,6 +489,39 @@ class MissionStore:
             (mission_id,),
         ).fetchall()
         return [Milestone.model_validate(dict(row)) for row in rows]
+
+    # ------------------------------------------------------------------
+    # C-CONV — mid-mission steering queue
+    # ------------------------------------------------------------------
+
+    def add_steering(self, mission_id: str, instruction: str) -> str:
+        """Persist a user steering instruction. Returns the new id."""
+        from marvin.tools.common import short_id, utc_now_iso
+        steering_id = short_id("st")
+        self._execute(
+            "INSERT INTO mission_steering (id, mission_id, instruction, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (steering_id, mission_id, instruction, utc_now_iso()),
+        )
+        return steering_id
+
+    def list_pending_steering(self, mission_id: str) -> list[dict]:
+        """Return unconsumed steering rows in creation order."""
+        rows = self._execute(
+            "SELECT id, instruction, created_at FROM mission_steering "
+            "WHERE mission_id = ? AND consumed_at IS NULL "
+            "ORDER BY created_at, id",
+            (mission_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def consume_steering(self, steering_id: str) -> None:
+        """Mark a steering row consumed so the next agent run won't replay it."""
+        from marvin.tools.common import utc_now_iso
+        self._execute(
+            "UPDATE mission_steering SET consumed_at = ? WHERE id = ?",
+            (utc_now_iso(), steering_id),
+        )
 
     def mark_milestone_delivered(
         self,

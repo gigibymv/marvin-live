@@ -594,8 +594,12 @@ async def adversus_node(state: MarvinState) -> dict:
     )
     
     from marvin.graph.subgraphs.adversus import adversus_agent_node as _adversus_agent_node
+    from marvin.conversational.steering import apply_pending_steering
 
-    result = await _adversus_agent_node({**state, "messages": messages + [msg]})
+    extra = apply_pending_steering(mission_id)
+    result = await _adversus_agent_node(
+        {**state, "messages": messages + [msg] + extra}
+    )
     return {**result, "phase": "redteam_done"}
 
 
@@ -657,8 +661,12 @@ async def merlin_node(state: MarvinState) -> dict:
     )
 
     from marvin.graph.subgraphs.merlin import merlin_agent_node as _merlin_agent_node
+    from marvin.conversational.steering import apply_pending_steering
 
-    result = await _merlin_agent_node({**state, "messages": messages + [msg]})
+    extra = apply_pending_steering(mission_id)
+    result = await _merlin_agent_node(
+        {**state, "messages": messages + [msg] + extra}
+    )
     store = MissionStore()
     verdict_row = store.get_latest_merlin_verdict(mission_id)
     if not verdict_row:

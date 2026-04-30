@@ -166,3 +166,17 @@ CREATE TABLE IF NOT EXISTS merlin_verdicts (
     notes TEXT,
     created_at TEXT
 );
+
+-- C-CONV: queue of mid-mission steering instructions from the user.
+-- Consumed at the start of each agent node (dora/calculus/adversus/merlin)
+-- and prepended as a HumanMessage so the next agent run sees the
+-- instruction. `consumed_at` marks rows the agent has already received.
+CREATE TABLE IF NOT EXISTS mission_steering (
+    id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+    instruction TEXT NOT NULL,
+    created_at TEXT,
+    consumed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_mission_steering_pending
+    ON mission_steering(mission_id, consumed_at);
