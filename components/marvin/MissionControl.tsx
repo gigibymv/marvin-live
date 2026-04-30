@@ -1952,12 +1952,16 @@ export default function MissionControl({
     });
     const allMilestonesDone = wsMilestones.length > 0 && wsTerminal === wsMilestones.length;
     const synthesisDone = ws.id === "W3" && merlinVerdictPresent;
-    // Only mark a tab "completed" when ALL milestones are terminal (or for W3,
-    // when Merlin's verdict exists). A single ready deliverable used to flip
-    // the tab to ✓ done while the agent was still working on later
-    // milestones — visible mismatch with the agent status pill.
+    // Bug 4: when the assigned agent is DONE and the workstream already has
+    // a ready deliverable, treat the tab as completed even if individual
+    // milestone rows did not fire their terminal SSE event. After G1 was
+    // approved live we observed Calculus DONE with three ready deliverables
+    // while wsMilestones still had stragglers in pending — the tab spinner
+    // never resolved. Trust the agent-done + deliverable signal as a
+    // fallback for terminal state.
+    const agentDoneWithDeliverable = liveStatus === "done" && wsHasReadyDeliverable;
     const status: WorkstreamViewStatus =
-      allMilestonesDone || synthesisDone
+      allMilestonesDone || synthesisDone || agentDoneWithDeliverable
         ? "completed"
         : liveStatus === "active"
           ? "now"
