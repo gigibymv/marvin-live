@@ -45,10 +45,13 @@ def _user_agent() -> str:
 
 
 def _client(**kwargs: Any) -> httpx.Client:
+    # NOTE: do not set the Host header here. EDGAR uses two distinct hosts
+    # (www.sec.gov for archives + tickers, data.sec.gov for submissions).
+    # Forcing Host to one breaks the other with a 404. Let httpx derive
+    # Host from each request URL.
     headers = {
         "User-Agent": _user_agent(),
         "Accept-Encoding": "gzip, deflate",
-        "Host": "www.sec.gov",
     }
     return _HTTP_CLIENT_FACTORY(timeout=_TIMEOUT_S, headers=headers, **kwargs)
 
@@ -237,19 +240,27 @@ def extract_sections(text: str) -> dict[str, str | None]:
     Returns {business, risk_factors, mdna, financial_statements}. Unfound
     sections are None. The caller should treat None as "no section
     isolated; do not synthesize quotes from this section."
+
+    Real 10-K HTML usually contains the Item header at least twice: once
+    in the table of contents (with no body) and once at the actual
+    section. We iterate all occurrences and keep the first chunk that
+    exceeds the body-length threshold.
     """
     out: dict[str, str | None] = {k: None for k in _SECTION_PATTERNS}
     for section, patterns in _SECTION_PATTERNS.items():
+        chosen: str | None = None
+        best_len = 0
         for pat in patterns:
-            m = re.search(pat, text, re.IGNORECASE)
-            if not m:
-                continue
-            start = m.end()
-            tail = text[start:]
-            n = _NEXT_ITEM.search(tail)
-            end = n.start() if n else len(tail)
-            chunk = tail[:end].strip()
-            if len(chunk) >= 200:
-                out[section] = chunk
+            for m in re.finditer(pat, text, re.IGNORECASE):
+                start = m.end()
+                tail = text[start:]
+                n = _NEXT_ITEM.search(tail)
+                end = n.start() if n else len(tail)
+                chunk = tail[:end].strip()
+                if len(chunk) >= 200 and len(chunk) > best_len:
+                    chosen = chunk
+                    best_len = len(chunk)
+            if chosen:
                 break
+        out[section] = chosen
     return out
