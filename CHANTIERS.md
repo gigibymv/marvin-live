@@ -100,8 +100,13 @@ sensitivity/scenarios; no required-exit math.
   form + computed table.
 - 5 tests (math, store, API roundtrip, 404).
 
-**Open follow-up.** Component is not yet integrated as a
-MissionControl tab.
+**Open follow-up.**
+- Component is not yet integrated as a MissionControl tab.
+- **Agent path missing.** No `set_deal_terms` tool exists anywhere
+  in the repo (verified 2026-04-30). Calculus has no autonomous way
+  to populate `deal_terms` — only the UI's PUT endpoint can. DASH
+  live run confirmed: `deal_terms` row never created. Fix needed:
+  add agent-callable tool in `calculus_tools.py` + prompt paragraph.
 
 ---
 
@@ -168,9 +173,9 @@ yet tested.
 ## C4 — Source corroboration gate
 
 - **Bucket:** Conditional (depends on C1/C2/C3 evidence base)
-- **Status:** validated (live SNOW mission: 1 KNOWN auto-downgraded to
-  REASONED at recompute time)
-- **Commits:** `13972e1`, `af0306d` (hotfix)
+- **Status:** validated (SNOW + DASH live runs); rebuttal-pass gap
+  closed 2026-04-30 — pending re-validation
+- **Commits:** `13972e1`, `af0306d` (hotfix), latest (rebuttal recompute)
 
 **Problem.** A single-source KNOWN finding is partner-grade vulnerable.
 Pre-C4, every claim cited from one URL was treated as evidenced.
@@ -206,6 +211,17 @@ Pre-C4, every claim cited from one URL was treated as evidenced.
   mirroring.
 - `add_finding_to_mission` detects URL-shaped `source_id` (anything
   not starting with `s-`) and reroutes to `source_url`.
+
+**Gap fix (2026-04-30) — found via DASH live validation:**
+- DoorDash mission produced 2 KNOWN findings from Adversus rebuttal
+  pass (post-G1) with `corroboration_status=single_source` and
+  `corroboration_count=1` — C4 didn't downgrade them. Root cause:
+  `recompute_mission_corroboration` runs only in `research_join`
+  before G1; rebuttal-pass findings created in
+  `research_rebuttal_node` bypass that chokepoint.
+- Fix: call `recompute_mission_corroboration` at the exit of
+  `research_rebuttal_node` after Calculus + Dora finish.
+- Re-validation pending (next live mission).
 
 ---
 
