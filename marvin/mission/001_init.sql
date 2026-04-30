@@ -77,6 +77,12 @@ CREATE TABLE IF NOT EXISTS sources (
     retrieved_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS finding_sources (
+    finding_id TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    PRIMARY KEY (finding_id, source_id)
+);
+
 CREATE TABLE IF NOT EXISTS gates (
     id TEXT PRIMARY KEY,
     mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,

@@ -14,6 +14,7 @@ from marvin.tools.calculus_tools import (
 from marvin.tools.data_room_tools import query_data_room, query_transcripts
 from marvin.tools.mission_tools import (
     add_finding_to_mission,
+    add_source_to_finding,
     get_hypotheses,
     mark_milestone_blocked,
     mark_milestone_delivered,
@@ -33,6 +34,7 @@ _tools = [
     query_data_room,
     query_transcripts,
     add_finding_to_mission,
+    add_source_to_finding,
     persist_source_for_mission,
     mark_milestone_delivered,
     mark_milestone_blocked,

@@ -13,6 +13,7 @@ from langgraph.types import Command
 from marvin.events import emit_finding_persisted
 from marvin.mission.schema import Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore, _seed_standard_workplan
+from marvin.quality.corroboration import evaluate_corroboration
 from marvin.tools.common import (
     InjectedStateArg,
     get_store,
@@ -606,17 +607,25 @@ def add_finding_to_mission(
         }
 
     if source_id is None and source_url:
+        if source_type is None:
+            if "sec.gov" in source_url.lower():
+                source_type = "sec_filing"
+            elif source_url.startswith("data_room://"):
+                source_type = "data_room"
+            elif source_url.startswith("transcript://"):
+                source_type = "transcript"
+            else:
+                source_type = "web"
         inline_source = Source(
             id=short_id("s"),
             mission_id=mission_id,
             url_or_ref=source_url,
             quote=(source_quote or "")[:2000] or None,
             retrieved_at=utc_now_iso(),
+            source_type=source_type,
         )
         store.save_source(inline_source)
         source_id = inline_source.id
-        if source_type is None:
-            source_type = "web"
 
     # Bug 1 (chantier 2.6): quality gate at write time. Reject absurd findings
     # outright; downgrade soft cases to LOW_CONFIDENCE before persist.
@@ -750,8 +759,19 @@ def add_finding_to_mission(
         source_type=source_type,
         agent_id=agent_id,
         created_at=utc_now_iso(),
+        corroboration_count=1 if source_id else 0,
+        corroboration_status="single_source" if source_id else None,
     )
     store.save_finding(finding)
+    corroboration_warning: str | None = None
+    if confidence == "KNOWN" and source_id:
+        corroboration_warning = (
+            "KNOWN finding has only one source. Add a second independent "
+            "source via add_source_to_finding(finding_id, source_url, "
+            "source_quote, source_type) — different domain or source_type. "
+            "If you can't find a second independent source, this finding "
+            "will be auto-downgraded to REASONED at the corroboration gate."
+        )
     emit_finding_persisted(
         mission_id,
         {
@@ -771,7 +791,114 @@ def add_finding_to_mission(
         "claim": claim_text,
         "confidence": confidence,
         "status": "saved",
+        "corroboration_warning": corroboration_warning,
     }
+
+
+def add_source_to_finding(
+    finding_id: str,
+    source_url: str,
+    source_quote: str,
+    source_type: str | None = None,
+    state: InjectedStateArg = None,
+) -> dict[str, Any]:
+    """Attach a corroborating source to an existing finding.
+
+    Use to add a second (or third) independent source. "Independent" means
+    different (domain, source_type) — two articles from the same domain do
+    not corroborate; a SEC filing and a web article do. Updates the
+    finding's corroboration_count and corroboration_status. If the finding
+    is KNOWN and now has ≥2 independent sources, it becomes 'corroborated'.
+    """
+    mission_id = require_mission_id(state)
+    store = get_store(_STORE_FACTORY)
+
+    quote_failures = _detect_failure_patterns(source_quote)
+    if quote_failures:
+        return {
+            "status": "rejected",
+            "reason": (
+                f"source_quote contains retrieval-failure markers "
+                f"({', '.join(quote_failures)}). A failure message is not a citation."
+            ),
+        }
+
+    finding = store.get_finding(finding_id)
+    if finding is None or finding.mission_id != mission_id:
+        return {"status": "rejected", "reason": f"finding {finding_id} not found"}
+
+    if source_type is None:
+        if "sec.gov" in source_url.lower():
+            source_type = "sec_filing"
+        elif source_url.startswith("data_room://"):
+            source_type = "data_room"
+        elif source_url.startswith("transcript://"):
+            source_type = "transcript"
+        else:
+            source_type = "web"
+
+    new_source = Source(
+        id=short_id("s"),
+        mission_id=mission_id,
+        url_or_ref=source_url,
+        quote=(source_quote or "")[:2000] or None,
+        retrieved_at=utc_now_iso(),
+        source_type=source_type,
+    )
+    store.save_source(new_source)
+    store.add_finding_source(finding_id, new_source.id)
+
+    sources = store.list_finding_sources(finding_id)
+    verdict = evaluate_corroboration(finding.confidence, sources)
+    new_confidence = (
+        verdict.final_confidence
+        if verdict.final_confidence != finding.confidence
+        else None
+    )
+    store.update_finding_corroboration(
+        finding_id,
+        count=verdict.independent_count,
+        status=verdict.status,
+        confidence=new_confidence,
+    )
+    return {
+        "status": "saved",
+        "finding_id": finding_id,
+        "source_id": new_source.id,
+        "corroboration_count": verdict.independent_count,
+        "corroboration_status": verdict.status,
+        "final_confidence": verdict.final_confidence,
+        "downgrade_reason": verdict.downgrade_reason,
+    }
+
+
+def recompute_mission_corroboration(state: InjectedStateArg = None) -> dict[str, Any]:
+    """Recompute corroboration for every finding in the mission.
+
+    Called by the orchestrator at end-of-research / before synthesis.
+    Downgrades any KNOWN with <2 independent sources to REASONED.
+    Returns counts: {corroborated, single_source, downgraded, scanned}.
+    """
+    mission_id = require_mission_id(state)
+    store = get_store(_STORE_FACTORY)
+    findings = store.list_findings(mission_id)
+    counts = {"corroborated": 0, "single_source": 0, "downgraded": 0, "scanned": 0}
+    downgraded_ids: list[str] = []
+    for f in findings:
+        sources = store.list_finding_sources(f.id)
+        verdict = evaluate_corroboration(f.confidence, sources)
+        new_conf = (
+            verdict.final_confidence if verdict.final_confidence != f.confidence else None
+        )
+        store.update_finding_corroboration(
+            f.id, count=verdict.independent_count,
+            status=verdict.status, confidence=new_conf,
+        )
+        counts[verdict.status] = counts.get(verdict.status, 0) + 1
+        counts["scanned"] += 1
+        if verdict.status == "downgraded":
+            downgraded_ids.append(f.id)
+    return {**counts, "downgraded_finding_ids": downgraded_ids}
 
 
 def persist_source_for_mission(

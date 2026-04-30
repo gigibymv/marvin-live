@@ -320,6 +320,15 @@ def research_join(state: MarvinState) -> dict:
         if report.get("status") == "blocked":
             continue
         store.mark_workstream_delivered(mission_id, workstream_id)
+
+    # C4 corroboration gate: downgrade any KNOWN finding with <2 independent
+    # sources to REASONED before manager review (G1) sees the finding base.
+    from marvin.tools.mission_tools import recompute_mission_corroboration
+    try:
+        recompute_mission_corroboration(state={"mission_id": mission_id})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("corroboration recompute failed for %s: %s", mission_id, exc)
+
     return {"phase": "research_done"}
 
 

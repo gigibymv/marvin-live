@@ -222,6 +222,17 @@ class MissionStore:
             ("missions", "data_room_path", "ALTER TABLE missions ADD COLUMN data_room_path TEXT"),
             ("findings", "impact", "ALTER TABLE findings ADD COLUMN impact TEXT"),
             ("findings", "source_type", "ALTER TABLE findings ADD COLUMN source_type TEXT"),
+            (
+                "findings",
+                "corroboration_count",
+                "ALTER TABLE findings ADD COLUMN corroboration_count INTEGER DEFAULT 1",
+            ),
+            (
+                "findings",
+                "corroboration_status",
+                "ALTER TABLE findings ADD COLUMN corroboration_status TEXT",
+            ),
+            ("sources", "source_type", "ALTER TABLE sources ADD COLUMN source_type TEXT"),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
@@ -561,8 +572,9 @@ class MissionStore:
             """
             INSERT OR REPLACE INTO findings
             (id, mission_id, workstream_id, hypothesis_id, claim_text, confidence,
-             source_id, agent_id, human_validated, created_at, impact, source_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             source_id, agent_id, human_validated, created_at, impact, source_type,
+             corroboration_count, corroboration_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 finding.id,
@@ -577,9 +589,60 @@ class MissionStore:
                 finding.created_at,
                 finding.impact,
                 finding.source_type,
+                finding.corroboration_count,
+                finding.corroboration_status,
             ),
         )
+        # ensure primary source is in finding_sources for uniform lookup
+        if finding.source_id:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO finding_sources (finding_id, source_id) VALUES (?, ?)",
+                (finding.id, finding.source_id),
+            )
+            self._conn.commit()
         return finding
+
+    def add_finding_source(self, finding_id: str, source_id: str) -> None:
+        self._conn.execute(
+            "INSERT OR IGNORE INTO finding_sources (finding_id, source_id) VALUES (?, ?)",
+            (finding_id, source_id),
+        )
+        self._conn.commit()
+
+    def list_finding_sources(self, finding_id: str) -> list[Source]:
+        rows = self._execute(
+            "SELECT s.* FROM sources s "
+            "JOIN finding_sources fs ON fs.source_id = s.id "
+            "WHERE fs.finding_id = ? ORDER BY s.retrieved_at, s.id",
+            (finding_id,),
+        ).fetchall()
+        return [Source.model_validate(dict(r)) for r in rows]
+
+    def get_finding(self, finding_id: str) -> Finding | None:
+        row = self._execute(
+            "SELECT * FROM findings WHERE id = ?", (finding_id,)
+        ).fetchone()
+        return Finding.model_validate(dict(row)) if row else None
+
+    def update_finding_corroboration(
+        self,
+        finding_id: str,
+        count: int,
+        status: str,
+        confidence: str | None = None,
+    ) -> None:
+        if confidence is None:
+            self._execute(
+                "UPDATE findings SET corroboration_count = ?, corroboration_status = ? "
+                "WHERE id = ?",
+                (count, status, finding_id),
+            )
+        else:
+            self._execute(
+                "UPDATE findings SET corroboration_count = ?, corroboration_status = ?, "
+                "confidence = ? WHERE id = ?",
+                (count, status, confidence, finding_id),
+            )
 
     def list_findings(self, mission_id: str) -> list[Finding]:
         rows = self._execute(
@@ -592,8 +655,8 @@ class MissionStore:
         self._execute(
             """
             INSERT OR REPLACE INTO sources
-            (id, mission_id, url_or_ref, quote, retrieved_at)
-            VALUES (?, ?, ?, ?, ?)
+            (id, mission_id, url_or_ref, quote, retrieved_at, source_type)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 source.id,
@@ -601,6 +664,7 @@ class MissionStore:
                 source.url_or_ref,
                 source.quote,
                 source.retrieved_at,
+                source.source_type,
             ),
         )
         return source

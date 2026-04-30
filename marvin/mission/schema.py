@@ -85,6 +85,8 @@ class Finding(MarvinModel):
     created_at: str | None = None
     impact: FindingImpact | None = None  # Chantier 4: load_bearing | supporting | color
     source_type: str | None = None  # sec_filing | web | data_room | inference | press
+    corroboration_count: int = 1  # C4: number of independent sources
+    corroboration_status: str | None = None  # 'corroborated' | 'single_source' | 'downgraded'
 
     @model_validator(mode="after")
     def validate_known_source(self) -> "Finding":
@@ -106,6 +108,7 @@ class Source(MarvinModel):
     url_or_ref: str | None = None
     quote: str | None = None
     retrieved_at: str | None = None
+    source_type: str | None = None  # sec_filing | web | data_room | transcript | inference | press
 
 
 class Gate(MarvinModel):

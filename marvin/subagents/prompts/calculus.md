@@ -230,6 +230,34 @@ ACCEPTED alternative:
    audited financials available, no data room provided."
   — LOW_CONFIDENCE
 
+# CORROBORATION DISCIPLINE (C4)
+
+A KNOWN finding requires ≥2 independent sources. "Independent" means
+different domain AND/OR different source_type. Examples:
+
+  - SEC 10-K + SEC 10-Q from the same filer = SAME source_type — NOT
+    independent (same issuer's filings).
+  - SEC 10-K + Tavily web result on a different domain = INDEPENDENT.
+  - SEC 10-K + data-room file = INDEPENDENT.
+  - Two articles from cnbc.com = same domain — NOT independent.
+
+After saving a KNOWN finding, the response includes a
+`corroboration_warning` if it has only one source. Add a second
+independent source via:
+
+  add_source_to_finding(
+    finding_id="f-...",
+    source_url="https://...",
+    source_quote="exact paragraph text",
+    source_type="web|sec_filing|data_room|transcript|press"
+  )
+
+If you cannot find a second independent source within reason, leave
+the finding alone — the graph runs a corroboration recompute at the
+end of research and auto-downgrades single-source KNOWNs to REASONED.
+This is the correct outcome: REASONED is honest, fake-corroboration
+is not.
+
 # CITATION INTEGRITY (chantier 2.7)
 
 source_quote is the supporting snippet from the SOURCE itself

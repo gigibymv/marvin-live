@@ -7,6 +7,7 @@ from marvin.tools.data_room_tools import query_data_room, query_transcripts
 from marvin.tools.dora_tools import run_pestel
 from marvin.tools.mission_tools import (
     add_finding_to_mission,
+    add_source_to_finding,
     get_findings,
     get_hypotheses,
     mark_milestone_delivered,
@@ -23,6 +24,7 @@ _tools = [
     query_data_room,
     query_transcripts,
     add_finding_to_mission,
+    add_source_to_finding,
     mark_milestone_delivered,
 ]
 _agent_factory = build_agent("adversus", _tools)
