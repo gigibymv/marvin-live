@@ -27,6 +27,7 @@ const MissionDashboardView = RawMissionDashboardView as unknown as ComponentType
   completedMissions: DashboardCompletedMission[];
   onOpenMission: (missionId: string) => void;
   onCreateMission: (input: CreateMissionInput) => Promise<Mission>;
+  onDeleteMission: (missionId: string) => Promise<void>;
   backendNotice?: string;
 }>;
 
@@ -102,6 +103,12 @@ export default function MissionDashboard({
     router.push(`/missions/${missionId}`);
   };
 
+  const handleDeleteMission = async (missionId: string) => {
+    await repository.deleteMission(missionId);
+    const nextMissions = await repository.listMissions();
+    setMissions(nextMissions);
+  };
+
   const handleCreateMission = async (input: CreateMissionInput) => {
     try {
       const mission = await repository.createMission(input);
@@ -127,6 +134,7 @@ export default function MissionDashboard({
       completedMissions={completedMissions}
       onOpenMission={handleOpenMission}
       onCreateMission={handleCreateMission}
+      onDeleteMission={handleDeleteMission}
       backendNotice={backendState === "offline" ? backendNotice : undefined}
     />
   );

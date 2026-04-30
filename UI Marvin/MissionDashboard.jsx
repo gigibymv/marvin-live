@@ -65,9 +65,15 @@ function ProgressBar({ value }) {
   );
 }
 
-function ActiveRow({ m, onOpen }) {
+function ActiveRow({ m, onOpen, onDelete }) {
+  const [hovered, setHovered] = React.useState(false);
   return (
-    <div className="row" onClick={() => onOpen(m.id)}>
+    <div
+      className="row"
+      onClick={() => onOpen(m.id)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div>
         <div style={{ fontFamily:"var(--d)", fontSize:"16px", fontWeight:600, letterSpacing:"-.02em", color:"var(--ink)", marginBottom:"2px" }}>
           {m.name}
@@ -88,15 +94,38 @@ function ActiveRow({ m, onOpen }) {
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ color:"var(--muted)" }}>
           <path d="M2.5 6.5h8M7.5 3.5l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
+        {hovered && onDelete && (
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(m.id); }}
+            style={{
+              background:"none", border:"none", cursor:"pointer",
+              color:"var(--muted)", display:"flex", padding:"2px", marginLeft:4,
+              opacity:.6, transition:"opacity .1s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+            onMouseLeave={e => e.currentTarget.style.opacity = ".6"}
+            title="Delete mission"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function PastRow({ m }) {
+function PastRow({ m, onDelete }) {
+  const [hovered, setHovered] = React.useState(false);
   const outcomeColor = m.outcome === "Invest" ? "var(--green)" : m.outcome === "Pass" ? "var(--muted)" : "var(--amber)";
   return (
-    <div className="row" style={{ opacity:.7 }}>
+    <div
+      className="row"
+      style={{ opacity:.7 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div>
         <div style={{ fontFamily:"var(--d)", fontSize:"15px", fontWeight:500, letterSpacing:"-.01em", color:"var(--ink2)", marginBottom:"2px" }}>
           {m.name}
@@ -105,10 +134,27 @@ function PastRow({ m }) {
       </div>
       <div style={{ fontFamily:"var(--m)", fontSize:"9.5px", color:"var(--ink3)" }}>{m.type}</div>
       <div style={{ fontFamily:"var(--m)", fontSize:"9px", color:"var(--muted)" }}>{m.date}</div>
-      <div style={{ textAlign:"right" }}>
+      <div style={{ textAlign:"right", display:"flex", alignItems:"center", justifyContent:"flex-end", gap:"6px" }}>
         <span style={{ fontFamily:"var(--m)", fontSize:"9px", fontWeight:600, letterSpacing:".1em", textTransform:"uppercase", color:outcomeColor }}>
           {m.outcome}
         </span>
+        {hovered && onDelete && (
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(m.id); }}
+            style={{
+              background:"none", border:"none", cursor:"pointer",
+              color:"var(--muted)", display:"flex", padding:"2px",
+              opacity:.6, transition:"opacity .1s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.opacity = "1"}
+            onMouseLeave={e => e.currentTarget.style.opacity = ".6"}
+            title="Delete mission"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -334,6 +380,7 @@ export default function MissionDashboard({
   completedMissions = [],
   onOpenMission = () => {},
   onCreateMission = () => {},
+  onDeleteMission = () => {},
   backendNotice,
 }) {
   const [showNew, setShowNew] = useState(false);
@@ -401,7 +448,7 @@ export default function MissionDashboard({
               <span style={{ fontFamily:"var(--m)", fontSize:"9px", letterSpacing:".14em", textTransform:"uppercase", color:"var(--muted)", textAlign:"right" }}>Status</span>
             </div>
             <div style={{ background:"var(--paper)", border:"1px solid var(--rule)", borderTop:"none" }}>
-              {activeMissions.length > 0 ? activeMissions.map(m => <ActiveRow key={m.id} m={m} onOpen={onOpenMission}/>) : (
+              {activeMissions.length > 0 ? activeMissions.map(m => <ActiveRow key={m.id} m={m} onOpen={onOpenMission} onDelete={onDeleteMission}/>) : (
                 <div style={{ padding:"18px 28px", fontFamily:"var(--g)", fontSize:"13px", color:"var(--ink3)" }}>
                   No active missions yet.
                 </div>
@@ -418,7 +465,7 @@ export default function MissionDashboard({
               <span style={{ fontFamily:"var(--m)", fontSize:"9px", letterSpacing:".14em", textTransform:"uppercase", color:"var(--muted)", textAlign:"right" }}>Outcome</span>
             </div>
             <div style={{ background:"var(--paper)", border:"1px solid var(--rule)", borderTop:"none" }}>
-              {completedMissions.length > 0 ? completedMissions.map(m => <PastRow key={m.id} m={m}/>) : (
+              {completedMissions.length > 0 ? completedMissions.map(m => <PastRow key={m.id} m={m} onDelete={onDeleteMission}/>) : (
                 <div style={{ padding:"18px 28px", fontFamily:"var(--g)", fontSize:"13px", color:"var(--ink3)" }}>
                   No completed missions yet.
                 </div>

@@ -15,6 +15,8 @@ export interface RightRailProps {
   onChatDraftChange: (value: string) => void;
   onSendMessage: (value: string) => void;
   onOpenDeliverable?: (deliverableId: string) => void;
+  onGateApprove?: (gateId: string) => void;
+  onGateReject?: (gateId: string) => void;
 }
 
 // ─── RightRail ────────────────────────────────────────────────────────────────
@@ -27,6 +29,8 @@ export function RightRail({
   onChatDraftChange,
   onSendMessage,
   onOpenDeliverable,
+  onGateApprove,
+  onGateReject,
 }: RightRailProps): React.ReactElement {
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -129,6 +133,36 @@ export function RightRail({
                   >
                     Open {m.deliverableLabel ?? "deliverable"} →
                   </button>
+                )}
+                {!isUser && m.gateId && m.gateAction === "pending" && onGateApprove && onGateReject && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                    <button
+                      onClick={() => onGateApprove(m.gateId!)}
+                      style={{
+                        fontSize: 9, fontFamily: "var(--m)", letterSpacing: ".08em",
+                        textTransform: "uppercase", fontWeight: 700,
+                        padding: "4px 10px", borderRadius: 4, cursor: "pointer",
+                        background: "transparent",
+                        border: "1px solid rgba(45,110,78,.30)",
+                        color: "var(--green)",
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(45,110,78,.08)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                    >Approve →</button>
+                    <button
+                      onClick={() => onGateReject(m.gateId!)}
+                      style={{
+                        fontSize: 9, fontFamily: "var(--m)", letterSpacing: ".08em",
+                        textTransform: "uppercase", fontWeight: 700,
+                        padding: "4px 10px", borderRadius: 4, cursor: "pointer",
+                        background: "transparent",
+                        border: "1px solid rgba(160,40,40,.25)",
+                        color: "rgba(160,40,40,.8)",
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(160,40,40,.06)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+                    >Reject</button>
+                  </div>
                 )}
               </div>
             </div>

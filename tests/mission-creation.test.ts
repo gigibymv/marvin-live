@@ -43,6 +43,7 @@ describe("mission creation flow", () => {
         return mission;
       }),
       getMission: vi.fn(),
+      deleteMission: vi.fn(),
     };
 
     render(React.createElement(MissionDashboard, { repository }));

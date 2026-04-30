@@ -794,6 +794,8 @@ export default function MissionControl({
                 id: gateMsgId,
                 from: "m",
                 text: formatGatePendingChatMessage(event),
+                gateId: modalPayload.gateId,
+                gateAction: "pending",
               });
             });
             setLiveFindings((current) => {
@@ -1037,6 +1039,15 @@ export default function MissionControl({
 
       // Set streaming state
       setRunState(mission.id, { isStreaming: true });
+      setLiveFindings((current) =>
+        upsertLiveEvent(current, {
+          id: "startup",
+          kind: "phase",
+          agent: "Workflow",
+          claim_text: "Mission starting…",
+          ts: String(Date.now()),
+        })
+      );
       setLatestNarration("MARVIN — Starting the mission run.");
       setStreamError(null);
 
@@ -1191,6 +1202,12 @@ export default function MissionControl({
               (event) => !(event.kind === "gate" && event.id.includes(gateId))
             )
           );
+          // Clear the Approve/Reject buttons from the gate's chat bubble.
+          setMessages((current) =>
+            current.map((msg) =>
+              msg.gateId === gateId ? { ...msg, gateAction: undefined } : msg
+            )
+          );
 
           // Now — and only now — emit the user's "✓ Gate approved" bubble
           // and the system follow-up, so the chat log reflects backend
@@ -1274,6 +1291,12 @@ export default function MissionControl({
           setLiveFindings((current) =>
             current.filter(
               (event) => !(event.kind === "gate" && event.id.includes(gateId))
+            )
+          );
+          // Clear the Approve/Reject buttons from the gate's chat bubble.
+          setMessages((current) =>
+            current.map((msg) =>
+              msg.gateId === gateId ? { ...msg, gateAction: undefined } : msg
             )
           );
 
@@ -1991,6 +2014,8 @@ export default function MissionControl({
         defaultTab={DEFAULT_WORKSPACE_TAB}
         gateModal={null} // We handle gate modal separately
         onGateClose={handleGateClose}
+        onGateApprove={handleGateApprove}
+        onGateReject={handleGateReject}
         backendState={backendState}
         agents={agents}
         checkpoints={checkpoints}

@@ -119,6 +119,19 @@ export async function getMission(missionId: string): Promise<{
 }
 
 /**
+ * Delete a mission via DELETE /api/v1/missions/{id}
+ */
+export async function deleteMission(missionId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/missions/${missionId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    if (response.status === 404) throw new Error("Mission not found");
+    throw new BackendOfflineError();
+  }
+}
+
+/**
  * Get mission progress via GET /api/v1/missions/{id}/progress
  */
 export async function getMissionProgress(missionId: string): Promise<{

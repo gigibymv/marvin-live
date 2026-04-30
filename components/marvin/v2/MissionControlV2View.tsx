@@ -162,6 +162,8 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
     waitState,
     currentNarration,
     onOpenDeliverable,
+    onGateApprove,
+    onGateReject,
   } = props;
 
   const visibleDeliverables = useMemo(
@@ -240,7 +242,6 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
     const map = emptyTabMap<CenterActivityItem>();
     if (!activity) return map;
     const items: CenterActivityItem[] = activity
-      .filter((a) => a.kind !== "deliverable" && a.kind !== "milestone")
       .map((a) => ({
         id: a.id,
         kind: a.kind,
@@ -366,6 +367,8 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
         onChatDraftChange={onChatDraftChange}
         onSendMessage={onSendMessage}
         onOpenDeliverable={onOpenDeliverable}
+        onGateApprove={onGateApprove ? (gateId) => onGateApprove(gateId, "") : undefined}
+        onGateReject={onGateReject ? (gateId) => onGateReject(gateId, "") : undefined}
       />
     </div>
   );

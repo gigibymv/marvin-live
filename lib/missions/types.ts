@@ -37,6 +37,8 @@ export interface MissionChatMessage {
   // file from the message.
   deliverableId?: string;
   deliverableLabel?: string;
+  gateId?: string;
+  gateAction?: "pending";
 }
 
 export interface MissionRunState {

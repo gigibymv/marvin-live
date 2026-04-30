@@ -779,6 +779,14 @@ class MissionStore:
         cur = self._execute("DELETE FROM data_room_files WHERE id = ?", (file_id,))
         return cur.rowcount > 0
 
+    def delete_mission(self, mission_id: str) -> bool:
+        with self._connect() as conn:
+            # Delete child tables first (FK order)
+            for table in ("findings", "deliverables", "milestones", "gates", "hypotheses"):
+                conn.execute(f"DELETE FROM {table} WHERE mission_id = ?", (mission_id,))
+            cur = conn.execute("DELETE FROM missions WHERE id = ?", (mission_id,))
+            return cur.rowcount > 0
+
     def save_transcript(
         self, t: Transcript, segments: list[TranscriptSegment]
     ) -> Transcript:

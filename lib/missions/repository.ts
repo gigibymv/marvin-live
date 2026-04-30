@@ -4,6 +4,7 @@ import {
   createMission as apiCreateMission,
   listMissions as apiListMissions,
   getMission as apiGetMission,
+  deleteMission as apiDeleteMission,
   BackendOfflineError,
   isBackendOfflineError,
 } from "@/lib/missions/api";
@@ -13,6 +14,7 @@ export interface MissionRepository {
   listMissions(): Promise<Mission[]>;
   createMission(input: CreateMissionInput): Promise<Mission>;
   getMission(id: string): Promise<Mission | null>;
+  deleteMission(id: string): Promise<void>;
 }
 
 export { BackendOfflineError, isBackendOfflineError };
@@ -53,6 +55,9 @@ export function createLocalMissionRepository(): MissionRepository {
     },
     async getMission(id) {
       return readMissions().find((mission) => mission.id === id) ?? null;
+    },
+    async deleteMission(id) {
+      writeMissions(readMissions().filter((m) => m.id !== id));
     },
   };
 }
@@ -101,6 +106,9 @@ export function createHttpMissionRepository(basePath = "/api/v1"): MissionReposi
         fileAttached: Boolean(input.fileAttached),
         briefReceived: Boolean(input.briefReceived),
       };
+    },
+    async deleteMission(id) {
+      await apiDeleteMission(id);
     },
     async getMission(id) {
       try {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useCallback } from "react";
+import React from "react";
 import type { WorkspaceTab } from "@/lib/missions/types";
 import { humanizeText } from "@/lib/missions/humanize";
 import { Mono, Badge, StatusDot, PulsingM } from "./Primitives";
@@ -320,47 +320,9 @@ export function CenterPane({
   const activity = activityMap[selectedTab] ?? [];
   const isWorking = waitState?.isWorking ?? false;
 
-  // ── Resizable split ──────────────────────────────────────────────────────────
-  // activityPct = height of the Activity pane as % of the split container.
-  // Default 50/50. When the user has not yet manually dragged the divider,
-  // we auto-bias toward Activity (70%) when Outputs is empty so the user
-  // sees the live agent feed instead of a big white block.
-  const [activityPct, setActivityPct] = useState(50);
-  const userDraggedRef = useRef(false);
-  const splitRef = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
-  const effectiveActivityPct = userDraggedRef.current
-    ? activityPct
-    : findings.length === 0
-      ? 70
-      : 50;
-
-  const onHandleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-    userDraggedRef.current = true;
-
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.current || !splitRef.current) return;
-      const rect = splitRef.current.getBoundingClientRect();
-      // Distance from bottom of container to cursor = activity height
-      const fromBottom = rect.bottom - ev.clientY;
-      const pct = (fromBottom / rect.height) * 100;
-      setActivityPct(Math.min(80, Math.max(20, pct)));
-    };
-
-    const onUp = () => {
-      dragging.current = false;
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, []);
 
   return (
-    <main style={{ display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--paper)" }}>
+    <main style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--paper)" }}>
 
       {/* Header */}
       <div style={{ padding: "14px 24px 0", borderBottom: "1px solid var(--ruleh)", flexShrink: 0 }}>
@@ -405,15 +367,15 @@ export function CenterPane({
       {/* Next-gate strip removed: the tab strip's active-step indicator
           already conveys the same information without redundancy. */}
 
-      {/* Split pane: outputs (top) vs activity (bottom) — resizable, default 50/50 */}
-      <div ref={splitRef} style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* Split pane: outputs (top) vs activity (bottom) — static 50/50 */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
 
         {/* Outputs pane — bg matches FindingRow white so the empty space below
             the last row doesn't read as a separate "beige gap" between
             outputs and activity. */}
         <section
           aria-label="Outputs"
-          style={{ flex: `1 1 ${100 - effectiveActivityPct}%`, overflowY: "auto", minHeight: 0, background: "white" }}
+          style={{ flex: "1 1 50%", overflowY: "auto", minHeight: 0, background: "white" }}
         >
           <div style={{ padding: "10px 24px 6px", display: "flex", alignItems: "baseline", gap: 8 }}>
             <Mono size={9} weight={700} spacing=".14em" color="var(--ink)">Outputs</Mono>
@@ -464,27 +426,13 @@ export function CenterPane({
           )}
         </section>
 
-        {/* Drag handle — 5px, full-width, cursor row-resize */}
-        <div
-          aria-hidden
-          onMouseDown={onHandleMouseDown}
-          style={{
-            height: 5,
-            flexShrink: 0,
-            cursor: "row-resize",
-            background: "var(--ruleh)",
-            transition: "background .15s",
-            userSelect: "none",
-          }}
-          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "var(--rule)"; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "var(--ruleh)"; }}
-        />
+        <div style={{ height: 1, flexShrink: 0, background: "var(--ruleh)" }} />
 
         {/* Activity pane — visually distinct: bone bg, mono compact rows */}
         <section
           aria-label="Activity"
           style={{
-            flex: `1 1 ${effectiveActivityPct}%`,
+            flex: "1 1 50%",
             overflowY: "auto",
             minHeight: 0,
             background: "var(--bone)",

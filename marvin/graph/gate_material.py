@@ -131,13 +131,12 @@ def evaluate_gate_material(
 
     elif gate.gate_type == "manager_review":
         coverage = _coverage_payload(workstreams, milestones, findings)
-        if not research_findings:
-            missing_material.append("research_findings")
         payload.update(
             {
                 "research_findings": research_findings[-12:],
                 "findings_total": len(research_findings),
                 "coverage": coverage,
+                "findings_warning": "Research agents ran but produced no persisted findings (possible API failure). Review coverage before approving." if not research_findings else None,
             }
         )
 

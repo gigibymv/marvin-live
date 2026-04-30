@@ -867,10 +867,10 @@ _PHASE_LABELS: dict[str, str] = {
 }
 
 _PHASE_NARRATION: dict[str, str] = {
-    "setup": "Preparing the mission workspace",
-    "framing": "Turning the brief into a structured diligence frame",
+    "setup": "Initializing mission workspace…",
+    "framing": "Framing the engagement brief…",
     "awaiting_clarification": "Waiting for the missing context before framing continues",
-    "awaiting_confirmation": "Initial hypotheses are ready for review",
+    "awaiting_confirmation": "Hypotheses ready for review",
     "confirmed": "Starting the research workstreams",
     "research_done": "Research is complete and ready for manager review",
     "gate_g1_passed": "Manager review passed; starting the red-team challenge",
@@ -1038,6 +1038,15 @@ async def _emit_for_update(
             out.append(await _emit_phase_blocked(blocked_payload))
             if isinstance(blocked_payload, dict):
                 out.append(await _emit_narration("workflow", _phase_blocked_narration(blocked_payload)))
+                missing = blocked_payload.get("missing_material") or []
+                if isinstance(missing, (list, tuple)) and "research_findings" in missing:
+                    out.append(_sse_event("text", {
+                        "agent": "MARVIN",
+                        "text": (
+                            "Research completed but no findings were saved — the manager review gate cannot open. "
+                            "Check that the research agents produced findings, or contact support."
+                        ),
+                    }))
 
         display = get_display_name(node_name)
         if display is None:
@@ -1987,6 +1996,15 @@ async def get_mission(mission_id: str):
     
     mission = store.get_mission(mission_id)
     return mission.model_dump()
+
+
+@app.delete("/api/v1/missions/{mission_id}")
+async def delete_mission(mission_id: str):
+    store = MissionStore()
+    deleted = store.delete_mission(mission_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Mission not found")
+    return {"deleted": mission_id}
 
 
 @app.get("/api/v1/missions/{mission_id}/hypotheses")
