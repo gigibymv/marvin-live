@@ -1,0 +1,29 @@
+/* mc v2 design tokens */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --paper: #f4f0ea;
+  --bone:  #ede9e2;
+  --ink:   #1a1814;
+  --ink2:  #3a3630;
+  --ink3:  #6b6560;
+  --muted: #9e9890;
+  --rule:  rgba(26,24,20,.08);
+  --ruleh: rgba(26,24,20,.14);
+  --green: #2d6e4e;
+  --amber: #b45309;
+  --red:   #b91c1c;
+  --d: "Bricolage Grotesque", system-ui, sans-serif;
+  --g: "Geist", -apple-system, system-ui, sans-serif;
+  --m: "Geist Mono", ui-monospace, monospace;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 0.25; }
+  50%       { opacity: 1;    }
+}
+
+@keyframes pulseM {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 1;    }
+}
