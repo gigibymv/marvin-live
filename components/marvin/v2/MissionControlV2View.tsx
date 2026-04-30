@@ -241,14 +241,24 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
   const activityMap = useMemo<Record<WorkspaceTab, CenterActivityItem[]>>(() => {
     const map = emptyTabMap<CenterActivityItem>();
     if (!activity) return map;
+    // Bug 5: server returns activity in chronological order, so a 97-item
+    // feed pushed the latest entries below the viewport and the user only
+    // saw stale items. Surface newest first so the most recent step is
+    // always visible at the top of the activity pane.
     const items: CenterActivityItem[] = activity
-      .map((a) => ({
+      .map((a, idx) => ({
         id: a.id,
         kind: a.kind,
         agent: a.ag,
         text: a.claim_text ?? a.text ?? "",
         ts: a.ts ?? "",
-      }));
+        _idx: idx,
+      }))
+      .sort((a, b) => {
+        if (a.ts && b.ts && a.ts !== b.ts) return a.ts < b.ts ? 1 : -1;
+        return b._idx - a._idx;
+      })
+      .map(({ _idx, ...rest }) => rest);
     map[selectedTab] = items;
     return map;
   }, [activity, selectedTab]);
