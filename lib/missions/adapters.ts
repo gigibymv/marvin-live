@@ -165,6 +165,9 @@ export function routeDeliverableToSectionId(deliverable: {
   const filePath = String(deliverable.file_path ?? deliverable.filePath ?? "");
   const workstreamMatch = filePath.match(/(?:^|\/)(W\d+)_report\.md$/i);
   if (workstreamMatch?.[1]) return workstreamMatch[1].toUpperCase();
+  // C-PER-MILESTONE: Wx.y_<slug>.md routes to its parent workstream tab.
+  const milestoneMatch = filePath.match(/(?:^|\/)(W\d+)\.\d+_[^/]*\.md$/i);
+  if (milestoneMatch?.[1]) return milestoneMatch[1].toUpperCase();
 
   const knownTypeRoutes: Record<string, string> = {
     market_brief: "W1",

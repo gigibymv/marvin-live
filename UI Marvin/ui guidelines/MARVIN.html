@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MARVIN — New Mission</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Newsreader:ital,opsz,wght@1,6..72,400;1,6..72,500&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #F4F0EA; --bone: #EEE9DD; --olive: #EFEDE3;
+  --ink: #1A1814; --ink2: #3A362F; --ink3: #5C564C; --muted: #78716A;
+  --rule: rgba(26,24,20,.09); --rule-m: rgba(26,24,20,.14);
+  --err: #B43A2E; --err-bg: rgba(180,58,46,.08);
+  --ok: #2D9E55;
+  --display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --serif: 'Newsreader', Georgia, serif;
+  --sans: 'Geist', -apple-system, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;color:var(--ink)}
+button,input,textarea{font-family:var(--sans)}
+button{cursor:pointer;border:none;background:none;color:inherit}
+*:focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:4px}
+
+#app{max-width:1240px;margin:0 auto;padding:32px 32px 80px}
+
+/* ── Top bar ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:48px;padding-bottom:18px;border-bottom:1px solid var(--rule)}
+.brand{font-family:var(--display);font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-.02em}
+.topnav{display:flex;gap:8px;align-items:center}
+.topnav-btn{font-size:12.5px;color:var(--ink3);padding:7px 12px;border-radius:6px;transition:all .12s;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.topnav-btn:hover{color:var(--ink);background:var(--bone)}
+
+/* ── Step indicator ── */
+.stepper{display:flex;align-items:center;gap:12px;margin-bottom:36px;justify-content:center}
+.step-pill{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.step-pill.active{color:var(--ink)}
+.step-pill.done{color:var(--ink3)}
+.step-num{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--rule-m);display:grid;place-items:center;font-size:10px;font-weight:600}
+.step-pill.active .step-num{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.step-pill.done .step-num{background:var(--ink3);color:var(--paper);border-color:var(--ink3)}
+.step-sep{width:40px;height:1px;background:var(--rule-m)}
+
+/* ── Steps ── */
+.step{display:none;animation:fadeIn .25s ease}
+.step.on{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Step 1 ── */
+.s1-head{text-align:center;margin-bottom:36px}
+.s1-title{font-family:var(--display);font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-.025em;margin-bottom:6px}
+
+.mt-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:880px;margin:0 auto}
+.mt{padding:26px 28px;border:1.5px solid var(--rule);border-radius:10px;cursor:pointer;transition:all .15s;background:var(--paper);position:relative;text-align:left;width:100%;font-family:var(--sans);color:inherit}
+.mt:hover:not(.coming-soon){border-color:var(--rule-m);background:var(--bone);transform:translateY(-2px)}
+.mt.selected{border-color:var(--ink);background:var(--bone);box-shadow:0 0 0 3px rgba(26,24,20,.04)}
+.mt.coming-soon{opacity:.4;cursor:not-allowed}
+.mt.coming-soon:hover{transform:none}
+.mt.coming-soon::after{content:'Coming soon';position:absolute;top:16px;right:18px;font-family:var(--mono);font-size:8px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--bone);border:1px solid var(--rule);border-radius:3px;padding:3px 8px}
+.mt-ico{width:46px;height:46px;border:1.5px solid var(--rule);border-radius:9px;display:grid;place-items:center;margin-bottom:14px;background:var(--bone)}
+.mt-ico svg{width:24px;height:24px}
+.mt-name{font-family:var(--display);font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.02em;margin-bottom:6px}
+.mt-desc{font-size:12.5px;color:var(--ink2);line-height:1.55;margin-bottom:14px}
+.mt-facts{display:flex;gap:14px;padding-top:12px;border-top:1px solid var(--rule);flex-wrap:wrap}
+.mt-fact{display:flex;flex-direction:column;gap:2px}
+.mt-fact-v{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--ink);letter-spacing:.02em}
+.mt-fact-k{font-family:var(--mono);font-size:8.5px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+
+.s1-cta{text-align:center;margin-top:36px}
+.btn-primary{font-size:14px;font-weight:600;padding:13px 32px;border-radius:8px;background:var(--ink);color:var(--paper);transition:all .15s;letter-spacing:-.01em;display:inline-flex;align-items:center;gap:10px}
+.btn-primary:hover:not(:disabled){background:var(--ink2);transform:translateY(-1px)}
+.btn-primary svg{transition:transform .15s}
+.btn-primary:hover:not(:disabled) svg{transform:translateX(2px)}
+.btn-primary:disabled{opacity:.35;cursor:not-allowed;transform:none}
+
+/* Past missions on step 1 */
+.past-block{max-width:880px;margin:56px auto 0;padding-top:30px;border-top:1px solid var(--rule)}
+.past-lbl{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:14px;display:flex;justify-content:space-between;align-items:baseline}
+.past-count{font-weight:400;color:var(--ink3);text-transform:none;letter-spacing:0}
+.past-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.past-card{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border:1px solid var(--rule);border-radius:8px;cursor:pointer;transition:all .12s;background:var(--bone);text-align:left;font-family:var(--sans)}
+.past-card:hover{border-color:var(--rule-m);background:var(--paper);transform:translateY(-1px)}
+.past-card-top{display:flex;justify-content:space-between;align-items:center}
+.past-status{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;color:var(--ink3);letter-spacing:.05em}
+.past-dot{width:6px;height:6px;border-radius:50%}
+.past-type{font-family:var(--mono);font-size:9px;color:var(--ink3);background:var(--paper);border:1px solid var(--rule);border-radius:3px;padding:2px 7px}
+.past-name{font-size:13.5px;font-weight:500;color:var(--ink);line-height:1.35}
+.past-meta{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.03em}
+
+/* ── Step 2 ── */
+.s2-nav{margin-bottom:28px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px}
+.back-btn{font-size:13px;color:var(--ink3);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:color .1s;font-family:var(--sans);padding:4px 0}
+.back-btn:hover{color:var(--ink)}
+.s2-title{font-family:var(--display);font-size:22px;font-weight:600;color:var(--ink);letter-spacing:-.02em}
+.s2-chip{font-family:var(--mono);font-size:10px;color:var(--ink);background:var(--bone);border:1px solid var(--rule-m);border-radius:20px;padding:5px 11px;letter-spacing:.05em;text-transform:uppercase;font-weight:500}
+
+.two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:44px;align-items:start}
+
+/* Form */
+.form-section{margin-bottom:26px}
+.form-section label{display:block;font-family:var(--mono);font-size:9.5px;font-weight:600;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+.label-opt{font-weight:400;color:var(--ink3);font-size:9px;text-transform:none;letter-spacing:0;margin-left:6px}
+.finp{width:100%;padding:12px 14px;border:1px solid var(--rule);border-radius:7px;background:var(--bone);font-size:14px;color:var(--ink);outline:none;transition:all .15s}
+.finp::placeholder{color:var(--ink3);opacity:.48}
+.finp:focus{border-color:var(--ink2);background:var(--paper)}
+.finp.err{border-color:var(--err);background:var(--err-bg)}
+.finp-row{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+textarea.finp{resize:vertical;line-height:1.65;min-height:140px;font-family:var(--sans)}
+.field-err{display:none;margin-top:5px;font-size:11.5px;color:var(--err);font-family:var(--mono);letter-spacing:.02em}
+.field-err.on{display:block}
+
+/* Submit */
+.submit-row{display:flex;align-items:center;gap:16px;margin-top:32px;padding-top:24px;border-top:1px solid var(--rule)}
+.btn-launch{font-size:14px;font-weight:600;padding:13px 30px;border-radius:8px;background:var(--ink);color:var(--paper);transition:all .15s;display:flex;align-items:center;gap:8px;letter-spacing:-.01em}
+.btn-launch:hover{background:var(--ink2);transform:translateY(-1px)}
+.btn-launch:active{transform:translateY(0)}
+.btn-launch svg{transition:transform .15s}
+.btn-launch:hover svg{transform:translateX(2px)}
+.launch-note{font-size:12px;color:var(--muted);line-height:1.5}
+
+/* Team preview */
+.team-card{border:1px solid var(--rule);border-radius:11px;overflow:hidden;background:var(--bone);position:sticky;top:20px}
+.team-hd{padding:14px 16px;border-bottom:1px solid var(--rule);background:var(--paper);display:flex;justify-content:space-between;align-items:center}
+.team-title{font-size:13px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.team-badge{font-family:var(--mono);font-size:9.5px;color:var(--ink3);background:var(--bone);border:1px solid var(--rule);border-radius:4px;padding:3px 7px;letter-spacing:.04em}
+.team-list{padding:6px 0;max-height:460px;overflow-y:auto}
+.op{display:flex;align-items:center;gap:12px;padding:10px 16px;transition:background .1s}
+.op:hover{background:var(--paper)}
+.op-ico{width:36px;height:36px;border:1.5px solid var(--rule);border-radius:8px;flex-shrink:0;display:grid;place-items:center;background:var(--paper)}
+.op-ico svg{width:18px;height:18px}
+.op-info{flex:1;min-width:0}
+.op-name{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--ink);letter-spacing:.01em}
+.op-role{font-size:10.5px;color:var(--ink3);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.team-footer{padding:12px 16px;border-top:1px solid var(--rule);background:var(--paper)}
+.team-footer-txt{font-size:11.5px;color:var(--ink3);line-height:1.55}
+
+/* Deliverable card */
+.deliv{margin-top:14px;padding:14px 16px;border:1px solid var(--rule);border-radius:10px;background:var(--bone)}
+.deliv-lbl{font-family:var(--mono);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px}
+.deliv-title{font-size:13.5px;font-weight:500;color:var(--ink);line-height:1.45;margin-bottom:9px}
+.deliv-meta{display:flex;gap:14px;flex-wrap:wrap}
+.deliv-m{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
+.deliv-m svg{width:12px;height:12px;color:var(--ink3)}
+
+/* Responsive */
+@media (max-width: 900px){
+  #app{padding:24px 20px 60px}
+  .mt-grid{grid-template-columns:1fr}
+  .two-col{grid-template-columns:1fr;gap:28px}
+  .team-card{position:static}
+  .past-grid{grid-template-columns:1fr}
+  .step-sep{width:24px}
+}
+@media (max-width: 520px){
+  .finp-row{grid-template-columns:1fr}
+  .topbar{flex-wrap:wrap}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand">MARVIN</div>
+    <div class="topnav">
+      <button class="topnav-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Missions
+      </button>
+      <button class="topnav-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v2"/></svg>
+        Team
+      </button>
+      <button class="topnav-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </button>
+    </div>
+  </div>
+
+  <!-- Stepper -->
+  <div class="stepper" aria-label="Progress">
+    <div class="step-pill active" id="pill-1"><span class="step-num">1</span><span>Mission type</span></div>
+    <div class="step-sep"></div>
+    <div class="step-pill" id="pill-2"><span class="step-num">2</span><span>Brief</span></div>
+  </div>
+
+  <!-- ═══ STEP 1 ═══ -->
+  <section class="step on" id="step1" aria-labelledby="s1-title">
+    <div class="s1-head">
+      <h1 class="s1-title" id="s1-title">What type of mission?</h1>
+    </div>
+
+    <div class="mt-grid" role="radiogroup" aria-label="Mission type">
+      <button class="mt" data-type="cdd" onclick="selectMission(this)" role="radio" aria-checked="false">
+        <div class="mt-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v10M23 12h-6m-6 0H1"/>
+            <circle cx="12" cy="12" r="9" stroke-dasharray="2 3"/>
+          </svg>
+        </div>
+        <div class="mt-name">Commercial Due Diligence</div>
+        <div class="mt-desc">Validate market opportunity, assess competitive moat, size TAM/SAM, stress-test the investment thesis before committing capital.</div>
+        <div class="mt-facts">
+          <div class="mt-fact"><span class="mt-fact-v">21 days</span><span class="mt-fact-k">Duration</span></div>
+          <div class="mt-fact"><span class="mt-fact-v">10 agents</span><span class="mt-fact-k">Team</span></div>
+          <div class="mt-fact"><span class="mt-fact-v">IC memo</span><span class="mt-fact-k">Output</span></div>
+        </div>
+      </button>
+
+      <button class="mt coming-soon" disabled aria-disabled="true">
+        <div class="mt-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12l3-3 3 3m6-6l3 3 3-3"/><path d="M6 9v10M18 6v10"/>
+            <circle cx="6" cy="19" r="2"/><circle cx="18" cy="16" r="2"/>
+          </svg>
+        </div>
+        <div class="mt-name">Entry Strategy</div>
+        <div class="mt-desc">Design sequenced GTM roadmap, identify beachhead segment, de-risk market entry with competitive positioning playbook.</div>
+        <div class="mt-facts">
+          <div class="mt-fact"><span class="mt-fact-v">5 weeks</span><span class="mt-fact-k">Duration</span></div>
+          <div class="mt-fact"><span class="mt-fact-v">8 agents</span><span class="mt-fact-k">Team</span></div>
+          <div class="mt-fact"><span class="mt-fact-v">GTM plan</span><span class="mt-fact-k">Output</span></div>
+        </div>
+      </button>
+
+      <button class="mt coming-soon" disabled aria-disabled="true">
+        <div class="mt-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 3L3 8l5 5M16 21l5-5-5-5"/><path d="M3 8h12M21 16H9"/>
+            <circle cx="15" cy="8" r="1.5" fill="currentColor"/><circle cx="9" cy="16" r="1.5" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="mt-name">Competitive Response</div>
+        <div class="mt-desc">Map emerging threats, build countermove scenarios, pressure-test defensive positioning before competitors execute.</div>
+        <div class="mt-facts">
+          <div class="mt-fact"><span class="mt-fact-v">2 weeks</span><span class="mt-fact-k">Duration</span></div>
+          <div class="mt-fact"><span class="mt-fact-v">6 agents</span><span class="mt-fact-k">Team</span></div>
+          <div class="mt-fact"><span class="mt-fact-v">Playbook</span><span class="mt-fact-k">Output</span></div>
+        </div>
+      </button>
+
+      <button class="mt coming-soon" disabled aria-disabled="true">
+        <div class="mt-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 4l7 7m0 0l7-7m-7 7l-7 7m7-7l7 7"/><circle cx="12" cy="12" r="10"/>
+          </svg>
+        </div>
+        <div class="mt-name">Strategic Review</div>
+        <div class="mt-desc">Assess portfolio performance, identify capability gaps, prioritize organic vs inorganic growth levers for the board.</div>
+        <div class="mt-facts">
+          <div class="mt-fact"><span class="mt-fact-v">4 weeks</span><span class="mt-fact-k">Duration</span></div>
+          <div class="mt-fact"><span class="mt-fact-v">7 agents</span><span class="mt-fact-k">Team</span></div>
+          <div class="mt-fact"><span class="mt-fact-v">Board deck</span><span class="mt-fact-k">Output</span></div>
+        </div>
+      </button>
+    </div>
+
+    <div class="s1-cta">
+      <button class="btn-primary" id="btn-configure" disabled onclick="goToStep2()">
+        Continue
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+
+    <!-- Past missions -->
+    <div class="past-block">
+      <div class="past-lbl"><span>Recent missions</span> <span class="past-count">3 active · 12 archived</span></div>
+      <div class="past-grid">
+        <button class="past-card">
+          <div class="past-card-top">
+            <div class="past-status"><span class="past-dot" style="background:var(--ok)"></span>Running</div>
+            <div class="past-type">CDD</div>
+          </div>
+          <div class="past-name">NovaSec / Meridian Capital</div>
+          <div class="past-meta">Day 10 of 21 · 6 agents active</div>
+        </button>
+        <button class="past-card">
+          <div class="past-card-top">
+            <div class="past-status"><span class="past-dot" style="background:#E8A830"></span>Review</div>
+            <div class="past-type">Board</div>
+          </div>
+          <div class="past-name">Heliodyne / Summit PE</div>
+          <div class="past-meta">Day 8 of 10 · awaiting sign-off</div>
+        </button>
+        <button class="past-card">
+          <div class="past-card-top">
+            <div class="past-status"><span class="past-dot" style="background:#AEAEB2"></span>Draft</div>
+            <div class="past-type">Red-team</div>
+          </div>
+          <div class="past-name">Calyx / Internal</div>
+          <div class="past-meta">Day 3 of 17 · context ingestion</div>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ STEP 2 ═══ -->
+  <section class="step" id="step2" aria-labelledby="s2-title">
+    <div class="s2-nav">
+      <button class="back-btn" onclick="goToStep1()">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M11 7H3M6 4L3 7l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back
+      </button>
+      <h1 class="s2-title" id="s2-title">Brief the team</h1>
+      <div class="s2-chip">Commercial DD</div>
+    </div>
+
+    <div class="two-col">
+      <!-- Left — Brief -->
+      <div>
+        <div class="form-section">
+          <div class="finp-row">
+            <div>
+              <label for="f-target">Target company</label>
+              <input class="finp" id="f-target" type="text" placeholder="e.g. Cursor" autocomplete="off">
+              <div class="field-err" id="err-target">Required</div>
+            </div>
+            <div>
+              <label for="f-client">Client</label>
+              <input class="finp" id="f-client" type="text" placeholder="e.g. European PE fund" autocomplete="off">
+              <div class="field-err" id="err-client">Required</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <label for="f-context">Context <span class="label-opt">Product, metrics, thesis, competitors</span></label>
+          <textarea class="finp" id="f-context" placeholder="• Product overview & value proposition
+• Key metrics (ARR, growth, users, retention)
+• Market position & competitive landscape
+• Investment thesis & strategic rationale"></textarea>
+          <div class="field-err" id="err-context">Required</div>
+        </div>
+
+        <div class="form-section">
+          <label for="f-questions">Key questions to solve</label>
+          <textarea class="finp" id="f-questions" style="min-height:110px" placeholder="1. 
+2. 
+3. "></textarea>
+          <div class="field-err" id="err-questions">Required</div>
+        </div>
+
+        <div class="submit-row">
+          <button class="btn-launch" onclick="launchMission()">
+            Brief the team
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="launch-note">10 operatives will be briefed<br>and begin working immediately.</div>
+        </div>
+      </div>
+
+      <!-- Right — Team preview -->
+      <div>
+        <div class="team-card">
+          <div class="team-hd">
+            <div>
+              <div class="team-title">Operatives</div>
+            </div>
+            <div class="team-badge">CDD · 10</div>
+          </div>
+          <div class="team-list">
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 3v18M3 8h18M3 16h5"/></svg></div><div class="op-info"><div class="op-name">Papyrus</div><div class="op-role">Engagement brief & framing</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><circle cx="11" cy="11" r="3"/></svg></div><div class="op-info"><div class="op-name">Dora</div><div class="op-role">Market research & TAM sizing</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-9"/><circle cx="7" cy="16" r="1.5" fill="currentColor"/></svg></div><div class="op-info"><div class="op-name">Calculus</div><div class="op-role">Financial modeling & QoE</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></div><div class="op-info"><div class="op-name">Vigil</div><div class="op-role">Competitive mapping</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M12 3v18"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M5 5l3 3m8-3l-3 3m-8 8l3-3m8 8l-3-3"/></svg></div><div class="op-info"><div class="op-name">Thesis</div><div class="op-role">Hypothesis generation & tracking</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg></div><div class="op-info"><div class="op-name">Forma</div><div class="op-role">Framework selection & application</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2 7h7l-5.5 4.5L18 21l-6-4.5L6 21l2.5-7.5L3 9h7z"/></svg></div><div class="op-info"><div class="op-name">Adversus</div><div class="op-role">Red-teaming & stress-testing</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg></div><div class="op-info"><div class="op-name">Arbiter</div><div class="op-role">Verification & fact-checking</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 7-9 7-9-7 9-7z"/><path d="M12 21V10"/><circle cx="12" cy="21" r="2" fill="currentColor"/></svg></div><div class="op-info"><div class="op-name">Merlin</div><div class="op-role">Storyline & narrative synthesis</div></div></div>
+            <div class="op"><div class="op-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h3"/></svg></div><div class="op-info"><div class="op-name">Scribe</div><div class="op-role">Deliverable building & export</div></div></div>
+          </div>
+          <div class="team-footer">
+            <div class="team-footer-txt">Operatives activate sequentially. Merlin runs a quality gate before each delivery.</div>
+          </div>
+        </div>
+
+        <div class="deliv">
+          <div class="deliv-lbl">Expected deliverable</div>
+          <div class="deliv-title">Investment Committee memo with full market sizing, competitive benchmarks and risk analysis</div>
+          <div class="deliv-meta">
+            <div class="deliv-m">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              21 days
+            </div>
+            <div class="deliv-m">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              .pptx + .xlsx
+            </div>
+            <div class="deliv-m">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              First draft day 4
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+let selectedType = null;
+
+function selectMission(el) {
+  if (el.classList.contains('coming-soon')) return;
+  document.querySelectorAll('.mt').forEach(m => {m.classList.remove('selected');m.setAttribute('aria-checked','false')});
+  el.classList.add('selected');
+  el.setAttribute('aria-checked','true');
+  selectedType = el.getAttribute('data-type');
+  document.getElementById('btn-configure').disabled = false;
+}
+
+function goToStep2() {
+  if (!selectedType) return;
+  document.getElementById('step1').classList.remove('on');
+  document.getElementById('step2').classList.add('on');
+  document.getElementById('pill-1').classList.remove('active');
+  document.getElementById('pill-1').classList.add('done');
+  document.getElementById('pill-2').classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function goToStep1() {
+  document.getElementById('step2').classList.remove('on');
+  document.getElementById('step1').classList.add('on');
+  document.getElementById('pill-2').classList.remove('active');
+  document.getElementById('pill-1').classList.remove('done');
+  document.getElementById('pill-1').classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function launchMission() {
+  const fields = ['target','client','context','questions'];
+  let firstBad = null;
+  let hasErr = false;
+  fields.forEach(k => {
+    const el = document.getElementById('f-'+k);
+    const err = document.getElementById('err-'+k);
+    if (!el.value.trim()) {
+      el.classList.add('err');
+      err.classList.add('on');
+      if (!firstBad) firstBad = el;
+      hasErr = true;
+    } else {
+      el.classList.remove('err');
+      err.classList.remove('on');
+    }
+  });
+  if (hasErr) { firstBad.focus(); return; }
+  
+  const btn = document.querySelector('.btn-launch');
+  btn.innerHTML = 'Briefing team…';
+  btn.style.opacity = '.7';
+  btn.style.cursor = 'default';
+  btn.disabled = true;
+  
+  setTimeout(() => {
+    btn.innerHTML = '✓ Mission briefed — routing to workplan';
+  }, 700);
+}
+
+// Clear errors on input
+['target','client','context','questions'].forEach(k => {
+  const el = document.getElementById('f-'+k);
+  if (el) el.addEventListener('input', () => {
+    if (el.value.trim()) {
+      el.classList.remove('err');
+      document.getElementById('err-'+k).classList.remove('on');
+    }
+  });
+});
+</script>
+</body>
+</html>

@@ -233,6 +233,9 @@ class MissionStore:
                 "ALTER TABLE findings ADD COLUMN corroboration_status TEXT",
             ),
             ("sources", "source_type", "ALTER TABLE sources ADD COLUMN source_type TEXT"),
+            # C-PER-MILESTONE — link findings + deliverables to a milestone row.
+            ("findings", "milestone_id", "ALTER TABLE findings ADD COLUMN milestone_id TEXT"),
+            ("deliverables", "milestone_id", "ALTER TABLE deliverables ADD COLUMN milestone_id TEXT"),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
@@ -573,8 +576,8 @@ class MissionStore:
             INSERT OR REPLACE INTO findings
             (id, mission_id, workstream_id, hypothesis_id, claim_text, confidence,
              source_id, agent_id, human_validated, created_at, impact, source_type,
-             corroboration_count, corroboration_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             corroboration_count, corroboration_status, milestone_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 finding.id,
@@ -591,6 +594,7 @@ class MissionStore:
                 finding.source_type,
                 finding.corroboration_count,
                 finding.corroboration_status,
+                finding.milestone_id,
             ),
         )
         # Mirror the primary source into finding_sources for uniform lookup,
@@ -898,8 +902,8 @@ class MissionStore:
         self._execute(
             """
             INSERT OR REPLACE INTO deliverables
-            (id, mission_id, deliverable_type, status, file_path, file_size_bytes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, mission_id, deliverable_type, status, file_path, file_size_bytes, created_at, milestone_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 deliverable.id,
@@ -909,6 +913,7 @@ class MissionStore:
                 deliverable.file_path,
                 deliverable.file_size_bytes,
                 deliverable.created_at,
+                deliverable.milestone_id,
             ),
         )
         return deliverable

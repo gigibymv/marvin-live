@@ -76,6 +76,7 @@ class Finding(MarvinModel):
     id: str
     mission_id: str
     workstream_id: str | None = None
+    milestone_id: str | None = None  # C-PER-MILESTONE: tag findings to a milestone for per-milestone reports
     hypothesis_id: str | None = None
     claim_text: str
     confidence: Confidence
@@ -131,6 +132,7 @@ class Deliverable(MarvinModel):
     file_path: str | None = None
     file_size_bytes: int | None = None
     created_at: str | None = None
+    milestone_id: str | None = None  # C-PER-MILESTONE: pair a deliverable with a milestone row in the UI
 
     @field_validator("file_path")
     @classmethod

@@ -117,6 +117,7 @@ def test_progress_never_marks_placeholder_artifact_ready(store: MissionStore, tm
             "status": "pending",
             "file_path": None,
             "created_at": payload["deliverables"][0]["created_at"],
+            "milestone_id": None,
         }
     ]
 

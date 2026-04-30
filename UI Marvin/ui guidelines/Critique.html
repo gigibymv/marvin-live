@@ -1,0 +1,983 @@
+<!DOCTYPE html><html lang="en" style="--paper: #EFEDE3; --paper-2: #E4E0D0; --ink: #1B1C15; --accent: oklch(0.55 0.10 110);"><head>
+
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>H+AI — Vision</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300;1,6..72,400;1,6..72,500&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --paper: #F4F0EA;
+    --paper-2: #EDE7DC;
+    --ink: #1A1814;
+    --ink-2: #3A362F;
+    --muted: #78716A;
+    --rule: #1A18141A;
+    --accent: oklch(0.62 0.14 55);
+    --signal: oklch(0.58 0.14 150);
+    --warn: oklch(0.70 0.16 40);
+    --console-bg: #15130F;
+    --console-ink: #E8E2D4;
+
+    --display: 'Bricolage Grotesque', 'GT Alpina', system-ui, sans-serif;
+    --serif: 'Newsreader', 'Tiempos Headline', Georgia, serif;
+    --sans: 'Geist', -apple-system, 'Helvetica Neue', sans-serif;
+    --mono: 'Geist Mono', 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  body { font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 0 48px; }
+  .rule { height: 1px; background: var(--rule); width: 100%; }
+  .rule-v { width: 1px; background: var(--rule); align-self: stretch; }
+
+  /* -------- NAV -------- */
+  nav.top {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in oklch, var(--paper) 92%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--rule);
+  }
+  nav.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand-mark {
+    width: 26px; height: 26px; border: 1px solid var(--ink);
+    display: grid; place-items: center;
+    font-family: var(--serif); font-style: italic; font-weight: 400; font-size: 16px;
+  }
+  .brand-name { font-family: var(--display); font-size: 19px; font-weight: 500; letter-spacing: -0.02em; }
+  .brand-name em { font-family: var(--serif); font-style: italic; font-weight: 300; }
+  nav ul { list-style: none; display: flex; gap: 36px; font-size: 13px; letter-spacing: 0.02em; }
+  nav ul a { color: var(--ink-2); text-decoration: none; }
+  nav ul a:hover { color: var(--ink); }
+  .cta-btn {
+    font-family: var(--sans); font-size: 13px; letter-spacing: 0.02em;
+    padding: 9px 18px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+    cursor: pointer; transition: all .15s;
+  }
+  .cta-btn:hover { background: transparent; color: var(--ink); }
+  .cta-btn.ghost { background: transparent; color: var(--ink); }
+  .cta-btn.ghost:hover { background: var(--ink); color: var(--paper); }
+
+  /* -------- HERO -------- */
+  .hero { padding: 80px 0 60px; position: relative; }
+  .est { font-family: var(--mono); font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+  .hero h1 {
+    font-family: var(--display); font-weight: 400;
+    font-size: clamp(60px, 8.5vw, 140px); line-height: 0.92; letter-spacing: -0.035em;
+    margin-top: 18px;
+    text-wrap: balance;
+  }
+  .hero h1 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); letter-spacing: -0.02em; }
+  .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 56px; }
+  .lede { font-family: var(--serif); font-size: 26px; line-height: 1.4; font-weight: 300; letter-spacing: -0.005em; }
+  .lede em { font-style: italic; }
+  .hero-meta { display: flex; flex-direction: column; gap: 18px; font-size: 14px; color: var(--ink-2); }
+  .meta-row { display: grid; grid-template-columns: 140px 1fr; gap: 24px; padding: 14px 0; border-top: 1px solid var(--rule); }
+  .meta-row:last-child { border-bottom: 1px solid var(--rule); }
+  .meta-row dt { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  .hero-ticker {
+    margin-top: 72px; padding: 16px 0;
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    display: flex; gap: 64px; overflow: hidden;
+    font-family: var(--mono); font-size: 12px; color: var(--ink-2); letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .ticker-track { display: flex; gap: 64px; animation: ticker 40s linear infinite; }
+  @keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .ticker-track span { display: flex; align-items: center; gap: 10px; }
+  .ticker-track b { font-weight: 500; color: var(--ink); font-family: var(--sans); }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 3px color-mix(in oklch, var(--signal) 20%, transparent); }
+
+  /* -------- SECTION CHROME -------- */
+  section { padding: 120px 0; position: relative; }
+  section.tight { padding: 80px 0; }
+  .section-head { display: grid; grid-template-columns: 220px 1fr; gap: 48px; margin-bottom: 72px; align-items: start; }
+  .section-head .label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--ink); display: inline-block; }
+  .section-head h2 { font-family: var(--display); font-weight: 500; font-size: clamp(38px, 4.8vw, 64px); line-height: 1.0; letter-spacing: -0.025em; max-width: 900px; text-wrap: balance; }
+  .section-head h2 em { font-family: var(--serif); font-weight: 300; font-style: italic; color: var(--ink-2); letter-spacing: -0.015em; }
+
+  /* -------- THESIS -------- */
+  .thesis { background: var(--paper-2); }
+  .thesis-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--ink); }
+  .thesis-cell { padding: 40px 32px 56px; border-right: 1px solid var(--rule); position: relative; }
+  .thesis-cell:last-child { border-right: 0; }
+  .thesis-n { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; color: var(--muted); }
+  .thesis-cell h3 { font-family: var(--display); font-weight: 500; font-size: 30px; line-height: 1.1; letter-spacing: -0.02em; margin: 16px 0 20px; text-wrap: balance; }
+  .thesis-cell h3 em { font-family: var(--serif); font-weight: 300; font-style: italic; }
+  .thesis-cell p { color: var(--ink-2); font-size: 15px; line-height: 1.6; max-width: 36ch; }
+
+  /* -------- MODEL / HOW IT WORKS -------- */
+  .model-stage {
+    position: relative; border: 1px solid var(--rule); background: var(--paper-2);
+    padding: 48px; min-height: 560px;
+    display: grid; grid-template-columns: 260px 1fr 260px; gap: 40px;
+  }
+  .model-col h4 { font-family: var(--mono); font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 20px; }
+  .role-card { background: var(--paper); border: 1px solid var(--rule); padding: 18px; margin-bottom: 12px; font-size: 13px; position: relative; }
+  .role-card .name { font-family: var(--display); font-weight: 500; font-size: 19px; line-height: 1.1; letter-spacing: -0.015em; margin-bottom: 4px; }
+  .role-card .name em { font-family: var(--serif); font-style: italic; font-weight: 400; }
+  .role-card .title { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .role-card .status { position: absolute; top: 16px; right: 14px; font-family: var(--mono); font-size: 10px; color: var(--signal); display: flex; align-items: center; gap: 6px; letter-spacing: 0.06em; }
+  .role-card .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--signal); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .role-card.agent { background: var(--paper); border-left: 3px solid var(--ink); }
+  .model-center {
+    position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+  }
+  .model-center .big {
+    font-family: var(--serif); font-size: 64px; line-height: 1; font-style: italic; font-weight: 300; letter-spacing: -0.02em; margin: 0 0 24px;
+  }
+  .model-flow { width: 100%; margin-top: 24px; }
+  .flow-step { display: grid; grid-template-columns: 40px 1fr; gap: 16px; padding: 14px 0; border-top: 1px solid var(--rule); text-align: left; }
+  .flow-step:last-child { border-bottom: 1px solid var(--rule); }
+  .flow-step .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .flow-step .t { font-size: 13px; color: var(--ink-2); }
+  .flow-step .t b { font-weight: 500; color: var(--ink); }
+
+  /* -------- CONSOLE -------- */
+  .console-section { background: var(--console-bg); color: var(--console-ink); padding: 120px 0; }
+  .console-section .est, .console-section .section-head .label { color: #9A9487; border-color: #FFFFFF20; }
+  .console-section .section-head h2 { color: var(--console-ink); }
+  .console-section .section-head h2 em { color: #A39C8A; }
+  .console {
+    border: 1px solid #FFFFFF14; background: #0F0D0A;
+    font-family: var(--mono); font-size: 13px; line-height: 1.6;
+    display: grid; grid-template-columns: 280px 1fr 320px; min-height: 580px;
+  }
+  .console-pane { padding: 20px; border-right: 1px solid #FFFFFF12; overflow: hidden; }
+  .console-pane:last-child { border-right: 0; }
+  .console-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid #FFFFFF10; }
+  .console-head h5 { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: #9A9487; font-weight: 400; }
+  .console-badge { font-size: 10px; color: var(--signal); display: flex; align-items: center; gap: 6px; }
+  .console-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--signal); animation: pulse 1.4s infinite; }
+
+  .agent-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px 0; border-bottom: 1px solid #FFFFFF08; align-items: center; }
+  .agent-row:last-child { border: 0; }
+  .agent-name { font-size: 12px; color: var(--console-ink); }
+  .agent-role { font-size: 10px; color: #9A9487; letter-spacing: 0.04em; }
+  .agent-status { font-size: 10px; padding: 2px 6px; border: 1px solid #FFFFFF14; color: #D6CFB9; }
+  .agent-status.running { color: var(--signal); border-color: color-mix(in oklch, var(--signal) 40%, transparent); }
+  .agent-status.idle { color: #9A9487; }
+  .agent-status.review { color: var(--warn); border-color: color-mix(in oklch, var(--warn) 40%, transparent); }
+
+  .stream { height: 480px; overflow: hidden; position: relative; mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent); }
+  .stream-inner { display: flex; flex-direction: column; gap: 10px; }
+  .log { font-size: 12px; display: grid; grid-template-columns: 72px 110px 1fr; gap: 12px; align-items: baseline; }
+  .log .ts { color: #6B6458; }
+  .log .who { color: #B8B0A0; }
+  .log .what { color: var(--console-ink); }
+  .log.ok .what::before { content: '✓  '; color: var(--signal); }
+  .log.warn .what::before { content: '⚠  '; color: var(--warn); }
+  .log.human { background: #FFFFFF06; padding: 6px 10px; margin: 4px -10px; border-left: 2px solid var(--accent); }
+  .log.human .who { color: var(--accent); }
+
+  .kpi { display: flex; flex-direction: column; gap: 18px; }
+  .kpi-item { border-bottom: 1px solid #FFFFFF0F; padding-bottom: 14px; }
+  .kpi-item:last-child { border: 0; }
+  .kpi-v { font-family: var(--display); font-size: 38px; line-height: 1; color: var(--console-ink); font-weight: 500; letter-spacing: -0.025em; }
+  .kpi-v em { font-family: var(--serif); font-weight: 300; font-style: italic; }
+  .kpi-l { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #9A9487; margin-top: 6px; }
+  .spark { margin-top: 10px; height: 28px; }
+  .spark path { stroke: var(--signal); stroke-width: 1; fill: none; }
+
+  /* -------- CASES -------- */
+  .cases { }
+  .case-row { display: grid; grid-template-columns: 80px 1fr 240px 200px 140px; gap: 24px; padding: 28px 0; border-top: 1px solid var(--rule); align-items: center; cursor: pointer; transition: background .2s; }
+  .case-row:last-child { border-bottom: 1px solid var(--rule); }
+  .case-row:hover { background: var(--paper-2); padding-left: 12px; padding-right: 12px; }
+  .case-n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .case-title { font-family: var(--display); font-size: 26px; line-height: 1.1; font-weight: 500; letter-spacing: -0.02em; }
+  .case-title em { font-family: var(--serif); font-weight: 300; font-style: italic; color: var(--ink-2); }
+  .case-sector { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .case-metric { font-family: var(--serif); font-size: 22px; font-style: italic; font-weight: 400; }
+  .case-time { font-family: var(--mono); font-size: 12px; color: var(--ink-2); text-align: right; }
+
+  /* -------- MANIFESTO -------- */
+  .manifesto { background: var(--ink); color: var(--paper); padding: 140px 0; }
+  .manifesto .est { color: #9A9487; }
+  .manifesto blockquote {
+    font-family: var(--display); font-weight: 400; font-size: clamp(34px, 4.2vw, 60px); line-height: 1.15; max-width: 1100px; letter-spacing: -0.03em;
+    margin-top: 36px;
+  }
+  .manifesto blockquote em { font-family: var(--serif); font-weight: 300; font-style: italic; color: #C9C1AF; letter-spacing: -0.01em; }
+  .manifesto-sig { margin-top: 72px; display: flex; gap: 56px; font-size: 13px; color: #B8B0A0; flex-wrap: wrap; }
+  .manifesto-sig div b { color: var(--paper); display: block; font-family: var(--display); font-size: 20px; font-weight: 500; letter-spacing: -0.015em; margin-bottom: 4px; }
+  .manifesto-sig div em { font-family: var(--serif); font-style: italic; font-weight: 300; }
+
+  /* -------- PRINCIPLES -------- */
+  .principles-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid var(--ink); }
+  .p-cell { padding: 32px 24px 48px; border-right: 1px solid var(--rule); }
+  .p-cell:last-child { border-right: 0; }
+  .p-n { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 44px; color: var(--muted); }
+  .p-cell h4 { font-family: var(--display); font-weight: 500; font-size: 21px; line-height: 1.2; letter-spacing: -0.015em; margin: 16px 0 12px; text-wrap: balance; }
+  .p-cell p { font-size: 13px; color: var(--ink-2); line-height: 1.55; }
+
+  /* -------- ENGAGEMENT -------- */
+  .engagement { background: var(--paper-2); }
+  .engage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .engage-card { background: var(--paper); border: 1px solid var(--rule); padding: 32px; display: flex; flex-direction: column; gap: 20px; min-height: 440px; }
+  .engage-card.featured { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .engage-card.featured .muted, .engage-card.featured .feat li { color: #C9C1AF; }
+  .engage-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .engage-name { font-family: var(--display); font-size: 28px; font-weight: 500; letter-spacing: -0.02em; }
+  .engage-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+  .engage-card.featured .engage-tag { color: var(--accent); }
+  .engage-price { font-family: var(--display); font-size: 56px; line-height: 1; font-weight: 500; letter-spacing: -0.035em; }
+  .engage-price small { font-size: 14px; font-family: var(--sans); color: var(--muted); display: inline-block; margin-left: 8px; }
+  .engage-card.featured .engage-price small { color: #C9C1AF; }
+  .feat { list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+  .feat li { padding-left: 18px; position: relative; }
+  .feat li::before { content: '—'; position: absolute; left: 0; color: var(--muted); }
+
+  /* -------- FOOTER -------- */
+  footer { padding: 80px 0 40px; border-top: 1px solid var(--rule); }
+  .foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 48px; }
+  .foot-grid h5 { font-family: var(--mono); font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+  .foot-grid ul { list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+  .foot-grid a { color: var(--ink-2); text-decoration: none; }
+  .foot-grid a:hover { color: var(--ink); }
+  .foot-brand h3 { font-family: var(--display); font-size: 38px; font-weight: 500; letter-spacing: -0.025em; line-height: 1; }
+  .foot-brand h3 em { font-family: var(--serif); font-weight: 300; font-style: italic; }
+  .foot-brand p { font-size: 14px; color: var(--ink-2); margin-top: 16px; max-width: 36ch; }
+  .foot-rule { padding-top: 24px; border-top: 1px solid var(--rule); display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+  /* TWEAKS PANEL */
+  #tweaks-panel {
+    position: fixed; bottom: 24px; right: 24px; z-index: 100;
+    width: 300px; background: var(--paper); border: 1px solid var(--ink);
+    padding: 20px; display: none;
+    box-shadow: 0 20px 60px #00000022;
+    font-family: var(--sans);
+  }
+  #tweaks-panel.active { display: block; }
+  #tweaks-panel h4 { font-family: var(--display); font-size: 22px; font-weight: 500; letter-spacing: -0.015em; margin-bottom: 4px; }
+  #tweaks-panel .sub { font-size: 11px; color: var(--muted); font-family: var(--mono); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 20px; }
+  .tweak-row { margin-bottom: 16px; }
+  .tweak-row label { font-size: 11px; font-family: var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: 8px; }
+  .tweak-row input[type=text] { width: 100%; font-family: var(--display); font-size: 18px; font-weight: 500; border: 0; border-bottom: 1px solid var(--ink); background: transparent; padding: 4px 0; color: var(--ink); }
+  .tweak-row input[type=text]:focus { outline: none; border-color: var(--accent); }
+  .swatches { display: flex; gap: 8px; }
+  .swatch { width: 28px; height: 28px; border: 1px solid var(--rule); cursor: pointer; position: relative; }
+  .swatch.active::after { content: ''; position: absolute; inset: 2px; border: 1px solid var(--paper); }
+  .tweak-row select { width: 100%; font-family: var(--sans); font-size: 13px; padding: 6px; background: var(--paper); border: 1px solid var(--ink); }
+
+  @media (max-width: 900px) {
+    .wrap { padding: 0 24px; }
+    .hero-grid, .thesis-grid, .model-stage, .principles-grid, .engage-grid, .foot-grid { grid-template-columns: 1fr; }
+    .section-head { grid-template-columns: 1fr; }
+    .case-row { grid-template-columns: 1fr; gap: 8px; }
+    .console { grid-template-columns: 1fr; }
+    nav ul { display: none; }
+  }
+</style>
+</head>
+<body data-density="editorial" data-cc-id="cc-1" style="cursor: crosshair; background-color: rgb(255, 255, 255); font-family: Helvetica;">
+
+<!-- NAV -->
+<nav class="top">
+  <div class="wrap">
+    <div class="brand">
+      <div class="brand-mark"><span id="brand-mark-letter">H</span></div>
+      <div class="brand-name"><span id="brand-name-node">H+AI</span></div>
+    </div>
+    <ul>
+      <li><a href="#thesis">Thesis</a></li>
+      <li><a href="#model">The Model</a></li>
+      <li><a href="#console">Console</a></li>
+      <li><a href="#cases">Engagements</a></li>
+      <li><a href="#principles">Principles</a></li>
+      <li><a href="#engagement">Work with us</a></li>
+    </ul>
+    <button class="cta-btn">Request audience</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap">
+    <div class="est">Est. 2026 · A consulting firm of humans and agents</div>
+    <h1>Counsel at <em>the speed</em><br>of thought.</h1>
+    <div class="hero-grid">
+      <p class="lede">
+        We are a new kind of advisory firm. Every partner arrives with a <em>standing team of AI agents</em> — researchers, modelers, drafters, auditors — working through the night so that your decisions arrive at dawn, fully examined.
+      </p>
+      <dl class="hero-meta">
+        <div class="meta-row"><dt>Founded</dt><dd>New York, Paris, Singapore · 2026</dd></div>
+        <div class="meta-row"><dt>Partners</dt><dd>14 · from McKinsey, BCG, Bain, Goldman, DeepMind</dd></div>
+        <div class="meta-row"><dt>Agents</dt><dd>312 deployed · 4.1M analyst-hours delivered</dd></div>
+        <div class="meta-row"><dt>Engagements</dt><dd>By referral and invitation</dd></div>
+      </dl>
+    </div>
+
+    <div class="hero-ticker">
+      <div class="ticker-track" id="ticker"><span><span class="dot"></span><b>Livia</b> — reading 312 SEC filings</span><span><span class="dot"></span><b>Osmund</b> — running Monte Carlo · 10k paths</span><span><span class="dot"></span><b>Praxis</b> — mapping 47 competitors</span><span><span class="dot"></span><b>Marginalia</b> — parsing earnings call · Q2</span><span><span class="dot"></span><b>Chronos</b> — re-checking timeline assumptions</span><span><span class="dot"></span><b>Atlas</b> — refreshing market sizing</span><span><span class="dot"></span><b>Scrivener</b> — drafting board memo · v3</span><span><span class="dot"></span><b>Quorum</b> — auditing claim citations</span><span><span class="dot"></span><b>Sentinel</b> — flagging regulatory change</span><span><span class="dot"></span><b>Livia</b> — reading 312 SEC filings</span><span><span class="dot"></span><b>Osmund</b> — running Monte Carlo · 10k paths</span><span><span class="dot"></span><b>Praxis</b> — mapping 47 competitors</span><span><span class="dot"></span><b>Marginalia</b> — parsing earnings call · Q2</span><span><span class="dot"></span><b>Chronos</b> — re-checking timeline assumptions</span><span><span class="dot"></span><b>Atlas</b> — refreshing market sizing</span><span><span class="dot"></span><b>Scrivener</b> — drafting board memo · v3</span><span><span class="dot"></span><b>Quorum</b> — auditing claim citations</span><span><span class="dot"></span><b>Sentinel</b> — flagging regulatory change</span></div>
+    </div>
+  </div>
+</header>
+
+<!-- THESIS -->
+<section class="thesis" id="thesis">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="label">I. Thesis</span>
+      <h2>The classical consulting pyramid was <em>built for a world without agents.</em> We have redrawn it.</h2>
+    </div>
+
+    <div class="thesis-grid">
+      <div class="thesis-cell">
+        <div class="thesis-n">01 / Leverage</div>
+        <h3>One partner, <em>one hundred analysts,</em> one morning.</h3>
+        <p>Work that once required a bullpen of twenty for three weeks now completes overnight. Our agents run the reading, the modeling, the first drafts. Humans judge, argue, and sign.</p>
+      </div>
+      <div class="thesis-cell">
+        <div class="thesis-n">02 / Continuity</div>
+        <h3>The engagement <em>never sleeps.</em></h3>
+        <p>Between your meetings, agents revisit assumptions, refresh market data, stress-test scenarios, and flag what changed. You return to a deck that aged a day and grew sharper for it.</p>
+      </div>
+      <div class="thesis-cell">
+        <div class="thesis-n">03 / Accountability</div>
+        <h3>Every claim, <em>every source,</em> every step.</h3>
+        <p>Every figure in our deliverables carries a signed trail back to the agent that computed it and the human who approved it. No black boxes. Deliverables are replayable.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MODEL -->
+<section id="model">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="label">II. The Pod</span>
+      <h2>Every engagement is a <em>pod of four humans and nine agents.</em></h2>
+    </div>
+
+    <div class="model-stage">
+      <div class="model-col">
+        <h4>Humans — 4</h4>
+        <div class="role-card">
+          <div class="name">Partner</div>
+          <div class="title">Lead Counsel</div>
+        </div>
+        <div class="role-card">
+          <div class="name">Principal</div>
+          <div class="title">Engagement Manager</div>
+        </div>
+        <div class="role-card">
+          <div class="name">Associate</div>
+          <div class="title">Agent Conductor</div>
+        </div>
+        <div class="role-card">
+          <div class="name">Domain Expert</div>
+          <div class="title">Fractional · sector</div>
+        </div>
+      </div>
+
+      <div class="model-center">
+        <div class="big">in concert</div>
+        <div class="model-flow">
+          <div class="flow-step"><div class="n">→ 01</div><div class="t"><b>Brief</b> — Partner frames the question in plain prose.</div></div>
+          <div class="flow-step"><div class="n">→ 02</div><div class="t"><b>Dispatch</b> — Conductor assigns nine agents to parallel tracks.</div></div>
+          <div class="flow-step"><div class="n">→ 03</div><div class="t"><b>Draft</b> — Agents return findings, drafts, and their uncertainty.</div></div>
+          <div class="flow-step"><div class="n">→ 04</div><div class="t"><b>Judge</b> — Humans interrogate, re-ask, sign or reject.</div></div>
+          <div class="flow-step"><div class="n">→ 05</div><div class="t"><b>Counsel</b> — Partner delivers a single, defended view.</div></div>
+        </div>
+      </div>
+
+      <div class="model-col">
+        <h4>Agents — 9</h4>
+        <div class="role-card agent">
+          <div class="name"><em>Livia</em></div>
+          <div class="title">Market Research</div>
+          <div class="status">active</div>
+        </div>
+        <div class="role-card agent">
+          <div class="name"><em>Osmund</em></div>
+          <div class="title">Financial Modeler</div>
+          <div class="status">active</div>
+        </div>
+        <div class="role-card agent">
+          <div class="name"><em>Praxis</em></div>
+          <div class="title">Competitive Intel</div>
+          <div class="status">active</div>
+        </div>
+        <div class="role-card agent">
+          <div class="name"><em>Marginalia</em></div>
+          <div class="title">Document Analysis</div>
+          <div class="status">active</div>
+        </div>
+        <div class="role-card agent">
+          <div class="name">+ 5 more</div>
+          <div class="title">Specialists on call</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONSOLE -->
+<section class="console-section" id="console">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="label">III. The Console</span>
+      <h2>A view into a live engagement — <em>our operating instrument.</em></h2>
+    </div>
+
+    <div class="console">
+      <!-- Agents pane -->
+      <div class="console-pane">
+        <div class="console-head">
+          <h5>Agents · Pod 07</h5>
+          <span class="console-badge">9 / 9 online</span>
+        </div>
+        <div id="agent-list">
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Livia</div>
+      <div class="agent-role">Market Research</div>
+    </div>
+    <div class="agent-status running">running</div>
+  </div>
+
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Osmund</div>
+      <div class="agent-role">Financial Modeler</div>
+    </div>
+    <div class="agent-status running">running</div>
+  </div>
+
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Praxis</div>
+      <div class="agent-role">Competitive Intel</div>
+    </div>
+    <div class="agent-status running">running</div>
+  </div>
+
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Marginalia</div>
+      <div class="agent-role">Document Analysis</div>
+    </div>
+    <div class="agent-status review">review</div>
+  </div>
+
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Chronos</div>
+      <div class="agent-role">Timeline &amp; Risk</div>
+    </div>
+    <div class="agent-status running">running</div>
+  </div>
+
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Atlas</div>
+      <div class="agent-role">Market Sizing</div>
+    </div>
+    <div class="agent-status running">running</div>
+  </div>
+
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Scrivener</div>
+      <div class="agent-role">Draft &amp; Narrative</div>
+    </div>
+    <div class="agent-status running">running</div>
+  </div>
+
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Quorum</div>
+      <div class="agent-role">Citation Audit</div>
+    </div>
+    <div class="agent-status idle">idle</div>
+  </div>
+
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">Sentinel</div>
+      <div class="agent-role">Regulatory Watch</div>
+    </div>
+    <div class="agent-status running">running</div>
+  </div>
+</div>
+      </div>
+
+      <!-- Stream pane -->
+      <div class="console-pane">
+        <div class="console-head">
+          <h5>Activity stream · Case MRDS-0412</h5>
+          <span class="console-badge">live</span>
+        </div>
+        <div class="stream">
+          <div class="stream-inner" id="stream-inner"><div class="log human"><span class="ts">09:19:14</span><span class="who">H. Vass</span><span class="what">Rewrote claim 4.2 — data was 14 months old. Re-run.</span></div><div class="log "><span class="ts">09:20:02</span><span class="who">Chronos</span><span class="what">Timeline re-baselined · 18 days to board</span></div><div class="log ok"><span class="ts">09:21:48</span><span class="who">Osmund</span><span class="what">Sensitivity table rebuilt on H. Vass note</span></div><div class="log warn"><span class="ts">09:22:30</span><span class="who">Praxis</span><span class="what">New entrant detected: Helveticon AG (Zurich)</span></div><div class="log "><span class="ts">09:23:11</span><span class="who">Livia</span><span class="what">Read 28 patents from Helveticon · 4 relevant</span></div><div class="log ok"><span class="ts">09:24:02</span><span class="who">Scrivener</span><span class="what">Draft memo v8 · diff shows 3 changes</span></div><div class="log human"><span class="ts">09:25:41</span><span class="who">I. Marchetti</span><span class="what">Signed memo v8. Ship to client at 10:00 CET.</span></div><div class="log "><span class="ts">09:12:04</span><span class="who">Livia</span><span class="what">Ingested 41 analyst reports · topic: DACH logistics</span></div><div class="log ok"><span class="ts">09:12:31</span><span class="who">Osmund</span><span class="what">Built 3 WACC scenarios · range 8.1% – 11.4%</span></div><div class="log "><span class="ts">09:13:02</span><span class="who">Praxis</span><span class="what">Mapped 47 competitors · 12 flagged as material</span></div><div class="log ok"><span class="ts">09:14:17</span><span class="who">Marginalia</span><span class="what">Extracted 812 claims from Q2 10-K · 96% cited</span></div><div class="log warn"><span class="ts">09:15:48</span><span class="who">Sentinel</span><span class="what">Regulatory change detected · EU AI Act Art. 53</span></div><div class="log human"><span class="ts">09:16:12</span><span class="who">A. Okafor</span><span class="what">Accepted Osmund model v3. Reject v2 — terminal value too aggressive.</span></div><div class="log ok"><span class="ts">09:16:45</span><span class="who">Atlas</span><span class="what">TAM refreshed · €11.2B → €12.8B (Statista + Eurostat)</span></div><div class="log "><span class="ts">09:17:20</span><span class="who">Scrivener</span><span class="what">Draft memo v7 compiled · 1 page · 8 appendices</span></div><div class="log warn"><span class="ts">09:18:03</span><span class="who">Quorum</span><span class="what">3 claims lack primary source — flagged for review</span></div><div class="log human"><span class="ts">09:19:14</span><span class="who">H. Vass</span><span class="what">Rewrote claim 4.2 — data was 14 months old. Re-run.</span></div><div class="log "><span class="ts">09:20:02</span><span class="who">Chronos</span><span class="what">Timeline re-baselined · 18 days to board</span></div><div class="log ok"><span class="ts">09:21:48</span><span class="who">Osmund</span><span class="what">Sensitivity table rebuilt on H. Vass note</span></div><div class="log warn"><span class="ts">09:22:30</span><span class="who">Praxis</span><span class="what">New entrant detected: Helveticon AG (Zurich)</span></div><div class="log "><span class="ts">09:23:11</span><span class="who">Livia</span><span class="what">Read 28 patents from Helveticon · 4 relevant</span></div><div class="log ok"><span class="ts">09:24:02</span><span class="who">Scrivener</span><span class="what">Draft memo v8 · diff shows 3 changes</span></div></div>
+        </div>
+      </div>
+
+      <!-- KPI pane -->
+      <div class="console-pane">
+        <div class="console-head">
+          <h5>Engagement vitals</h5>
+          <span class="console-badge">real-time</span>
+        </div>
+        <div class="kpi">
+          <div class="kpi-item">
+            <div class="kpi-v"><em>4,108</em></div>
+            <div class="kpi-l">Sources read this week</div>
+            <svg class="spark" viewBox="0 0 200 28" preserveAspectRatio="none"><path d="M0 20 L20 18 L40 16 L60 19 L80 12 L100 14 L120 8 L140 10 L160 6 L180 4 L200 5"></path></svg>
+          </div>
+          <div class="kpi-item">
+            <div class="kpi-v"><em>612</em></div>
+            <div class="kpi-l">Models run · 34 accepted</div>
+            <svg class="spark" viewBox="0 0 200 28" preserveAspectRatio="none"><path d="M0 22 L20 15 L40 18 L60 10 L80 13 L100 9 L120 11 L140 7 L160 9 L180 5 L200 7"></path></svg>
+          </div>
+          <div class="kpi-item">
+            <div class="kpi-v"><em>28:14</em></div>
+            <div class="kpi-l">Human hours · wk</div>
+            <svg class="spark" viewBox="0 0 200 28" preserveAspectRatio="none"><path d="M0 14 L20 16 L40 13 L60 15 L80 12 L100 14 L120 11 L140 13 L160 10 L180 12 L200 11"></path></svg>
+          </div>
+          <div class="kpi-item">
+            <div class="kpi-v">94<em>%</em></div>
+            <div class="kpi-l">Draft claims auto-cited</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CASES -->
+<section id="cases">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="label">IV. Selected engagements</span>
+      <h2>What used to take <em>twelve weeks</em> now takes twelve days.</h2>
+    </div>
+
+    <div class="cases">
+      <div class="case-row">
+        <div class="case-n">№ 001</div>
+        <div class="case-title">Carve-out of a <em>$4.2B</em> industrials division</div>
+        <div class="case-sector">Private Equity</div>
+        <div class="case-metric">— 63% timeline</div>
+        <div class="case-time">18 days</div>
+      </div>
+      <div class="case-row">
+        <div class="case-n">№ 002</div>
+        <div class="case-title">Pricing architecture for a <em>European telco</em></div>
+        <div class="case-sector">Telecommunications</div>
+        <div class="case-metric">+ €240M ARR</div>
+        <div class="case-time">31 days</div>
+      </div>
+      <div class="case-row">
+        <div class="case-n">№ 003</div>
+        <div class="case-title">Market entry: <em>LatAm specialty chemicals</em></div>
+        <div class="case-sector">Industrials</div>
+        <div class="case-metric">11 country map</div>
+        <div class="case-time">22 days</div>
+      </div>
+      <div class="case-row">
+        <div class="case-n">№ 004</div>
+        <div class="case-title">Agent-native ops redesign, <em>global bank</em></div>
+        <div class="case-sector">Financial Services</div>
+        <div class="case-metric">— 1,400 FTE ops</div>
+        <div class="case-time">9 weeks</div>
+      </div>
+      <div class="case-row">
+        <div class="case-n">№ 005</div>
+        <div class="case-title">Board defense memo during <em>activist campaign</em></div>
+        <div class="case-sector">Consumer</div>
+        <div class="case-metric">Campaign withdrawn</div>
+        <div class="case-time">6 days</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MANIFESTO -->
+<section class="manifesto">
+  <div class="wrap">
+    <div class="est">V. Manifesto</div>
+    <blockquote>
+      We do not believe agents <em>replace</em> consultants. We believe they <em>restore</em> them to the craft of judgment, the courage of a point of view, and the dignity of a conversation that was <em>not</em> billed in six-minute increments.
+    </blockquote>
+    <div class="manifesto-sig">
+      <div><b>Amara Okafor</b><em>Founding Partner, Strategy</em></div>
+      <div><b>Henrik Vass</b><em>Founding Partner, Agent Systems</em></div>
+      <div><b>Ines Marchetti</b><em>Founding Partner, Financial Advisory</em></div>
+    </div>
+  </div>
+</section>
+
+<!-- PRINCIPLES -->
+<section id="principles" class="tight">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="label">VI. Principles of the house</span>
+      <h2>Six rules we will <em>not trade away.</em></h2>
+    </div>
+
+    <div class="principles-grid">
+      <div class="p-cell">
+        <div class="p-n">i.</div>
+        <h4>A human signs every page.</h4>
+        <p>No deliverable leaves the firm without a named partner attesting to it. Agents draft; humans are accountable.</p>
+      </div>
+      <div class="p-cell">
+        <div class="p-n">ii.</div>
+        <h4>Uncertainty is a first-class citizen.</h4>
+        <p>We report confidence intervals, not point estimates. When we do not know, we say so, and we tell you what it would cost to find out.</p>
+      </div>
+      <div class="p-cell">
+        <div class="p-n">iii.</div>
+        <h4>Your data stays your data.</h4>
+        <p>Agents run inside isolated enclaves you can audit. Nothing you share trains a model outside your walls. Ever.</p>
+      </div>
+      <div class="p-cell">
+        <div class="p-n">iv.</div>
+        <h4>We price the answer, not the hour.</h4>
+        <p>Fixed fees per question. When agents make us faster, you pay less. When we need humans to stay longer, we absorb it.</p>
+      </div>
+      <div class="p-cell">
+        <div class="p-n">v.</div>
+        <h4>The deliverable is replayable.</h4>
+        <p>Every engagement ships with a console. You can re-run our analysis on new data, six months later, without us.</p>
+      </div>
+      <div class="p-cell">
+        <div class="p-n">vi.</div>
+        <h4>We leave you more capable.</h4>
+        <p>A successful engagement ends with agents operating inside your team, not ours. We teach you to run them.</p>
+      </div>
+      <div class="p-cell">
+        <div class="p-n">vii.</div>
+        <h4>Small rooms, short memos.</h4>
+        <p>Four humans, nine agents, one page. We refuse the theater of the fifty-slide deck. A decision deserves a memo, not a performance.</p>
+      </div>
+      <div class="p-cell">
+        <div class="p-n">viii.</div>
+        <h4>The partner takes the call.</h4>
+        <p>No gatekeepers, no assistants, no queues. The partner who sold the work does the work, and answers the phone at 10pm.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ENGAGEMENT -->
+<section class="engagement" id="engagement">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="label">VII. Engagement</span>
+      <h2>Three ways to <em>retain us.</em></h2>
+    </div>
+    <div class="engage-grid">
+      <div class="engage-card">
+        <div class="engage-head">
+          <div class="engage-name">The <em>Memo</em></div>
+          <div class="engage-tag">Fixed fee</div>
+        </div>
+        <div class="engage-price">$80k<small>· one question</small></div>
+        <p class="muted" style="font-size:13px; color:var(--muted);">One partner, one pod, one decision. Returned in 10 business days as a defended one-page memo with full appendix and replayable console.</p>
+        <ul class="feat">
+          <li>One framed question</li>
+          <li>Full agent trace</li>
+          <li>Partner on the phone for 30 days</li>
+        </ul>
+      </div>
+      <div class="engage-card featured">
+        <div class="engage-head">
+          <div class="engage-name">The <em>Standing Counsel</em></div>
+          <div class="engage-tag">Most retained</div>
+        </div>
+        <div class="engage-price">$120k<small>· monthly</small></div>
+        <p class="muted" style="font-size:13px;">An always-on pod attached to your leadership team. Agents monitor your industry in real time; humans meet you weekly to interpret what changed.</p>
+        <ul class="feat">
+          <li>Dedicated pod (4 humans, 9 agents)</li>
+          <li>Weekly decision memo</li>
+          <li>Agents embedded in your workspace</li>
+          <li>Private Signal line to the partner</li>
+        </ul>
+      </div>
+      <div class="engage-card">
+        <div class="engage-head">
+          <div class="engage-name">The <em>Transformation</em></div>
+          <div class="engage-tag">Scoped</div>
+        </div>
+        <div class="engage-price">Bespoke<small>· 3–9 months</small></div>
+        <p class="muted" style="font-size:13px; color:var(--muted);">For boards and CEOs re-architecting an enterprise around agents. We run the engagement and hand you a trained in-house team at the end.</p>
+        <ul class="feat">
+          <li>Multi-pod, cross-functional</li>
+          <li>Capability transfer built-in</li>
+          <li>Outcome-based pricing available</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <h3 id="foot-brand-name">H+AI</h3>
+        <p>A consulting firm of humans and agents. Founded 2026. New York · Paris · Singapore.</p>
+      </div>
+      <div>
+        <h5>Practice</h5>
+        <ul>
+          <li><a>Strategy</a></li>
+          <li><a>Financial advisory</a></li>
+          <li><a>Agent systems</a></li>
+          <li><a>Transformation</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Firm</h5>
+        <ul>
+          <li><a>Partners</a></li>
+          <li><a>Principles</a></li>
+          <li><a>Writing</a></li>
+          <li><a>Careers</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5>Contact</h5>
+        <ul>
+          <li><a>audience@meridiansignal.co</a></li>
+          <li><a>+1 212 555 0140</a></li>
+          <li><a>By appointment</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-rule">
+      <span>© MMXXVI Meridian &amp; Signal LLP</span>
+      <span>All agents on record · replay available on request</span>
+    </div>
+  </div>
+</footer>
+
+<!-- TWEAKS PANEL -->
+<div id="tweaks-panel" class="active">
+  <h4>Tweaks</h4>
+  <div class="sub">Design knobs</div>
+
+  <div class="tweak-row">
+    <label>Firm name</label>
+    <input id="tw-name" type="text">
+  </div>
+
+  <div class="tweak-row">
+    <label>Palette</label>
+    <div class="swatches" id="tw-palette"><div class="swatch" title="paper" style="background: rgb(244, 240, 234); border-color: rgb(26, 24, 20);"></div><div class="swatch" title="bone" style="background: rgb(238, 233, 221); border-color: rgb(20, 19, 16);"></div><div class="swatch" title="slate" style="background: rgb(232, 232, 230); border-color: rgb(16, 16, 18);"></div><div class="swatch active" title="olive" style="background: rgb(239, 237, 227); border-color: rgb(27, 28, 21);"></div></div>
+  </div>
+
+  <div class="tweak-row">
+    <label>Density</label>
+    <select id="tw-density">
+      <option value="editorial">Editorial (default)</option>
+      <option value="dense">Dense</option>
+      <option value="sparse">Sparse</option>
+    </select>
+  </div>
+
+  <div class="tweak-row">
+    <label>Console stream speed</label>
+    <select id="tw-speed">
+      <option value="1">Normal</option>
+      <option value="2">Fast</option>
+      <option value="0.5">Slow</option>
+    </select>
+  </div>
+</div>
+
+<script>
+/* ================= TWEAKS STATE ================= */
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "firmName": "H+AI",
+  "palette": "slate",
+  "density": "editorial",
+  "streamSpeed": 2
+}/*EDITMODE-END*/;
+
+const PALETTES = {
+  paper: { paper: '#F4F0EA', paper2: '#EDE7DC', ink: '#1A1814', accent: 'oklch(0.62 0.14 55)' },
+  bone:  { paper: '#EEE9DD', paper2: '#E4DDCC', ink: '#141310', accent: 'oklch(0.55 0.10 30)' },
+  slate: { paper: '#E8E8E6', paper2: '#DEDDDA', ink: '#101012', accent: 'oklch(0.58 0.12 230)' },
+  olive: { paper: '#EFEDE3', paper2: '#E4E0D0', ink: '#1B1C15', accent: 'oklch(0.55 0.10 110)' }
+};
+
+let state = { ...TWEAK_DEFAULTS };
+function applyState() {
+  // Firm name
+  const parts = state.firmName.split(/\s+&\s+|\s+and\s+/i);
+  const nameHtml = parts.length === 2
+    ? `${parts[0]} <em>&amp;</em> ${parts[1]}`
+    : state.firmName;
+  document.getElementById('brand-name-node').innerHTML = nameHtml;
+  document.getElementById('foot-brand-name').innerHTML = parts.length === 2
+    ? `${parts[0]} <em>&amp; ${parts[1]}</em>`
+    : state.firmName;
+  document.getElementById('brand-mark-letter').textContent = state.firmName.charAt(0);
+  document.title = state.firmName + ' — Vision';
+
+  // Palette
+  const p = PALETTES[state.palette] || PALETTES.paper;
+  const root = document.documentElement.style;
+  root.setProperty('--paper', p.paper);
+  root.setProperty('--paper-2', p.paper2);
+  root.setProperty('--ink', p.ink);
+  root.setProperty('--accent', p.accent);
+
+  // Density
+  document.body.dataset.density = state.density;
+  const dense = state.density === 'dense';
+  const sparse = state.density === 'sparse';
+  document.querySelectorAll('section').forEach(s => {
+    s.style.padding = sparse ? '160px 0' : dense ? '72px 0' : '';
+  });
+
+  // Inputs
+  if (document.getElementById('tw-name')) document.getElementById('tw-name').value = state.firmName;
+  if (document.getElementById('tw-density')) document.getElementById('tw-density').value = state.density;
+  if (document.getElementById('tw-speed')) document.getElementById('tw-speed').value = String(state.streamSpeed);
+  renderSwatches();
+}
+
+function setState(patch) {
+  state = { ...state, ...patch };
+  applyState();
+  window.parent.postMessage({ type: '__edit_mode_set_keys', edits: patch }, '*');
+}
+
+function renderSwatches() {
+  const el = document.getElementById('tw-palette');
+  if (!el) return;
+  el.innerHTML = '';
+  Object.entries(PALETTES).forEach(([k, v]) => {
+    const s = document.createElement('div');
+    s.className = 'swatch' + (k === state.palette ? ' active' : '');
+    s.style.background = v.paper;
+    s.style.borderColor = v.ink;
+    s.title = k;
+    s.addEventListener('click', () => setState({ palette: k }));
+    el.appendChild(s);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('tw-name').addEventListener('input', e => setState({ firmName: e.target.value || 'Meridian & Signal' }));
+  document.getElementById('tw-density').addEventListener('change', e => setState({ density: e.target.value }));
+  document.getElementById('tw-speed').addEventListener('change', e => {
+    streamSpeed = parseFloat(e.target.value);
+    setState({ streamSpeed });
+  });
+  applyState();
+});
+
+/* ================= EDIT MODE BRIDGE ================= */
+window.addEventListener('message', (e) => {
+  const d = e.data;
+  if (!d || !d.type) return;
+  if (d.type === '__activate_edit_mode') document.getElementById('tweaks-panel').classList.add('active');
+  if (d.type === '__deactivate_edit_mode') document.getElementById('tweaks-panel').classList.remove('active');
+});
+window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+
+/* ================= TICKER ================= */
+const tickerItems = [
+  ['Livia','reading 312 SEC filings'],
+  ['Osmund','running Monte Carlo · 10k paths'],
+  ['Praxis','mapping 47 competitors'],
+  ['Marginalia','parsing earnings call · Q2'],
+  ['Chronos','re-checking timeline assumptions'],
+  ['Atlas','refreshing market sizing'],
+  ['Scrivener','drafting board memo · v3'],
+  ['Quorum','auditing claim citations'],
+  ['Sentinel','flagging regulatory change'],
+];
+const ticker = document.getElementById('ticker');
+const trackHtml = tickerItems.map(([n, t]) => `<span><span class="dot"></span><b>${n}</b> — ${t}</span>`).join('');
+ticker.innerHTML = trackHtml + trackHtml;
+
+/* ================= AGENT LIST ================= */
+const agents = [
+  { name: 'Livia', role: 'Market Research', status: 'running' },
+  { name: 'Osmund', role: 'Financial Modeler', status: 'running' },
+  { name: 'Praxis', role: 'Competitive Intel', status: 'running' },
+  { name: 'Marginalia', role: 'Document Analysis', status: 'review' },
+  { name: 'Chronos', role: 'Timeline & Risk', status: 'running' },
+  { name: 'Atlas', role: 'Market Sizing', status: 'running' },
+  { name: 'Scrivener', role: 'Draft & Narrative', status: 'running' },
+  { name: 'Quorum', role: 'Citation Audit', status: 'idle' },
+  { name: 'Sentinel', role: 'Regulatory Watch', status: 'running' },
+];
+const agentList = document.getElementById('agent-list');
+agentList.innerHTML = agents.map(a => `
+  <div class="agent-row">
+    <div>
+      <div class="agent-name">${a.name}</div>
+      <div class="agent-role">${a.role}</div>
+    </div>
+    <div class="agent-status ${a.status}">${a.status}</div>
+  </div>
+`).join('');
+
+/* ================= STREAM ================= */
+const streamEvents = [
+  { ts: '09:12:04', who: 'Livia', what: 'Ingested 41 analyst reports · topic: DACH logistics', cls: '' },
+  { ts: '09:12:31', who: 'Osmund', what: 'Built 3 WACC scenarios · range 8.1% – 11.4%', cls: 'ok' },
+  { ts: '09:13:02', who: 'Praxis', what: 'Mapped 47 competitors · 12 flagged as material', cls: '' },
+  { ts: '09:14:17', who: 'Marginalia', what: 'Extracted 812 claims from Q2 10-K · 96% cited', cls: 'ok' },
+  { ts: '09:15:48', who: 'Sentinel', what: 'Regulatory change detected · EU AI Act Art. 53', cls: 'warn' },
+  { ts: '09:16:12', who: 'A. Okafor', what: 'Accepted Osmund model v3. Reject v2 — terminal value too aggressive.', cls: 'human' },
+  { ts: '09:16:45', who: 'Atlas', what: 'TAM refreshed · €11.2B → €12.8B (Statista + Eurostat)', cls: 'ok' },
+  { ts: '09:17:20', who: 'Scrivener', what: 'Draft memo v7 compiled · 1 page · 8 appendices', cls: '' },
+  { ts: '09:18:03', who: 'Quorum', what: '3 claims lack primary source — flagged for review', cls: 'warn' },
+  { ts: '09:19:14', who: 'H. Vass', what: 'Rewrote claim 4.2 — data was 14 months old. Re-run.', cls: 'human' },
+  { ts: '09:20:02', who: 'Chronos', what: 'Timeline re-baselined · 18 days to board', cls: '' },
+  { ts: '09:21:48', who: 'Osmund', what: 'Sensitivity table rebuilt on H. Vass note', cls: 'ok' },
+  { ts: '09:22:30', who: 'Praxis', what: 'New entrant detected: Helveticon AG (Zurich)', cls: 'warn' },
+  { ts: '09:23:11', who: 'Livia', what: 'Read 28 patents from Helveticon · 4 relevant', cls: '' },
+  { ts: '09:24:02', who: 'Scrivener', what: 'Draft memo v8 · diff shows 3 changes', cls: 'ok' },
+  { ts: '09:25:41', who: 'I. Marchetti', what: 'Signed memo v8. Ship to client at 10:00 CET.', cls: 'human' },
+];
+
+const streamEl = document.getElementById('stream-inner');
+let streamIdx = 0;
+let streamSpeed = 1;
+
+function pushStream() {
+  const e = streamEvents[streamIdx % streamEvents.length];
+  const node = document.createElement('div');
+  node.className = 'log ' + e.cls;
+  node.innerHTML = `<span class="ts">${e.ts}</span><span class="who">${e.who}</span><span class="what">${e.what}</span>`;
+  streamEl.appendChild(node);
+  // Keep recent
+  while (streamEl.children.length > 22) streamEl.removeChild(streamEl.firstChild);
+  streamIdx++;
+}
+
+// Prime with first batch
+for (let i = 0; i < 12; i++) pushStream();
+
+function streamLoop() {
+  pushStream();
+  const delay = (1800 + Math.random() * 1400) / streamSpeed;
+  setTimeout(streamLoop, delay);
+}
+setTimeout(streamLoop, 1500);
+
+</script>
+
+
+
+</body></html>

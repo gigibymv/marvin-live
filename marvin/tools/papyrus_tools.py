@@ -189,6 +189,7 @@ def _save_deliverable(
     deliverable_id: str,
     deliverable_type: str,
     file_path: Path,
+    milestone_id: str | None = None,
 ) -> None:
     try:
         _assert_artifact_can_be_ready(file_path, deliverable_type)
@@ -208,6 +209,7 @@ def _save_deliverable(
             file_path=resolved,
             file_size_bytes=file_path.stat().st_size,
             created_at=utc_now_iso(),
+            milestone_id=milestone_id,
         )
     )
     emit_deliverable_persisted(
@@ -218,6 +220,7 @@ def _save_deliverable(
             "file_path": resolved,
             "file_size_bytes": file_path.stat().st_size,
             "created_at": utc_now_iso(),
+            "milestone_id": milestone_id,
         },
     )
 
@@ -425,6 +428,119 @@ def generate_workstream_report(
     """Generate workstream report for a specific workstream."""
     mission_id = require_mission_id(state)
     return _generate_workstream_report_impl(workstream_id, mission_id)
+
+
+def _milestone_slug(label: str) -> str:
+    """Stable filename slug for a milestone label.
+
+    `Market size and growth` -> `market_size_and_growth`. Restricted to
+    alphanum + underscore so it remains valid on every filesystem and the
+    routing regex stays simple.
+    """
+    cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in (label or ""))
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
+    return cleaned.strip("_") or "milestone"
+
+
+def _generate_milestone_report_impl(milestone_id: str, mission_id: str) -> dict[str, Any]:
+    """Generate one .md per milestone, structurally matching the workstream
+    report writing standard.
+
+    Best-effort: if there are no findings tagged to this milestone (yet)
+    we return a `blocked` status without raising — research_join calls this
+    after `mark_milestone_delivered` and a partial run with no
+    milestone-tagged findings should not break the workstream pass.
+    """
+    store = get_store(_STORE_FACTORY)
+    milestone = next(
+        (m for m in store.list_milestones(mission_id) if m.id == milestone_id),
+        None,
+    )
+    if milestone is None:
+        return {
+            "mission_id": mission_id,
+            "milestone_id": milestone_id,
+            "status": "blocked",
+            "reason": "milestone not found",
+        }
+
+    findings = [
+        f for f in store.list_findings(mission_id)
+        if f.milestone_id == milestone_id
+        or (f.milestone_id is None and f.workstream_id == milestone.workstream_id)
+    ]
+    if not findings:
+        return {
+            "mission_id": mission_id,
+            "milestone_id": milestone_id,
+            "status": "blocked",
+            "reason": "milestone_report requires at least one finding",
+        }
+
+    output_dir = ensure_output_dir(PROJECT_ROOT, mission_id)
+    slug = _milestone_slug(milestone.label)
+    # `W1.1_market_size_and_growth.md` — workstream prefix preserved so the
+    # routing regex can still recover the parent tab.
+    filename = f"{milestone_id.split('-')[-1] if '-' in milestone_id else milestone_id}_{slug}.md"
+    # Prefer a clean Wx.y prefix when the milestone id already encodes it.
+    if milestone_id and any(milestone_id.startswith(p) for p in ("W1.", "W2.", "W3.", "W4.")):
+        filename = f"{milestone_id}_{slug}.md"
+    path = output_dir / filename
+    deliverable_id = f"deliverable-{mission_id}-{milestone_id.lower().replace('.', '-')}"
+    deliverable_type = "milestone_report"
+
+    if path.exists():
+        return {
+            "mission_id": mission_id,
+            "milestone_id": milestone_id,
+            "file_path": str(path.resolve()),
+            "status": "skipped",
+            "deliverable_id": deliverable_id,
+            "deliverable_type": deliverable_type,
+        }
+
+    mission = store.get_mission(mission_id)
+    hypotheses = store.list_hypotheses(mission_id)
+    mission_brief = store.get_mission_brief(mission_id)
+
+    body = _papyrus_llm_generate(
+        deliverable_type=deliverable_type,
+        mission=mission,
+        hypotheses=hypotheses,
+        findings=findings,
+        mission_brief=mission_brief,
+        extra={
+            "milestone_id": milestone_id,
+            "milestone_label": milestone.label,
+            "workstream_id": milestone.workstream_id,
+        },
+    )
+    path.write_text(body, encoding="utf-8")
+    _save_deliverable(
+        store,
+        mission_id,
+        deliverable_id,
+        deliverable_type,
+        path,
+        milestone_id=milestone_id,
+    )
+    return {
+        "mission_id": mission_id,
+        "milestone_id": milestone_id,
+        "file_path": str(path.resolve()),
+        "deliverable_id": deliverable_id,
+        "deliverable_type": deliverable_type,
+    }
+
+
+def generate_milestone_report(
+    milestone_id: str,
+    state: InjectedStateArg = None,
+) -> dict[str, Any]:
+    """Generate per-milestone report, used post `mark_milestone_delivered`."""
+    mission_id = require_mission_id(state)
+    return _generate_milestone_report_impl(milestone_id, mission_id)
 
 
 def _generate_report_pdf_impl(mission_id: str) -> dict[str, Any]:

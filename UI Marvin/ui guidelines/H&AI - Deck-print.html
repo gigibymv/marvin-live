@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>H&AI — Recommendations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300;1,6..72,400;1,6..72,500;1,6..72,600&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --paper: #F4F0EA;
+    --paper-2: #EDE7DC;
+    --bone: #EEE9DD;
+    --bone-2: #E4DDCC;
+    --olive: #EFEDE3;
+    --olive-2: #E4E0D0;
+    --ink: #1A1814;
+    --ink-2: #3A362F;
+    --ink-3: #5C564C;
+    --muted: #78716A;
+    --rule: #1A18141A;
+    --rule-hard: #1A1814;
+    --accent: oklch(0.55 0.10 30);
+    --accent-olive: oklch(0.50 0.08 110);
+    --signal: oklch(0.50 0.10 150);
+
+    --display: 'Bricolage Grotesque', system-ui, sans-serif;
+    --serif: 'Newsreader', Georgia, serif;
+    --sans: 'Geist', -apple-system, 'Helvetica Neue', sans-serif;
+    --mono: 'Geist Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #0a0a0a; color: var(--ink); font-family: var(--sans); }
+  body { font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+  /* ---------- Slide base ---------- */
+  section.slide {
+    background: var(--paper);
+    color: var(--ink);
+    width: 1920px; height: 1080px;
+    position: relative;
+    overflow: hidden;
+    font-family: var(--sans);
+  }
+  section.slide.bone  { background: var(--bone); }
+  section.slide.olive { background: var(--olive); }
+  section.slide.ink   { background: var(--ink); color: var(--paper); }
+
+  /* slide chrome — running head + folio */
+  .chrome {
+    position: absolute; top: 40px; left: 72px; right: 72px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .chrome .brand { display: flex; align-items: center; gap: 14px; }
+  .chrome .brand .mark {
+    width: 22px; height: 22px; border: 1px solid currentColor;
+    display: grid; place-items: center;
+    font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 13px;
+    letter-spacing: 0;
+  }
+  .chrome .brand .name { font-weight: 500; letter-spacing: 0.16em; }
+  .chrome .brand .name em { font-family: var(--serif); font-style: italic; font-weight: 400; text-transform: none; letter-spacing: -0.01em; font-size: 13px; }
+  .chrome .folio { font-variant-numeric: tabular-nums; }
+  section.slide.ink .chrome { color: #9A9487; }
+
+  .footrule {
+    position: absolute; left: 72px; right: 72px; bottom: 52px;
+    border-top: 1px solid var(--rule);
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 16px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  section.slide.ink .footrule { border-color: #FFFFFF1F; color: #9A9487; }
+
+  .stage {
+    position: absolute; top: 96px; left: 72px; right: 72px; bottom: 96px;
+  }
+
+  /* ---------- Type atoms ---------- */
+  .kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+  .kicker.on-ink { color: #9A9487; }
+  .kicker .accent { color: var(--accent); }
+
+  h1.display {
+    font-family: var(--display); font-weight: 500; letter-spacing: -0.035em; line-height: 0.92;
+    font-size: 192px; text-wrap: balance;
+  }
+  h2.display {
+    font-family: var(--display); font-weight: 500; letter-spacing: -0.03em; line-height: 1.0;
+    font-size: 120px; text-wrap: balance;
+  }
+  h3.display {
+    font-family: var(--display); font-weight: 500; letter-spacing: -0.025em; line-height: 1.02;
+    font-size: 84px; text-wrap: balance;
+  }
+  h4.display {
+    font-family: var(--display); font-weight: 500; letter-spacing: -0.02em; line-height: 1.1;
+    font-size: 40px; text-wrap: balance;
+  }
+  .italic, em.ed { font-family: var(--serif); font-style: italic; font-weight: 300; letter-spacing: -0.01em; }
+  h1.display em, h2.display em, h3.display em, h4.display em { font-family: var(--serif); font-style: italic; font-weight: 300; letter-spacing: -0.015em; color: var(--ink-2); }
+  section.slide.ink h1.display em, section.slide.ink h2.display em, section.slide.ink h3.display em { color: #C9C1AF; }
+
+  .lede {
+    font-family: var(--serif); font-size: 36px; line-height: 1.35; font-weight: 300; letter-spacing: -0.005em; max-width: 22ch;
+  }
+  .lede em { font-style: italic; }
+  p.body { font-size: 19px; line-height: 1.55; color: var(--ink-2); max-width: 46ch; }
+  p.body.big { font-size: 22px; }
+
+  /* ---------- Navigation dots ---------- */
+  deck-stage { color-scheme: dark; }
+
+  /* -------------------------------------------------------------------
+     Slide 01 — COVER
+  ------------------------------------------------------------------- */
+  .cover .stage { display: grid; grid-template-rows: auto 1fr auto; }
+  .cover .top-meta { display: flex; justify-content: space-between; align-items: flex-start; }
+  .cover .top-meta .est { font-family: var(--mono); font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); max-width: 38ch; line-height: 1.5; }
+  .cover .top-meta .reg { font-family: var(--mono); font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); text-align: right; }
+  .cover .title { align-self: end; }
+  .cover .title h1 { font-size: 168px; line-height: 0.92; }
+  .cover .title .sub { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 34px; color: var(--ink-2); margin-top: 24px; max-width: 46ch; line-height: 1.25; }
+  .cover .coda { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 48px; padding-top: 32px; border-top: 1px solid var(--rule-hard); }
+  .cover .coda dt { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .cover .coda dd { font-family: var(--display); font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
+  .cover .coda dd em { font-family: var(--serif); font-weight: 300; font-style: italic; }
+
+  /* -------------------------------------------------------------------
+     Slide 02 — TOC
+  ------------------------------------------------------------------- */
+  .toc .stage { display: grid; grid-template-columns: 460px 1fr; gap: 96px; }
+  .toc .lhs h2 { font-size: 88px; }
+  .toc .lhs .note { margin-top: 32px; font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 26px; color: var(--ink-2); line-height: 1.3; max-width: 22ch; }
+  .toc ol { list-style: none; counter-reset: toc; }
+  .toc ol li {
+    counter-increment: toc;
+    display: grid; grid-template-columns: 80px 1fr auto; gap: 28px; align-items: baseline;
+    padding: 22px 0; border-top: 1px solid var(--rule);
+    font-family: var(--display); font-size: 36px; font-weight: 500; letter-spacing: -0.015em;
+  }
+  .toc ol li:last-child { border-bottom: 1px solid var(--rule); }
+  .toc ol li::before { content: counter(toc, upper-roman); font-family: var(--mono); font-size: 14px; letter-spacing: 0.1em; color: var(--muted); font-weight: 400; align-self: center; }
+  .toc ol li em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .toc ol li .pg { font-family: var(--mono); font-size: 14px; letter-spacing: 0.1em; color: var(--muted); font-weight: 400; }
+
+  /* -------------------------------------------------------------------
+     Slide 03 — SECTION DIVIDER I
+  ------------------------------------------------------------------- */
+  .divider-slide .stage { display: grid; grid-template-rows: auto 1fr auto; }
+  .divider-slide .big-num {
+    font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 40px; color: var(--muted);
+  }
+  .divider-slide .big-num span { font-family: var(--display); font-style: normal; font-weight: 500; font-size: 160px; color: var(--ink); letter-spacing: -0.035em; line-height: 0.9; display: block; margin-top: 8px; }
+  .divider-slide .words { align-self: center; }
+  .divider-slide h2.display { font-size: 180px; max-width: 18ch; }
+  .divider-slide .capsule {
+    align-self: end;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0;
+    border-top: 1px solid var(--rule-hard);
+  }
+  .divider-slide .capsule > div { padding: 24px 40px 0 0; border-right: 1px solid var(--rule); }
+  .divider-slide .capsule > div:last-child { border-right: 0; }
+  .divider-slide .capsule dt { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .divider-slide .capsule dd { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 26px; color: var(--ink-2); line-height: 1.3; }
+
+  /* -------------------------------------------------------------------
+     Slide 04 — THE OBSERVATION (1-col text)
+  ------------------------------------------------------------------- */
+  .observation .stage { display: grid; grid-template-columns: 240px 1fr 240px; gap: 72px; }
+  .observation .margin-left { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); line-height: 1.6; padding-top: 10px; border-top: 1px solid var(--ink); }
+  .observation .margin-left b { display: block; color: var(--ink); font-weight: 500; margin-bottom: 6px; }
+  .observation .body-col {
+    font-family: var(--serif); font-size: 34px; line-height: 1.4; font-weight: 300; letter-spacing: -0.005em;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .observation .body-col p + p { margin-top: 28px; }
+  .observation .body-col em { font-style: italic; color: var(--ink); font-weight: 400; }
+  .observation .body-col .dropcap::first-letter {
+    font-family: var(--display); font-weight: 500; font-size: 112px; float: left; line-height: 0.85; margin: 8px 14px 0 -4px; letter-spacing: -0.04em;
+  }
+  .observation .margin-right { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding-top: 10px; border-top: 1px solid var(--rule); }
+  .observation .margin-right .pull {
+    font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 22px; color: var(--ink-2); text-transform: none; letter-spacing: -0.005em; margin-top: 20px; line-height: 1.35;
+  }
+
+  /* -------------------------------------------------------------------
+     Slide 05 — THESIS (2-col text + visual)
+  ------------------------------------------------------------------- */
+  .thesis-s .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; }
+  .thesis-s .lhs { display: flex; flex-direction: column; justify-content: space-between; }
+  .thesis-s .lhs .lead { font-family: var(--display); font-size: 72px; line-height: 1.0; font-weight: 500; letter-spacing: -0.03em; }
+  .thesis-s .lhs .lead em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .thesis-s .lhs .elab { font-family: var(--serif); font-size: 24px; line-height: 1.45; font-weight: 300; color: var(--ink-2); max-width: 32ch; margin-top: 32px; }
+  .thesis-s .lhs .attrib { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-top: 40px; }
+  .thesis-s .rhs { background: var(--ink); color: var(--paper); padding: 56px; display: flex; flex-direction: column; justify-content: space-between; position: relative; }
+  .thesis-s .rhs::before { content: ''; position: absolute; top: 20px; left: 20px; right: 20px; bottom: 20px; border: 1px solid #FFFFFF14; pointer-events: none; }
+  .thesis-s .rhs .tag { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #9A9487; }
+  .thesis-s .rhs .schema { display: grid; grid-template-columns: 60px 1fr; gap: 12px 24px; }
+  .thesis-s .rhs .schema .n { font-family: var(--mono); font-size: 13px; color: #9A9487; padding-top: 10px; }
+  .thesis-s .rhs .schema .t { padding: 8px 0 12px; border-bottom: 1px solid #FFFFFF14; }
+  .thesis-s .rhs .schema .t b { font-family: var(--display); font-weight: 500; font-size: 22px; display: block; }
+  .thesis-s .rhs .schema .t b em { font-family: var(--serif); font-style: italic; font-weight: 300; color: #C9C1AF; }
+  .thesis-s .rhs .schema .t span { font-family: var(--mono); font-size: 11px; color: #9A9487; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* -------------------------------------------------------------------
+     Slide 06 — KEY POINTS (bullet list)
+  ------------------------------------------------------------------- */
+  .points .stage { display: grid; grid-template-rows: auto 1fr; gap: 56px; }
+  .points .head { display: grid; grid-template-columns: 240px 1fr; gap: 56px; align-items: end; }
+  .points .head .label { font-family: var(--mono); font-size: 12px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--ink); }
+  .points .head h3 { font-size: 80px; }
+  .points .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--rule-hard); }
+  .points .cell { padding: 36px 44px 32px 0; border-right: 1px solid var(--rule); }
+  .points .cell:last-child { border-right: 0; padding-right: 0; }
+  .points .cell .n { font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; color: var(--muted); }
+  .points .cell h4 { font-family: var(--display); font-size: 32px; line-height: 1.1; font-weight: 500; letter-spacing: -0.02em; margin: 20px 0 18px; text-wrap: balance; }
+  .points .cell h4 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .points .cell p { font-size: 16px; line-height: 1.55; color: var(--ink-2); max-width: 34ch; }
+  .points .cell ul { list-style: none; margin-top: 18px; }
+  .points .cell ul li { padding: 10px 0; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); display: flex; justify-content: space-between; }
+  .points .cell ul li:first-child { border-top: 0; }
+  .points .cell ul li span { color: var(--muted); }
+
+  /* -------------------------------------------------------------------
+     Slide 07 — PULL QUOTE / MANIFESTO
+  ------------------------------------------------------------------- */
+  .pullquote { }
+  .pullquote .stage { display: grid; grid-template-rows: auto 1fr auto; }
+  .pullquote .tag { font-family: var(--mono); font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: #9A9487; }
+  .pullquote blockquote {
+    align-self: center;
+    font-family: var(--display); font-weight: 400; font-size: 108px; line-height: 1.08; letter-spacing: -0.035em;
+    max-width: 24ch; text-wrap: balance;
+  }
+  .pullquote blockquote em { font-family: var(--serif); font-style: italic; font-weight: 300; color: #C9C1AF; letter-spacing: -0.02em; }
+  .pullquote blockquote .mark { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 180px; color: #9A9487; line-height: 0.2; display: inline-block; margin-right: 12px; vertical-align: -0.2em; }
+  .pullquote .sig { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; padding-top: 32px; border-top: 1px solid #FFFFFF1F; }
+  .pullquote .sig .who { font-family: var(--display); font-size: 22px; font-weight: 500; letter-spacing: -0.015em; color: var(--paper); }
+  .pullquote .sig .role { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 18px; color: #9A9487; margin-top: 4px; }
+
+  /* -------------------------------------------------------------------
+     Slide 08 — DIVIDER II
+  ------------------------------------------------------------------- */
+  /* reused .divider-slide */
+
+  /* -------------------------------------------------------------------
+     Slide 09 — TWO-COL TEXT + VISUAL (the pod)
+  ------------------------------------------------------------------- */
+  .pod .stage { display: grid; grid-template-columns: 560px 1fr; gap: 72px; }
+  .pod .lhs h3 { font-size: 72px; line-height: 1.0; }
+  .pod .lhs p.body { margin-top: 28px; font-size: 20px; max-width: 32ch; }
+  .pod .lhs .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 48px; border-top: 1px solid var(--rule-hard); }
+  .pod .lhs .stats > div { padding: 24px 24px 0 0; border-right: 1px solid var(--rule); }
+  .pod .lhs .stats > div:last-child { border-right: 0; }
+  .pod .lhs .stats b { font-family: var(--display); font-size: 56px; font-weight: 500; letter-spacing: -0.03em; display: block; line-height: 1; }
+  .pod .lhs .stats b em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .pod .lhs .stats span { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: block; margin-top: 10px; }
+
+  .pod .diagram { position: relative; background: var(--paper-2); padding: 48px; border: 1px solid var(--rule); }
+  .pod .diagram .dlabel { position: absolute; top: 20px; left: 24px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .pod .diagram .dfoot { position: absolute; bottom: 20px; right: 24px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .pod .rings { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; height: 100%; align-content: center; }
+  .pod .ring { position: relative; padding-top: 24px; }
+  .pod .ring h5 { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 20px; }
+  .pod .role { background: var(--paper); border: 1px solid var(--rule); padding: 14px 18px; margin-bottom: 10px; }
+  .pod .role .rn { font-family: var(--display); font-size: 20px; font-weight: 500; letter-spacing: -0.015em; }
+  .pod .role .rn em { font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--ink-2); }
+  .pod .role .rt { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+
+  /* -------------------------------------------------------------------
+     Slide 10 — KPI GRID
+  ------------------------------------------------------------------- */
+  .kpis .stage { display: grid; grid-template-rows: auto 1fr; gap: 56px; }
+  .kpis .head { display: grid; grid-template-columns: 1fr auto; gap: 40px; align-items: end; }
+  .kpis .head h3 { font-size: 76px; max-width: 22ch; }
+  .kpis .head .src { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #9A9487; max-width: 24ch; text-align: right; line-height: 1.6; }
+  .kpis .grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr 1fr; gap: 0; border-top: 1px solid #FFFFFF1F; }
+  .kpis .cell { border-right: 1px solid #FFFFFF14; border-bottom: 1px solid #FFFFFF14; padding: 32px 40px 28px 0; display: flex; flex-direction: column; justify-content: space-between; }
+  .kpis .cell:nth-child(4n) { border-right: 0; }
+  .kpis .cell:nth-last-child(-n+4) { border-bottom: 0; }
+  .kpis .cell .kl { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #9A9487; }
+  .kpis .cell .kv { font-family: var(--display); font-size: 108px; font-weight: 500; letter-spacing: -0.035em; line-height: 0.95; color: var(--paper); margin: 16px 0 12px; }
+  .kpis .cell .kv em { font-family: var(--serif); font-style: italic; font-weight: 300; color: #C9C1AF; font-size: 72px; }
+  .kpis .cell .kv .unit { font-size: 48px; color: #9A9487; font-weight: 400; letter-spacing: -0.02em; margin-left: 4px; }
+  .kpis .cell .kd { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 18px; color: #C9C1AF; line-height: 1.3; }
+
+  /* -------------------------------------------------------------------
+     Slide 11 — CHART (time to decision)
+  ------------------------------------------------------------------- */
+  .chart .stage { display: grid; grid-template-rows: auto 1fr auto; gap: 40px; }
+  .chart .head { display: grid; grid-template-columns: 1fr 300px; gap: 40px; align-items: end; }
+  .chart .head h3 { font-size: 64px; max-width: 20ch; line-height: 1.0; }
+  .chart .head h3 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .chart .head .legend { display: flex; flex-direction: column; gap: 10px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
+  .chart .head .legend .row { display: flex; align-items: center; gap: 10px; }
+  .chart .head .legend .sw { width: 18px; height: 6px; }
+  .chart-area { position: relative; }
+  .chart-area svg { width: 100%; height: 100%; display: block; }
+  .chart .annot { position: absolute; font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 22px; color: var(--ink-2); max-width: 24ch; line-height: 1.3; }
+  .chart .foot { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding-top: 16px; border-top: 1px solid var(--rule); }
+
+  /* -------------------------------------------------------------------
+     Slide 12 — CASE STUDY
+  ------------------------------------------------------------------- */
+  .case .stage { display: grid; grid-template-columns: 1.2fr 1fr; gap: 72px; }
+  .case .lhs .no { font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
+  .case .lhs .no em { font-family: var(--serif); font-style: italic; font-weight: 300; text-transform: none; letter-spacing: -0.005em; font-size: 14px; color: var(--ink-2); margin-left: 12px; }
+  .case .lhs h3 { font-size: 96px; margin-top: 20px; }
+  .case .lhs .brief { font-family: var(--serif); font-size: 26px; line-height: 1.4; font-weight: 300; margin-top: 32px; max-width: 28ch; color: var(--ink-2); }
+  .case .lhs .brief em { font-style: italic; color: var(--ink); font-weight: 400; }
+  .case .lhs .facts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-top: 48px; border-top: 1px solid var(--rule-hard); }
+  .case .lhs .facts > div { padding: 20px 24px 0 0; border-right: 1px solid var(--rule); }
+  .case .lhs .facts > div:last-child { border-right: 0; }
+  .case .lhs .facts dt { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .case .lhs .facts dd { font-family: var(--display); font-size: 32px; font-weight: 500; letter-spacing: -0.02em; margin-top: 8px; line-height: 1.05; }
+  .case .lhs .facts dd em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+
+  .case .rhs { background: var(--paper-2); padding: 48px; display: flex; flex-direction: column; gap: 24px; position: relative; }
+  .case .rhs .tag { position: absolute; top: 20px; left: 24px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .case .rhs .outcome { margin-top: 28px; font-family: var(--display); font-size: 40px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.1; }
+  .case .rhs .outcome em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .case .rhs .timeline { display: grid; grid-template-columns: 60px 1fr auto; gap: 16px 20px; font-size: 15px; color: var(--ink-2); margin-top: auto; }
+  .case .rhs .timeline .n { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.1em; padding-top: 8px; border-top: 1px solid var(--rule); }
+  .case .rhs .timeline .t { font-family: var(--display); font-size: 18px; font-weight: 500; letter-spacing: -0.01em; padding-top: 8px; border-top: 1px solid var(--rule); }
+  .case .rhs .timeline .t em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .case .rhs .timeline .d { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.1em; padding-top: 8px; border-top: 1px solid var(--rule); text-align: right; }
+
+  /* -------------------------------------------------------------------
+     Slide 13 — COMPARISON (before/after)
+  ------------------------------------------------------------------- */
+  .compare .stage { display: grid; grid-template-rows: auto 1fr; gap: 48px; }
+  .compare .head h3 { font-size: 76px; max-width: 20ch; }
+  .compare .cols { display: grid; grid-template-columns: 1fr 88px 1fr; gap: 0; height: 100%; }
+  .compare .col { padding: 40px; display: flex; flex-direction: column; gap: 24px; position: relative; }
+  .compare .col.before { background: var(--paper-2); }
+  .compare .col.after  { background: var(--ink); color: var(--paper); }
+  .compare .col .tag { font-family: var(--mono); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; }
+  .compare .col.before .tag { color: var(--muted); }
+  .compare .col.after .tag { color: #9A9487; }
+  .compare .col h4 { font-family: var(--display); font-size: 56px; font-weight: 500; letter-spacing: -0.025em; line-height: 1.0; }
+  .compare .col h4 em { font-family: var(--serif); font-style: italic; font-weight: 300; }
+  .compare .col.before h4 em { color: var(--ink-2); }
+  .compare .col.after h4 em { color: #C9C1AF; }
+  .compare .col ul { list-style: none; margin-top: auto; }
+  .compare .col li { padding: 14px 0; border-top: 1px solid var(--rule); font-size: 17px; display: grid; grid-template-columns: 160px 1fr; gap: 20px; }
+  .compare .col.after li { border-color: #FFFFFF14; }
+  .compare .col li .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
+  .compare .col.after li .lbl { color: #9A9487; }
+  .compare .col li .val { font-family: var(--display); font-weight: 500; font-size: 20px; letter-spacing: -0.015em; line-height: 1.2; }
+  .compare .col li .val em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .compare .col.after li .val em { color: #C9C1AF; }
+  .compare .arrow { display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 40px; color: var(--ink-2); background: var(--paper); }
+
+  /* -------------------------------------------------------------------
+     Slide 14 — TIMELINE
+  ------------------------------------------------------------------- */
+  .timeline-slide .stage { display: grid; grid-template-rows: auto 1fr; gap: 56px; }
+  .timeline-slide h3 { font-size: 76px; max-width: 22ch; }
+  .tl { position: relative; padding-top: 80px; }
+  .tl-axis { position: absolute; top: 120px; left: 0; right: 0; height: 1px; background: var(--ink); }
+  .tl-phases { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0; }
+  .tl-phase { padding: 0 32px 0 0; position: relative; }
+  .tl-phase::before { content: ''; position: absolute; top: 120px; left: 0; width: 14px; height: 14px; border-radius: 50%; background: var(--ink); transform: translateY(-50%); }
+  .tl-phase::after  { content: ''; position: absolute; top: 120px; left: 7px; width: 0; height: 40px; border-left: 1px dashed var(--rule-hard); }
+  .tl-phase .when { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .tl-phase .range {
+    font-family: var(--display); font-size: 56px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; margin-top: 8px; margin-bottom: 52px;
+  }
+  .tl-phase .range em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); font-size: 36px; }
+  .tl-phase h4 { font-family: var(--display); font-size: 28px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.1; margin-top: 40px; }
+  .tl-phase h4 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .tl-phase p { margin-top: 14px; font-size: 15px; line-height: 1.55; color: var(--ink-2); max-width: 32ch; }
+  .tl-phase ul { list-style: none; margin-top: 18px; }
+  .tl-phase li { padding: 8px 0; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+
+  /* -------------------------------------------------------------------
+     Slide 15 — TEAM / ORG
+  ------------------------------------------------------------------- */
+  .team .stage { display: grid; grid-template-rows: auto 1fr; gap: 56px; }
+  .team .head { display: grid; grid-template-columns: 480px 1fr; gap: 56px; align-items: end; }
+  .team .head h3 { font-size: 76px; }
+  .team .head p { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 22px; color: var(--ink-2); line-height: 1.4; max-width: 42ch; }
+  .team .grid { display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--rule-hard); height: 100%; overflow: hidden; }
+  .team .person { padding: 14px 14px 10px 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .team .portrait { width: auto; flex: 1 1 0; min-height: 0; aspect-ratio: auto; background: var(--paper-2); margin-bottom: 8px; position: relative; overflow: hidden; border: 1px solid var(--rule); }
+  .team .portrait svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .team .person .nm { font-family: var(--display); font-size: 18px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.15; }
+  .team .person .nm em { font-family: var(--serif); font-style: italic; font-weight: 400; color: var(--ink-2); }
+  .team .person .rl { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+  .team .person .note { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 14px; color: var(--ink-2); margin-top: 8px; line-height: 1.3; }
+  .team .person:nth-child(7n) { border-right: 0; }
+  .team .person:nth-last-child(-n+7) { border-bottom: 0; }
+  .team .person.is-agent .portrait { background: var(--ink); }
+  .team .person.is-agent .portrait .agent-gloss {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 36px; color: var(--paper);
+  }
+  .team .head { padding-bottom: 8px; }
+
+  /* -------------------------------------------------------------------
+     Slide 16 — PRICING / ENGAGEMENT
+  ------------------------------------------------------------------- */
+  .pricing .stage { display: grid; grid-template-rows: auto 1fr; gap: 48px; }
+  .pricing .head { display: grid; grid-template-columns: 1fr auto; gap: 40px; align-items: end; }
+  .pricing .head h3 { font-size: 76px; max-width: 18ch; }
+  .pricing .head .k { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); text-align: right; max-width: 24ch; line-height: 1.6; }
+  .pricing .cols { display: grid; grid-template-columns: 1fr 1.1fr 1fr; gap: 0; border-top: 1px solid var(--rule-hard); }
+  .pricing .card { padding: 32px 36px; border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 20px; position: relative; }
+  .pricing .card:last-child { border-right: 0; }
+  .pricing .card.featured { background: var(--ink); color: var(--paper); margin: -1px 0 -1px 0; }
+  .pricing .card.featured::before { content: 'Most retained'; position: absolute; top: 16px; right: 20px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+  .pricing .card .tag { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .pricing .card.featured .tag { color: #9A9487; }
+  .pricing .card .name { font-family: var(--display); font-size: 44px; font-weight: 500; letter-spacing: -0.025em; line-height: 1.0; }
+  .pricing .card .name em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .pricing .card.featured .name em { color: #C9C1AF; }
+  .pricing .card .price { font-family: var(--display); font-size: 88px; font-weight: 500; letter-spacing: -0.04em; line-height: 1; }
+  .pricing .card .price small { font-size: 20px; font-weight: 400; letter-spacing: -0.01em; color: var(--muted); margin-left: 10px; font-family: var(--sans); }
+  .pricing .card.featured .price small { color: #9A9487; }
+  .pricing .card .pitch { font-family: var(--serif); font-size: 18px; line-height: 1.45; font-weight: 300; color: var(--ink-2); }
+  .pricing .card.featured .pitch { color: #C9C1AF; }
+  .pricing .card ul { list-style: none; margin-top: auto; }
+  .pricing .card li { padding: 12px 0; border-top: 1px solid var(--rule); font-size: 15px; line-height: 1.35; color: var(--ink-2); }
+  .pricing .card.featured li { color: #C9C1AF; border-color: #FFFFFF14; }
+  .pricing .card li::before { content: '→'; font-family: var(--mono); color: var(--muted); margin-right: 12px; }
+  .pricing .card.featured li::before { color: var(--accent); }
+
+  /* -------------------------------------------------------------------
+     Slide 17 — PRINCIPLES (index)
+  ------------------------------------------------------------------- */
+  .principles .stage { display: grid; grid-template-rows: auto 1fr; gap: 56px; }
+  .principles .head { display: grid; grid-template-columns: 220px 1fr; gap: 56px; align-items: end; }
+  .principles .head .label { font-family: var(--mono); font-size: 12px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--ink); }
+  .principles .head h3 { font-size: 72px; max-width: 20ch; }
+  .principles .grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 1fr; gap: 0; border-top: 1px solid var(--rule-hard); }
+  .principles .p { padding: 28px 32px 28px 0; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .principles .p:nth-child(4n) { border-right: 0; padding-right: 0; }
+  .principles .p:nth-last-child(-n+4) { border-bottom: 0; }
+  .principles .p .pn { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 42px; color: var(--muted); line-height: 1; }
+  .principles .p h4 { font-family: var(--display); font-size: 24px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.15; margin: 14px 0 10px; text-wrap: balance; }
+  .principles .p h4 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .principles .p p { font-size: 14px; line-height: 1.5; color: var(--ink-2); max-width: 30ch; }
+
+  /* -------------------------------------------------------------------
+     Slide 18 — RECOMMENDATIONS (executive summary)
+  ------------------------------------------------------------------- */
+  .recos .stage { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; }
+  .recos .lhs { display: flex; flex-direction: column; justify-content: space-between; }
+  .recos .lhs .k { font-family: var(--mono); font-size: 12px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--ink); }
+  .recos .lhs h3 { font-size: 88px; margin-top: 32px; max-width: 14ch; }
+  .recos .lhs .note { font-family: var(--serif); font-style: italic; font-weight: 300; font-size: 20px; color: var(--ink-2); line-height: 1.4; max-width: 30ch; margin-top: auto; }
+  .recos .rhs { overflow: hidden; }
+  .recos .rhs ol { display: flex; flex-direction: column; height: 100%; }
+  .recos .rhs ol li { padding: 14px 0; min-height: 0; flex: 0 0 auto; display: grid; grid-template-columns: 56px 1fr; gap: 18px; }
+  .recos .rhs ol li::before { padding-top: 10px; }
+  .recos .rhs ol li h4 { font-size: 21px; line-height: 1.2; }
+  .recos .rhs ol li p { font-size: 13px; margin-top: 4px; line-height: 1.45; max-width: 56ch; }
+  .recos .rhs ol li .meta { font-size: 10px; margin-top: 6px; gap: 20px; }
+  .recos .rhs ol { list-style: none; counter-reset: r; }
+  .recos .rhs ol li {
+    counter-increment: r;
+    border-top: 1px solid var(--rule-hard);
+  }
+  .recos .rhs ol li:last-child { border-bottom: 1px solid var(--rule-hard); }
+  .recos .rhs ol li::before {
+    content: counter(r, decimal-leading-zero);
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.1em; color: var(--muted);
+  }
+  .recos .rhs ol li h4 { font-family: var(--display); font-weight: 500; letter-spacing: -0.015em; }
+  .recos .rhs ol li h4 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .recos .rhs ol li p { color: var(--ink-2); }
+  .recos .rhs ol li .meta { font-family: var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: flex; }
+  .recos .rhs ol li .meta b { color: var(--ink); }
+
+  /* -------------------------------------------------------------------
+     Slide 19 — NEXT STEPS (timeline-lite)
+  ------------------------------------------------------------------- */
+  .next .stage { display: grid; grid-template-rows: auto 1fr auto; gap: 48px; }
+  .next h3 { font-size: 88px; max-width: 22ch; }
+  .next .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--rule-hard); }
+  .next .step { padding: 32px 40px 32px 0; border-right: 1px solid var(--rule); display: flex; flex-direction: column; gap: 16px; }
+  .next .step:last-child { border-right: 0; }
+  .next .step .when { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .next .step h4 { font-family: var(--display); font-size: 40px; font-weight: 500; letter-spacing: -0.025em; line-height: 1.1; }
+  .next .step h4 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .next .step p { font-size: 16px; line-height: 1.55; color: var(--ink-2); max-width: 36ch; }
+  .next .step .owner { margin-top: auto; font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding-top: 12px; border-top: 1px solid var(--rule); }
+  .next .step .owner b { color: var(--ink); font-weight: 500; }
+  .next .cta { display: flex; justify-content: space-between; align-items: center; padding-top: 32px; border-top: 1px solid var(--rule-hard); }
+  .next .cta .big { font-family: var(--display); font-size: 48px; font-weight: 500; letter-spacing: -0.025em; }
+  .next .cta .big em { font-family: var(--serif); font-style: italic; font-weight: 300; color: var(--ink-2); }
+  .next .cta .btn { font-family: var(--mono); font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; background: var(--ink); color: var(--paper); padding: 20px 32px; border: 1px solid var(--ink); }
+
+  /* -------------------------------------------------------------------
+     Slide 20 — CLOSING / Q&A
+  ------------------------------------------------------------------- */
+  .closing .stage { display: grid; grid-template-rows: auto 1fr auto; }
+  .closing .k { font-family: var(--mono); font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: #9A9487; }
+  .closing .middle { align-self: center; display: grid; grid-template-columns: 1fr auto; gap: 72px; align-items: center; }
+  .closing .middle h2 { font-size: 200px; line-height: 0.92; color: var(--paper); }
+  .closing .middle h2 em { font-family: var(--serif); font-style: italic; font-weight: 300; color: #C9C1AF; }
+  .closing .middle .aside {
+    writing-mode: vertical-rl; transform: rotate(180deg);
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: #9A9487;
+  }
+  .closing .contact {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 48px;
+    padding-top: 32px; border-top: 1px solid #FFFFFF1F;
+  }
+  .closing .contact dt { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #9A9487; margin-bottom: 8px; }
+  .closing .contact dd { font-family: var(--display); font-size: 22px; font-weight: 500; letter-spacing: -0.015em; color: var(--paper); line-height: 1.3; }
+  .closing .contact dd em { font-family: var(--serif); font-style: italic; font-weight: 300; color: #C9C1AF; }
+
+
+  /* ---------- TWEAKS PANEL ---------- */
+  #tweaks-panel {
+    position: fixed; right: 24px; bottom: 24px;
+    width: 320px; padding: 20px; background: var(--paper); color: var(--ink);
+    border: 1px solid var(--ink); font-family: var(--sans); font-size: 13px;
+    z-index: 99999; display: none;
+  }
+  #tweaks-panel.active { display: block; }
+  #tweaks-panel h4 { font-family: var(--display); font-size: 20px; font-weight: 500; letter-spacing: -0.015em; margin-bottom: 4px; }
+  #tweaks-panel .sub { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 18px; }
+  #tweaks-panel label { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 14px 0 8px; }
+  #tweaks-panel input[type=text] {
+    width: 100%; font-family: var(--display); font-size: 18px; font-weight: 500;
+    border: 0; border-bottom: 1px solid var(--ink); background: transparent; padding: 4px 0;
+    color: var(--ink);
+  }
+  #tweaks-panel input[type=text]:focus { outline: none; border-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080">
+
+  <!-- ============================================================= -->
+  <!-- 01 — COVER                                                    -->
+  <!-- ============================================================= -->
+  <section class="slide cover" data-label="Cover">
+    <div class="chrome">
+      <div class="brand">
+        <span class="mark"><em>H</em></span>
+        <span class="name firm-name">H<em>&amp;ai</em></span>
+      </div>
+      <span>Report № MRDS-0412 · Confidential</span>
+    </div>
+
+    <div class="stage">
+      <div class="top-meta">
+        <div class="est">
+          A firm of humans and agents · Est. 2026<br>
+          New York · Paris · Singapore
+        </div>
+        <div class="reg">April MMXXVI<br>For the board · Private</div>
+      </div>
+
+      <div class="title">
+        <div class="kicker">Recommendations · Q2 2026 · 42 pages</div>
+        <h1 class="display" style="margin-top: 28px;">Counsel at <em>the&nbsp;speed</em><br>of&nbsp;thought.</h1>
+        <div class="sub">A set of recommendations for restructuring the advisory function around a standing pod of <em>four humans</em> and <em>nine agents.</em></div>
+      </div>
+
+      <dl class="coda">
+        <div><dt>Prepared by</dt><dd>Amara Okafor <em>&amp; partners</em></dd></div>
+        <div><dt>For</dt><dd>The board <em>of directors</em></dd></div>
+        <div><dt>Engagement</dt><dd>Standing <em>counsel</em></dd></div>
+        <div><dt>Read time</dt><dd>22 <em>minutes</em></dd></div>
+      </dl>
+    </div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 02 — TOC                                                      -->
+  <!-- ============================================================= -->
+  <section class="slide toc bone" data-label="Contents">
+    <div class="chrome">
+      <div class="brand">
+        <span class="mark"><em>H</em></span>
+        <span class="name firm-name">H<em>&amp;ai</em></span>
+      </div>
+      <span>Contents · i–vii</span>
+    </div>
+
+    <div class="stage">
+      <div class="lhs">
+        <div class="kicker" style="margin-bottom:24px;">Contents</div>
+        <h2 class="display">What you are <em>about to&nbsp;read.</em></h2>
+        <p class="note">Seven movements. Each stands alone — read straight through for the argument, or jump to the page that concerns you.</p>
+      </div>
+
+      <ol>
+        <li><span>The observation <em>— what changed in the market</em></span><span class="pg">p. 04</span></li>
+        <li><span>The thesis <em>— four humans, nine agents</em></span><span class="pg">p. 06</span></li>
+        <li><span>The evidence <em>— five engagements, one year</em></span><span class="pg">p. 11</span></li>
+        <li><span>The model <em>— how a pod actually works</em></span><span class="pg">p. 15</span></li>
+        <li><span>The recommendations <em>— six moves for the board</em></span><span class="pg">p. 24</span></li>
+        <li><span>The engagement <em>— terms and cadence</em></span><span class="pg">p. 32</span></li>
+        <li><span>The principles <em>— what we will not trade away</em></span><span class="pg">p. 38</span></li>
+      </ol>
+    </div>
+
+    <div class="footrule">
+      <span>i. Contents</span>
+      <span>H&amp;ai · April 2026</span>
+    </div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 03 — DIVIDER I : THE OBSERVATION                              -->
+  <!-- ============================================================= -->
+  <section class="slide divider-slide" data-label="I · The Observation">
+    <div class="chrome">
+      <div class="brand">
+        <span class="mark"><em>H</em></span>
+        <span class="name firm-name">H<em>&amp;ai</em></span>
+      </div>
+      <span>Movement I</span>
+    </div>
+
+    <div class="stage">
+      <div class="big-num"><em>Movement</em><span>I.</span></div>
+
+      <div class="words">
+        <h2 class="display">The pyramid is <em>collapsing</em> upward.</h2>
+      </div>
+
+      <dl class="capsule">
+        <div><dt>What we observed</dt><dd>Analyst work is being automated out of the profession — faster than firms can restructure.</dd></div>
+        <div><dt>What it means</dt><dd>The value of a consultant is no longer effort. It is <em>judgment under uncertainty.</em></dd></div>
+        <div><dt>What we propose</dt><dd>Rebuild the pod around nine agents that do the reading, and four humans who sign the memo.</dd></div>
+      </dl>
+    </div>
+    <div class="footrule"><span>I. The Observation</span><span>p. 04</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 04 — OBSERVATION (1-col editorial)                            -->
+  <!-- ============================================================= -->
+  <section class="slide observation olive" data-label="A Diagnosis">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>I.1 · A diagnosis</span>
+    </div>
+
+    <div class="stage">
+      <div class="margin-left">
+        <b>Dated</b>April 8, 2026
+        <b style="margin-top:20px;">Context</b>Advisory, $900B market
+        <b style="margin-top:20px;">Horizon</b>18 months
+        <b style="margin-top:20px;">Source</b>14 partner interviews,<br>312 engagements reviewed
+      </div>
+
+      <div class="body-col">
+        <p class="dropcap">Every generation of consulting firms has been an answer to a question about <em>leverage.</em> The 1960s asked how a few smart generalists could advise many CEOs at once — the answer was the pyramid. The 1990s asked how the pyramid could industrialize — the answer was the deck. The 2020s are asking something different, and the honest answer is that no one in this building has finished the sentence.</p>
+        <p>What we know is this: the analyst tier is being dissolved, quietly, by tools our own juniors use off-policy on their phones. What we do not know is what replaces the pyramid — <em>but we have been running the experiment for fourteen months,</em> and the results are in the next twenty pages.</p>
+      </div>
+
+      <div class="margin-right">
+        <span>Pull quote · p. 05</span>
+        <div class="pull">"A pod of four humans and nine agents delivered, in nine days, what a twenty-person team took eleven weeks to deliver in 2023."</div>
+      </div>
+    </div>
+    <div class="footrule"><span>I.1 · Diagnosis</span><span>p. 05 — 1 of 42</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 05 — THE THESIS (2-col)                                       -->
+  <!-- ============================================================= -->
+  <section class="slide thesis-s" data-label="The Thesis">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>II · The Thesis</span>
+    </div>
+
+    <div class="stage">
+      <div class="lhs">
+        <div class="kicker">II.1 · Thesis in one sentence</div>
+        <div>
+          <div class="lead" style="margin-top:24px;">One partner, <em>one hundred analysts,</em> one morning.</div>
+          <p class="elab">Work that required twenty people for three weeks now completes overnight. Our agents run the reading, the modeling, the first drafts. Humans judge, argue, and sign. <em>The deliverable arrives at dawn, fully examined.</em></p>
+        </div>
+        <div class="attrib">— The founding memo, H&amp;ai, Jan. 2026</div>
+      </div>
+
+      <div class="rhs">
+        <div>
+          <div class="tag">Compared · Three eras of advisory</div>
+        </div>
+
+        <div class="schema">
+          <div class="n">1960</div>
+          <div class="t"><b>Pyramid</b><span>20 analysts · 1 partner</span></div>
+
+          <div class="n">1995</div>
+          <div class="t"><b>Factory</b><span>50 analysts · 1 partner · templates</span></div>
+
+          <div class="n">2026</div>
+          <div class="t"><b>Pod<em>&nbsp;— ours</em></b><span>4 humans · 9 agents · one decision</span></div>
+        </div>
+
+        <div class="tag">Leverage ratio: 1 : 2.25 <em class="ed" style="color:#C9C1AF;"> — agents per human</em></div>
+      </div>
+    </div>
+    <div class="footrule"><span>II.1 · Thesis</span><span>p. 06</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 06 — KEY POINTS (3 columns)                                   -->
+  <!-- ============================================================= -->
+  <section class="slide points bone" data-label="Three Claims">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>II.2 · Three claims</span>
+    </div>
+
+    <div class="stage">
+      <div class="head">
+        <div class="label">II.2 · Three claims <br>we are prepared to defend</div>
+        <h3 class="display">What changes when <em>the pod</em> is the unit.</h3>
+      </div>
+
+      <div class="grid">
+        <div class="cell">
+          <div class="n">01 / Leverage</div>
+          <h4>One partner, <em>one hundred analysts,</em> one morning.</h4>
+          <p>Work that required a bullpen of twenty for three weeks now completes overnight. Agents do the reading, the modeling, the first drafts. Humans judge, argue, and sign the memo.</p>
+          <ul>
+            <li>Analyst hours saved <span>71%</span></li>
+            <li>Partner hours redirected <span>+38%</span></li>
+            <li>Unit cost of a memo <span>— €8.2k</span></li>
+          </ul>
+        </div>
+        <div class="cell">
+          <div class="n">02 / Continuity</div>
+          <h4>The engagement <em>never sleeps.</em></h4>
+          <p>Between meetings, agents revisit assumptions, refresh market data, stress-test scenarios, flag what changed. You return to a deck that aged a day and grew sharper for it.</p>
+          <ul>
+            <li>Refresh cadence <span>hourly</span></li>
+            <li>Source re-reads · wk <span>4,108</span></li>
+            <li>Drift alerts · avg. month <span>17</span></li>
+          </ul>
+        </div>
+        <div class="cell">
+          <div class="n">03 / Accountability</div>
+          <h4>Every claim, <em>every source,</em> every step.</h4>
+          <p>Every figure in our deliverables carries a signed trail back to the agent that computed it and the human who approved it. No black boxes. Deliverables are replayable.</p>
+          <ul>
+            <li>Claims auto-cited <span>94%</span></li>
+            <li>Signed pages · partner <span>100%</span></li>
+            <li>Replay window <span>∞</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="footrule"><span>II.2 · Three claims</span><span>p. 07</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 07 — MANIFESTO PULL QUOTE                                     -->
+  <!-- ============================================================= -->
+  <section class="slide pullquote ink" data-label="Manifesto">
+    <div class="chrome">
+      <div class="brand"><span class="mark" style="color:#C9C1AF;"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>II.3 · Manifesto</span>
+    </div>
+
+    <div class="stage">
+      <div class="tag">Manifesto · On what agents do to consulting</div>
+
+      <blockquote>
+        <span class="mark">“</span>We do not believe agents <em>replace</em> consultants. We believe they <em>restore</em> them to the craft of judgment, the courage of a point of view, and the <em>dignity</em> of a conversation that was not billed in six-minute increments.
+      </blockquote>
+
+      <div class="sig">
+        <div><div class="who">Amara Okafor</div><div class="role">Founding Partner · Strategy</div></div>
+        <div><div class="who">Henrik Vass</div><div class="role">Founding Partner · Agent Systems</div></div>
+        <div><div class="who">Ines Marchetti</div><div class="role">Founding Partner · Financial Advisory</div></div>
+      </div>
+    </div>
+    <div class="footrule"><span>II.3 · Manifesto</span><span>p. 08</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 08 — DIVIDER II : THE EVIDENCE                                -->
+  <!-- ============================================================= -->
+  <section class="slide divider-slide bone" data-label="III · The Evidence">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>Movement III</span>
+    </div>
+
+    <div class="stage">
+      <div class="big-num"><em>Movement</em><span>III.</span></div>
+      <div class="words">
+        <h2 class="display">What we can <em>show you.</em></h2>
+      </div>
+      <dl class="capsule">
+        <div><dt>Engagements reviewed</dt><dd><em>312</em> — across 4 sectors over 14 months</dd></div>
+        <div><dt>Median time saved</dt><dd><em>— 63%</em> against 2023 baseline</dd></div>
+        <div><dt>Partner satisfaction</dt><dd><em>9.1 / 10</em> — internal survey, n=14</dd></div>
+      </dl>
+    </div>
+    <div class="footrule"><span>III. The Evidence</span><span>p. 11</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 09 — THE POD (2-col visual)                                   -->
+  <!-- ============================================================= -->
+  <section class="slide pod" data-label="The Pod">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>IV.1 · The pod</span>
+    </div>
+
+    <div class="stage">
+      <div class="lhs">
+        <div class="kicker">IV.1 · The operating unit</div>
+        <h3 class="display" style="margin-top:20px;">Every engagement is a <em>pod of four humans and nine agents.</em></h3>
+        <p class="body">The partner frames the question. The conductor dispatches the agents. The domain expert sharpens the answer. The principal delivers it. <em>The pod is the firm in miniature</em> — reproducible, replayable, and small enough to fit in a single room.</p>
+        <div class="stats">
+          <div><b>4 <em>h.</em></b><span>Humans in every pod</span></div>
+          <div><b>9 <em>ai.</em></b><span>Agents in every pod</span></div>
+          <div><b>312</b><span>Agents deployed · total</span></div>
+          <div><b>1 : 2.25</b><span>Leverage ratio</span></div>
+        </div>
+      </div>
+
+      <div class="diagram">
+        <div class="dlabel">Pod 07 · illustrative</div>
+        <div class="rings">
+          <div class="ring">
+            <h5>Humans — 4</h5>
+            <div class="role"><div class="rn">Partner</div><div class="rt">Lead Counsel</div></div>
+            <div class="role"><div class="rn">Principal</div><div class="rt">Engagement Manager</div></div>
+            <div class="role"><div class="rn">Associate</div><div class="rt">Agent Conductor</div></div>
+            <div class="role"><div class="rn">Domain <em>Expert</em></div><div class="rt">Fractional · sector</div></div>
+          </div>
+          <div class="ring">
+            <h5>Agents — 9</h5>
+            <div class="role"><div class="rn"><em>Livia</em></div><div class="rt">Market Research</div></div>
+            <div class="role"><div class="rn"><em>Osmund</em></div><div class="rt">Financial Modeler</div></div>
+            <div class="role"><div class="rn"><em>Praxis</em></div><div class="rt">Competitive Intel</div></div>
+            <div class="role"><div class="rn"><em>Marginalia</em></div><div class="rt">Document Analysis</div></div>
+            <div class="role"><div class="rn">+ 5 more</div><div class="rt">Specialists on call</div></div>
+          </div>
+        </div>
+        <div class="dfoot">Brief → Dispatch → Draft → Judge → Counsel</div>
+      </div>
+    </div>
+    <div class="footrule"><span>IV.1 · The pod</span><span>p. 15</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 10 — KPI GRID (dark)                                          -->
+  <!-- ============================================================= -->
+  <section class="slide kpis ink" data-label="Vitals">
+    <div class="chrome">
+      <div class="brand"><span class="mark" style="color:#C9C1AF;"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>IV.2 · Engagement vitals</span>
+    </div>
+
+    <div class="stage">
+      <div class="head">
+        <h3 class="display" style="color:var(--paper);">What an <em>active</em> pod looks like, <em>this week.</em></h3>
+        <div class="src">Rolling 7 days, aggregated across 14 live engagements · as of 09:19 CET today.</div>
+      </div>
+
+      <div class="grid">
+        <div class="cell">
+          <div class="kl">Sources read · week</div>
+          <div class="kv">4,108</div>
+          <div class="kd">Patents, filings, analyst notes, earnings calls.</div>
+        </div>
+        <div class="cell">
+          <div class="kl">Models run · accepted</div>
+          <div class="kv">612<span class="unit">/34</span></div>
+          <div class="kd">A partner rejected 95% of drafts. That is the point.</div>
+        </div>
+        <div class="cell">
+          <div class="kl">Human hours · week</div>
+          <div class="kv">28<em>:14</em></div>
+          <div class="kd">Per partner. The rest of the clock is agents.</div>
+        </div>
+        <div class="cell">
+          <div class="kl">Auto-cited claims</div>
+          <div class="kv">94<span class="unit">%</span></div>
+          <div class="kd">Every cited figure replays to source, on demand.</div>
+        </div>
+        <div class="cell">
+          <div class="kl">Draft iterations · memo</div>
+          <div class="kv">8<span class="unit">.4</span></div>
+          <div class="kd">Median; five years ago this number was 2.1.</div>
+        </div>
+        <div class="cell">
+          <div class="kl">Time to first draft</div>
+          <div class="kv">4<span class="unit">h</span></div>
+          <div class="kd">From brief to a memo a partner can argue with.</div>
+        </div>
+        <div class="cell">
+          <div class="kl">Drift alerts · month</div>
+          <div class="kv">17</div>
+          <div class="kd">Overnight changes to the world the memo assumes.</div>
+        </div>
+        <div class="cell">
+          <div class="kl">Partner satisfaction</div>
+          <div class="kv">9<em>.1</em><span class="unit">/10</span></div>
+          <div class="kd">Internal survey, n = 14. Client NPS separate.</div>
+        </div>
+      </div>
+    </div>
+    <div class="footrule"><span>IV.2 · Vitals</span><span>p. 16</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 11 — CHART                                                    -->
+  <!-- ============================================================= -->
+  <section class="slide chart" data-label="Time to Decision">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>IV.3 · Time to decision</span>
+    </div>
+
+    <div class="stage">
+      <div class="head">
+        <h3 class="display">What used to take <em>twelve weeks</em> now takes twelve days.</h3>
+        <div class="legend">
+          <div class="row"><span class="sw" style="background:#78716A;"></span>Pre-2024 baseline · median</div>
+          <div class="row"><span class="sw" style="background:#1A1814;"></span>H&amp;ai pod · trailing 12 mo.</div>
+          <div class="row"><span class="sw" style="border-top:2px dashed #1A1814; height:0;"></span>Board decision deadline</div>
+        </div>
+      </div>
+
+      <div class="chart-area">
+        <svg viewBox="0 0 1600 520" preserveAspectRatio="none">
+          <!-- grid -->
+          <g stroke="#1A18141A" stroke-width="1">
+            <line x1="80" y1="80"  x2="1600" y2="80"/>
+            <line x1="80" y1="180" x2="1600" y2="180"/>
+            <line x1="80" y1="280" x2="1600" y2="280"/>
+            <line x1="80" y1="380" x2="1600" y2="380"/>
+            <line x1="80" y1="480" x2="1600" y2="480"/>
+          </g>
+          <!-- Y labels -->
+          <g font-family="Geist Mono, monospace" font-size="13" fill="#78716A" letter-spacing="2">
+            <text x="0" y="84">84D</text>
+            <text x="0" y="184">63D</text>
+            <text x="0" y="284">42D</text>
+            <text x="0" y="384">21D</text>
+            <text x="0" y="484">0D</text>
+          </g>
+          <!-- baseline line (muted) -->
+          <polyline fill="none" stroke="#78716A" stroke-width="2" stroke-dasharray="1 4"
+            points="80,120 300,140 520,130 740,110 960,150 1180,125 1400,115 1590,135"/>
+          <!-- baseline dots -->
+          <g fill="#78716A">
+            <circle cx="80" cy="120" r="5"/><circle cx="300" cy="140" r="5"/><circle cx="520" cy="130" r="5"/>
+            <circle cx="740" cy="110" r="5"/><circle cx="960" cy="150" r="5"/><circle cx="1180" cy="125" r="5"/>
+            <circle cx="1400" cy="115" r="5"/><circle cx="1590" cy="135" r="5"/>
+          </g>
+
+          <!-- H&ai line (ink) -->
+          <polyline fill="none" stroke="#1A1814" stroke-width="3"
+            points="80,310 300,340 520,360 740,395 960,415 1180,430 1400,445 1590,455"/>
+          <g fill="#1A1814">
+            <circle cx="80" cy="310" r="7"/><circle cx="300" cy="340" r="7"/><circle cx="520" cy="360" r="7"/>
+            <circle cx="740" cy="395" r="7"/><circle cx="960" cy="415" r="7"/><circle cx="1180" cy="430" r="7"/>
+            <circle cx="1400" cy="445" r="7"/><circle cx="1590" cy="455" r="7"/>
+          </g>
+
+          <!-- board deadline -->
+          <line x1="80" y1="250" x2="1600" y2="250" stroke="#1A1814" stroke-width="1.5" stroke-dasharray="6 6"/>
+
+          <!-- X labels -->
+          <g font-family="Geist Mono, monospace" font-size="13" fill="#78716A" letter-spacing="2">
+            <text x="75" y="510">Q1·25</text>
+            <text x="295" y="510">Q2·25</text>
+            <text x="515" y="510">Q3·25</text>
+            <text x="735" y="510">Q4·25</text>
+            <text x="955" y="510">Q1·26</text>
+            <text x="1175" y="510">Q2·26</text>
+            <text x="1395" y="510">Q3·26e</text>
+            <text x="1570" y="510">Q4·26e</text>
+          </g>
+        </svg>
+
+        <div class="annot" style="top: 38%; left: 16%;">Baseline flat at <em>~73 days</em> — no improvement in a decade.</div>
+        <div class="annot" style="bottom: 8%; left: 58%; max-width:18ch;">H&amp;ai trajectory lands at <em>8 days</em> by year-end.</div>
+      </div>
+
+      <div class="foot">
+        <span>Source · H&amp;ai engagement ledger · n=312</span>
+        <span>n.b. Excludes pre-brief scoping time</span>
+      </div>
+    </div>
+    <div class="footrule"><span>IV.3 · Time to decision</span><span>p. 17</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 12 — CASE STUDY                                               -->
+  <!-- ============================================================= -->
+  <section class="slide case olive" data-label="Case · 001">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>III.1 · Engagement №&nbsp;001</span>
+    </div>
+
+    <div class="stage">
+      <div class="lhs">
+        <div class="no">Engagement № 001 <em>— Private Equity, North America</em></div>
+        <h3 class="display">Carve-out of a <em>$4.2B</em> industrials division.</h3>
+        <p class="brief">Sponsor had signed an LOI. <em>Ninety days</em> to diligence a carve-out across 11 jurisdictions, three ERPs, and an unresolved environmental liability. <em>The prior firm quoted twelve weeks.</em> We quoted nineteen days.</p>
+        <dl class="facts">
+          <div><dt>Sector</dt><dd>Industrials</dd></div>
+          <div><dt>Timeline</dt><dd>18 <em>days</em></dd></div>
+          <div><dt>Pod size</dt><dd>4 <em>h.</em> + 9 <em>ai.</em></dd></div>
+        </dl>
+      </div>
+
+      <div class="rhs">
+        <div class="tag">Outcome · as of close + 30d</div>
+        <div class="outcome">Acquisition closed <em>on time.</em> Sponsor retained H&amp;ai on Standing Counsel <em>for the subsequent four carve-outs.</em></div>
+
+        <div class="timeline">
+          <div class="n">D 01</div><div class="t">Brief <em>— framed in one page</em></div><div class="d">6 hours</div>
+          <div class="n">D 03</div><div class="t">Data room <em>ingested · 11k pages</em></div><div class="d">agents</div>
+          <div class="n">D 07</div><div class="t">Sensitivity <em>model · 3 scenarios</em></div><div class="d">Osmund</div>
+          <div class="n">D 12</div><div class="t">Red team <em>memo · v4</em></div><div class="d">partner</div>
+          <div class="n">D 18</div><div class="t">Board memo <em>signed, delivered</em></div><div class="d">A. Okafor</div>
+        </div>
+      </div>
+    </div>
+    <div class="footrule"><span>III.1 · Case № 001</span><span>p. 11</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 13 — COMPARISON                                               -->
+  <!-- ============================================================= -->
+  <section class="slide compare bone" data-label="Before / After">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>V.1 · Two models of advisory</span>
+    </div>
+
+    <div class="stage">
+      <div class="head">
+        <div class="kicker">V.1 · The shift in operating model</div>
+        <h3 class="display" style="margin-top:12px;">What <em>used to&nbsp;work.</em> What <em>works&nbsp;now.</em></h3>
+      </div>
+
+      <div class="cols">
+        <div class="col before">
+          <div class="tag">Then · the pyramid</div>
+          <h4>The <em>factory</em> model</h4>
+          <ul>
+            <li><div class="lbl">Unit</div><div class="val">20 analysts <em>per partner</em></div></li>
+            <li><div class="lbl">Cadence</div><div class="val">11 weeks <em>to decision</em></div></li>
+            <li><div class="lbl">Cost basis</div><div class="val">Billable hour</div></li>
+            <li><div class="lbl">Accountability</div><div class="val">Folder of exhibits</div></li>
+            <li><div class="lbl">Durability</div><div class="val">Stale on delivery</div></li>
+            <li><div class="lbl">Learning curve</div><div class="val">Years <em>of apprenticeship</em></div></li>
+          </ul>
+        </div>
+
+        <div class="arrow"><em>becomes</em></div>
+
+        <div class="col after">
+          <div class="tag">Now · the pod</div>
+          <h4>The <em>counsel</em> model</h4>
+          <ul>
+            <li><div class="lbl">Unit</div><div class="val">4 humans + 9 agents</div></li>
+            <li><div class="lbl">Cadence</div><div class="val">12 days <em>to decision</em></div></li>
+            <li><div class="lbl">Cost basis</div><div class="val">Fee <em>per question</em></div></li>
+            <li><div class="lbl">Accountability</div><div class="val">Replayable console</div></li>
+            <li><div class="lbl">Durability</div><div class="val">Refreshed hourly</div></li>
+            <li><div class="lbl">Learning curve</div><div class="val">Weeks <em>with the pod</em></div></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="footrule"><span>V.1 · Comparison</span><span>p. 24</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 14 — TIMELINE / ROADMAP                                       -->
+  <!-- ============================================================= -->
+  <section class="slide timeline-slide" data-label="Roadmap">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>V.2 · Twelve-month plan</span>
+    </div>
+
+    <div class="stage">
+      <div class="head" style="display:grid; grid-template-columns: 1fr auto; align-items:end; gap:40px;">
+        <h3 class="display">A twelve-month <em>path</em> to the pod.</h3>
+        <div class="kicker">V.2 · Roadmap · Q2 '26 → Q1 '27</div>
+      </div>
+
+      <div class="tl">
+        <div class="tl-axis"></div>
+        <div class="tl-phases">
+          <div class="tl-phase">
+            <div class="when">Phase I · Now → Jun</div>
+            <div class="range">01 <em>— 03</em></div>
+            <h4>Pilot <em>one pod.</em></h4>
+            <p>Stand up a single pod on one live engagement. Partner + principal + associate + one domain expert. Instrument everything.</p>
+            <ul>
+              <li>Charter signed · wk 1</li>
+              <li>Four agents deployed</li>
+              <li>First memo delivered · wk 6</li>
+            </ul>
+          </div>
+          <div class="tl-phase">
+            <div class="when">Phase II · Jul → Sep</div>
+            <div class="range">04 <em>— 06</em></div>
+            <h4>Run <em>three pods</em> in parallel.</h4>
+            <p>Three partners, three pods, three sectors. Share the agent library. First version of the replayable console ships to clients.</p>
+            <ul>
+              <li>9 agents per pod · standardized</li>
+              <li>Console v1 · client-facing</li>
+              <li>Pricing pivot · fee per question</li>
+            </ul>
+          </div>
+          <div class="tl-phase">
+            <div class="when">Phase III · Oct → Dec</div>
+            <div class="range">07 <em>— 09</em></div>
+            <h4>Retire the <em>analyst tier.</em></h4>
+            <p>Convert remaining analyst hires into agent conductors or domain experts. Ship the model externally as a practice.</p>
+            <ul>
+              <li>0 net new analyst hires</li>
+              <li>14 conductors certified</li>
+              <li>Partner headcount · held</li>
+            </ul>
+          </div>
+          <div class="tl-phase">
+            <div class="when">Phase IV · Jan '27+</div>
+            <div class="range">10 <em>— 12</em></div>
+            <h4>Open the <em>standing counsel</em>.</h4>
+            <p>Move from project engagements to monthly standing counsel. Embed agents inside client workspaces. Teach them to run the pod.</p>
+            <ul>
+              <li>12 standing clients</li>
+              <li>Capability transfer SOP</li>
+              <li>Second office · Singapore</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footrule"><span>V.2 · Roadmap</span><span>p. 26</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 15 — TEAM / ORG                                               -->
+  <!-- ============================================================= -->
+  <section class="slide team olive" data-label="The Pod · Named">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>IV.4 · Pod 07, named</span>
+    </div>
+
+    <div class="stage">
+      <div class="head">
+        <h3 class="display">Four humans. <em>Nine agents.</em> One room.</h3>
+        <p>The proposal is to staff your standing counsel with <em>Pod 07</em>, already operating. Humans are pictured; agents are listed with their scope. All take the same brief.</p>
+      </div>
+
+      <div class="grid">
+        <!-- Humans -->
+        <div class="person">
+          <div class="portrait"><svg viewBox="0 0 120 160" preserveAspectRatio="xMidYMid slice"><rect width="120" height="160" fill="#C6BFAE"/><circle cx="60" cy="58" r="22" fill="#78716A"/><path d="M20 160 Q60 100 100 160 Z" fill="#78716A"/></svg></div>
+          <div class="nm">Amara Okafor</div>
+          <div class="rl">Partner · Lead</div>
+          <div class="note">15 yrs, ex-McKinsey.</div>
+        </div>
+        <div class="person">
+          <div class="portrait"><svg viewBox="0 0 120 160" preserveAspectRatio="xMidYMid slice"><rect width="120" height="160" fill="#B5AD99"/><circle cx="60" cy="54" r="20" fill="#5C564C"/><path d="M22 160 Q60 108 98 160 Z" fill="#5C564C"/></svg></div>
+          <div class="nm">I. Marchetti</div>
+          <div class="rl">Principal</div>
+          <div class="note">Former Goldman M&amp;A.</div>
+        </div>
+        <div class="person">
+          <div class="portrait"><svg viewBox="0 0 120 160" preserveAspectRatio="xMidYMid slice"><rect width="120" height="160" fill="#D4CDB8"/><circle cx="60" cy="56" r="21" fill="#6B655A"/><path d="M18 160 Q60 104 102 160 Z" fill="#6B655A"/></svg></div>
+          <div class="nm">H. Vass</div>
+          <div class="rl">Associate · Conductor</div>
+          <div class="note">Ex-DeepMind.</div>
+        </div>
+        <div class="person">
+          <div class="portrait"><svg viewBox="0 0 120 160" preserveAspectRatio="xMidYMid slice"><rect width="120" height="160" fill="#BFB8A3"/><circle cx="60" cy="56" r="20" fill="#4A453D"/><path d="M24 160 Q60 110 96 160 Z" fill="#4A453D"/></svg></div>
+          <div class="nm">Dr. K. Szabo</div>
+          <div class="rl">Domain <em>· fractional</em></div>
+          <div class="note">Chemicals, 22 yrs.</div>
+        </div>
+
+        <!-- Agents -->
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">Li</div></div><div class="nm"><em>Livia</em></div><div class="rl">Market Research</div><div class="note">312 sources / day.</div></div>
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">Os</div></div><div class="nm"><em>Osmund</em></div><div class="rl">Financial Modeler</div><div class="note">Monte Carlo native.</div></div>
+
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">Pr</div></div><div class="nm"><em>Praxis</em></div><div class="rl">Competitive Intel</div><div class="note">47 comps / engagement.</div></div>
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">Ma</div></div><div class="nm"><em>Marginalia</em></div><div class="rl">Document Analysis</div><div class="note">96% claim citation.</div></div>
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">Ch</div></div><div class="nm"><em>Chronos</em></div><div class="rl">Timeline &amp; Risk</div><div class="note">Re-baselines hourly.</div></div>
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">At</div></div><div class="nm"><em>Atlas</em></div><div class="rl">Market Sizing</div><div class="note">2.4k geos on file.</div></div>
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">Sc</div></div><div class="nm"><em>Scrivener</em></div><div class="rl">Draft &amp; Narrative</div><div class="note">v8 memo, median.</div></div>
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">Qu</div></div><div class="nm"><em>Quorum</em></div><div class="rl">Citation Audit</div><div class="note">Zero-tolerance ref.</div></div>
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">Se</div></div><div class="nm"><em>Sentinel</em></div><div class="rl">Regulatory Watch</div><div class="note">EU AI Act current.</div></div>
+        <div class="person is-agent"><div class="portrait"><div class="agent-gloss">+</div></div><div class="nm">+ 1 bench</div><div class="rl">Specialist · on call</div><div class="note">Swapped per brief.</div></div>
+        <div class="person" style="background: transparent; border-right:0;"><div class="portrait" style="background:transparent; border: 1px dashed var(--rule-hard);"><div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);">Your<br>brief</div></div><div class="nm"><em>Pod 07</em></div><div class="rl">Standing · yours</div></div>
+      </div>
+    </div>
+    <div class="footrule"><span>IV.4 · The pod, named</span><span>p. 19</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 16 — PRICING                                                  -->
+  <!-- ============================================================= -->
+  <section class="slide pricing" data-label="Engagement">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>VI.1 · Terms</span>
+    </div>
+
+    <div class="stage">
+      <div class="head">
+        <h3 class="display">Three ways to <em>retain us.</em></h3>
+        <div class="k">Fee per question, <em class="ed">not per hour.</em><br>Agent throughput is priced in; you <em class="ed">benefit</em> from the speed.</div>
+      </div>
+
+      <div class="cols">
+        <div class="card">
+          <div class="tag">Fixed fee · one question</div>
+          <div class="name">The <em>Memo</em></div>
+          <div class="price">$80k<small>· one question</small></div>
+          <p class="pitch">One partner, one pod, one decision. Returned in <em class="ed">ten business days</em> as a defended one-page memo with full appendix and replayable console.</p>
+          <ul>
+            <li>One framed question</li>
+            <li>Full agent trace · replayable</li>
+            <li>Partner on the phone · 30 days</li>
+            <li>Appendix, sources, citations</li>
+          </ul>
+        </div>
+        <div class="card featured">
+          <div class="tag">Recommended · monthly</div>
+          <div class="name">The <em>Standing Counsel</em></div>
+          <div class="price">$120k<small>· monthly</small></div>
+          <p class="pitch">An <em class="ed">always-on pod</em> attached to your leadership team. Agents monitor your industry in real time; humans meet you weekly to interpret what changed.</p>
+          <ul>
+            <li>Dedicated pod · 4 humans + 9 agents</li>
+            <li>Weekly decision memo</li>
+            <li>Agents embedded in your workspace</li>
+            <li>Private Signal line to the partner</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="tag">Bespoke · 3–9 months</div>
+          <div class="name">The <em>Transformation</em></div>
+          <div class="price">Bespoke<small>· scoped</small></div>
+          <p class="pitch">For boards and CEOs <em class="ed">re-architecting</em> an enterprise around agents. We run the engagement and hand you a trained in-house team at the end.</p>
+          <ul>
+            <li>Multi-pod, cross-functional</li>
+            <li>Capability transfer, built in</li>
+            <li>Outcome-based pricing available</li>
+            <li>In-house team at exit</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="footrule"><span>VI.1 · Terms</span><span>p. 32</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 17 — PRINCIPLES                                               -->
+  <!-- ============================================================= -->
+  <section class="slide principles bone" data-label="Principles">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>VII · House principles</span>
+    </div>
+
+    <div class="stage">
+      <div class="head">
+        <div class="label">VII · Principles<br>of the house</div>
+        <h3 class="display">Eight rules we will <em>not trade away.</em></h3>
+      </div>
+
+      <div class="grid">
+        <div class="p"><div class="pn">i.</div><h4>A human <em>signs</em> every page.</h4><p>No deliverable leaves the firm without a named partner attesting to it. Agents draft; humans are accountable.</p></div>
+        <div class="p"><div class="pn">ii.</div><h4>Uncertainty is a <em>first-class</em> citizen.</h4><p>We report confidence intervals, not point estimates. When we do not know, we say so.</p></div>
+        <div class="p"><div class="pn">iii.</div><h4>Your data <em>stays</em> your data.</h4><p>Agents run inside isolated enclaves you can audit. Nothing you share trains a model outside your walls.</p></div>
+        <div class="p"><div class="pn">iv.</div><h4>We price <em>the answer,</em> not the hour.</h4><p>Fixed fees per question. When agents make us faster, you pay less.</p></div>
+        <div class="p"><div class="pn">v.</div><h4>The deliverable is <em>replayable.</em></h4><p>Every engagement ships with a console. You can re-run our analysis on new data, six months later, without us.</p></div>
+        <div class="p"><div class="pn">vi.</div><h4>We leave you <em>more capable.</em></h4><p>A successful engagement ends with agents operating inside your team, not ours.</p></div>
+        <div class="p"><div class="pn">vii.</div><h4>Small rooms, <em>short memos.</em></h4><p>Four humans, nine agents, one page. We refuse the theater of the fifty-slide deck.</p></div>
+        <div class="p"><div class="pn">viii.</div><h4>The partner takes <em>the call.</em></h4><p>No gatekeepers, no assistants, no queues. The partner who sold the work does the work.</p></div>
+      </div>
+    </div>
+    <div class="footrule"><span>VII · Principles</span><span>p. 38</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 18 — RECOMMENDATIONS (executive summary)                      -->
+  <!-- ============================================================= -->
+  <section class="slide recos" data-label="Recommendations">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>V · Recommendations</span>
+    </div>
+
+    <div class="stage">
+      <div class="lhs">
+        <div class="k">V · Executive summary <br>Six moves for the board</div>
+        <h3 class="display">Six moves, <em>in order of&nbsp;conviction.</em></h3>
+        <p class="note">Each recommendation is <em>defended</em> in an appendix memo. The partner is on the phone. Decisions can be taken today; the pod ships the first draft tomorrow.</p>
+      </div>
+
+      <div class="rhs">
+        <ol>
+          <li>
+            <div>
+              <h4>Commission <em>Pod 07</em> as standing counsel for twelve months.</h4>
+              <p>Four humans, nine agents, weekly memos. Anchor the engagement against a single business question: the DACH logistics carve-out.</p>
+              <div class="meta"><span>Owner · <b>A. Okafor</b></span><span>Decision · <b>this board</b></span><span>Fee · <b>$120k / mo</b></span></div>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h4>Retire the <em>analyst tier</em> by Q4.</h4>
+              <p>Freeze analyst hires; convert current cohort to conductors or domain experts. Redirect the salary pool into agent infrastructure.</p>
+              <div class="meta"><span>Owner · <b>H. Vass</b></span><span>Timeline · <b>Q3–Q4</b></span><span>Impact · <b>— $3.4M opex</b></span></div>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h4>Ship the <em>replayable console</em> to clients in Q3.</h4>
+              <p>Every engagement ends with a live console the client can re-run. Treat it as a durability feature, not an afterthought — price it in.</p>
+              <div class="meta"><span>Owner · <b>I. Marchetti</b></span><span>Timeline · <b>Jul '26</b></span><span>Asset · <b>recurring</b></span></div>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h4>Move to <em>fee-per-question</em> pricing, firm-wide.</h4>
+              <p>Abandon billable hours on all new engagements. Publish three tiers (Memo, Standing Counsel, Transformation). Outcome-based on scoped work.</p>
+              <div class="meta"><span>Owner · <b>Finance</b></span><span>Timeline · <b>Q2 end</b></span><span>Expected · <b>+18% GM</b></span></div>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h4>Open <em>Singapore</em> as the second pod city.</h4>
+              <p>Asia demand is pulling ahead. Two pods out of Singapore, staffed with three rotating partners from NY / Paris. Agent stack is location-agnostic.</p>
+              <div class="meta"><span>Owner · <b>Partnership</b></span><span>Timeline · <b>Jan '27</b></span><span>Capex · <b>$1.2M</b></span></div>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h4>Publish the <em>house principles</em> externally.</h4>
+              <p>Eight rules, one page. Put them on the website and behind every deliverable. They recruit the clients we want and repel the ones we don't.</p>
+              <div class="meta"><span>Owner · <b>A. Okafor</b></span><span>Timeline · <b>May '26</b></span><span>Risk · <b>low</b></span></div>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+    <div class="footrule"><span>V · Recommendations</span><span>p. 23</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 19 — NEXT STEPS                                               -->
+  <!-- ============================================================= -->
+  <section class="slide next olive" data-label="Next Steps">
+    <div class="chrome">
+      <div class="brand"><span class="mark"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>VIII · Next steps</span>
+    </div>
+
+    <div class="stage">
+      <h3 class="display">If the board <em>agrees</em> — this is what happens next.</h3>
+
+      <div class="grid3">
+        <div class="step">
+          <div class="when">This week</div>
+          <h4>Sign the <em>one-page</em> charter.</h4>
+          <p>We've drafted it; it fits on a single page. Two signatures, a scope sentence, and a first question. No SOW, no SLA, no legal pantomime.</p>
+          <div class="owner">Owner · <b>A. Okafor</b> · Due · <b>Fri.</b></div>
+        </div>
+        <div class="step">
+          <div class="when">Next week</div>
+          <h4>Pod <em>07</em> stands up.</h4>
+          <p>Humans meet the client leadership in-person. Agents are provisioned inside your workspace, observed for 72 hours, then put to work on the DACH question.</p>
+          <div class="owner">Owner · <b>H. Vass</b> · Due · <b>Apr 28</b></div>
+        </div>
+        <div class="step">
+          <div class="when">By end of month</div>
+          <h4>First memo <em>delivered.</em></h4>
+          <p>A defended, signed one-page memo on the DACH carve-out — with full appendix, replayable console, and a partner on the phone for thirty days.</p>
+          <div class="owner">Owner · <b>Pod 07</b> · Due · <b>May 2</b></div>
+        </div>
+      </div>
+
+      <div class="cta">
+        <div class="big">One question. <em>Ten days.</em> A partner signs.</div>
+        <div class="btn">Charter the pod →</div>
+      </div>
+    </div>
+    <div class="footrule"><span>VIII · Next steps</span><span>p. 40</span></div>
+  </section>
+
+
+  <!-- ============================================================= -->
+  <!-- 20 — CLOSING                                                  -->
+  <!-- ============================================================= -->
+  <section class="slide closing ink" data-label="Thank You">
+    <div class="chrome">
+      <div class="brand"><span class="mark" style="color:#C9C1AF;"><em>H</em></span><span class="name firm-name">H<em>&amp;ai</em></span></div>
+      <span>— Fin.</span>
+    </div>
+
+    <div class="stage">
+      <div class="k">Questions &amp; discussion</div>
+
+      <div class="middle">
+        <h2 class="display">Ask us <em>anything.</em></h2>
+        <div class="aside">The partner takes the call · 10pm included</div>
+      </div>
+
+      <dl class="contact">
+        <div><dt>The partner</dt><dd>Amara Okafor<br><em>+1 212 555 0140</em></dd></div>
+        <div><dt>Correspondence</dt><dd>audience@<em>h-ai.co</em></dd></div>
+        <div><dt>Private line</dt><dd>Signal <em>· on request</em></dd></div>
+        <div><dt>In person</dt><dd>NY · Paris <em>· Singapore</em></dd></div>
+      </dl>
+    </div>
+  </section>
+
+</deck-stage>
+
+<!-- TWEAKS -->
+<div id="tweaks-panel">
+  <h4>Tweaks</h4>
+  <div class="sub">Deck knobs</div>
+  <label>Firm name</label>
+  <input id="tw-name" type="text">
+</div>
+
+<script src="deck-stage.js"></script>
+
+<script>
+/* ================= TWEAKS ================= */
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "firmName": "H&ai"
+}/*EDITMODE-END*/;
+
+let tweakState = { ...TWEAK_DEFAULTS };
+
+function applyTweaks() {
+  // Render firm name everywhere — split on "&" or "and" to get italic accent piece.
+  const raw = tweakState.firmName;
+  let before = raw, after = '';
+  const m = raw.match(/^(.*?)\s+(&|and)\s+(.+)$/i);
+  if (m) { before = m[1].trim(); after = m[3].trim(); }
+
+  document.querySelectorAll('.firm-name').forEach(el => {
+    if (after) el.innerHTML = before + ' <em>&amp;' + (after ? ' ' + after.replace(/^&\s*/, '') : '') + '</em>';
+    else el.textContent = raw;
+  });
+
+  document.querySelectorAll('.chrome .brand .mark em').forEach(el => {
+    el.textContent = (before || raw).charAt(0).toUpperCase();
+  });
+
+  document.title = tweakState.firmName + ' — Recommendations';
+
+  const input = document.getElementById('tw-name');
+  if (input && input.value !== tweakState.firmName) input.value = tweakState.firmName;
+}
+
+function setTweak(patch) {
+  tweakState = { ...tweakState, ...patch };
+  applyTweaks();
+  try { window.parent.postMessage({ type: '__edit_mode_set_keys', edits: patch }, '*'); } catch(e) {}
+}
+
+document.getElementById('tw-name').addEventListener('input', (e) => setTweak({ firmName: e.target.value }));
+
+applyTweaks();
+
+/* ================= EDIT MODE ================= */
+window.addEventListener('message', (e) => {
+  const d = e.data || {};
+  if (d.type === '__activate_edit_mode') document.getElementById('tweaks-panel').classList.add('active');
+  if (d.type === '__deactivate_edit_mode') document.getElementById('tweaks-panel').classList.remove('active');
+});
+try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch(e) {}
+</script>
+
+<script>
+(async () => {
+  try { await customElements.whenDefined('deck-stage'); } catch (e) {}
+  try { await document.fonts.ready; } catch (e) {}
+  setTimeout(() => { try { window.print(); } catch (e) {} }, 500);
+})();
+</script>
+</body>
+</html>

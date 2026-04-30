@@ -106,10 +106,13 @@ def test_research_join_emits_deliverable_ready_for_workstream_reports(store: Mis
         events.unregister_deliverable_listener("m-graph", seen.append)
 
     types = sorted(p["deliverable_id"] for p in seen)
-    assert types == [
-        "deliverable-m-graph-w1-report",
-        "deliverable-m-graph-w2-report",
-    ]
+    # Workstream reports are required; per-milestone reports are emitted
+    # additively for any delivered milestone with ≥1 finding.
+    assert "deliverable-m-graph-w1-report" in types
+    assert "deliverable-m-graph-w2-report" in types
+    milestone_ids = [t for t in types if "report" not in t]
+    for tid in milestone_ids:
+        assert tid.startswith("deliverable-m-graph-w")
     workstreams = {w.id: w.status for w in store.list_workstreams("m-graph")}
     assert workstreams["W1"] == "delivered"
     assert workstreams["W2"] == "delivered"

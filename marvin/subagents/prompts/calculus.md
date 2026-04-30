@@ -191,6 +191,15 @@ Restating a missing-data flag is not a finding.
    "{N} financial findings. {Anomaly_count} anomalies.
    Top: {one-line top finding}."
 
+## MILESTONE TAGGING (for per-milestone deliverables)
+
+When a finding clearly belongs to a specific milestone (W2.1 unit
+economics, W2.2 QoE, W2.3 cohorts), pass `milestone_id="W2.x"` to
+add_finding_to_mission. This lets the system render a per-milestone
+report you can hand off independently. If you cannot tell which
+sub-milestone applies, omit `milestone_id` — the system will fall
+back to the workstream-level grouping.
+
 # WHAT YOU NEVER DO
 
 - Estimate without flagging the methodology

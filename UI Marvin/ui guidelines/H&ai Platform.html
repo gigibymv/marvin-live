@@ -1,0 +1,1065 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MARVIN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:   #F9F7F2;
+  --bg2:  #F2EFE8;
+  --bg3:  #E8E4DC;
+  --ink:  #0F0F0E;
+  --ink2: #353028;
+  --ink3: #6E6960;
+  --rule: rgba(15,15,14,.09);
+  --G:    #166534;  /* green */
+  --A:    #92400E;  /* amber */
+  --R:    #991B1B;  /* red */
+  --B:    #1E3A5F;  /* blue */
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#111;font-family:'Geist',-apple-system,sans-serif;-webkit-font-smoothing:antialiased;color:var(--ink)}
+a{color:inherit;text-decoration:none}
+button{font-family:'Geist',sans-serif;cursor:pointer}
+
+/* ─── Window ─── */
+#W{width:1280px;height:820px;margin:36px auto 0;border-radius:12px;overflow:hidden;
+   display:flex;flex-direction:column;background:var(--bg);
+   box-shadow:0 40px 120px rgba(0,0,0,.7),0 0 0 .5px rgba(255,255,255,.06)}
+
+/* ─── Title bar ─── */
+.tb{height:42px;background:var(--bg2);border-bottom:1px solid var(--rule);
+    display:flex;align-items:center;padding:0 14px;gap:12px;flex-shrink:0}
+.dots{display:flex;gap:7px}
+.dot{width:11px;height:11px;border-radius:50%}
+.url{flex:1;max-width:360px;margin:0 auto;height:24px;background:var(--bg);border:1px solid var(--rule);
+     border-radius:5px;display:flex;align-items:center;padding:0 10px;gap:6px;
+     font-family:'Geist Mono',monospace;font-size:11px;color:var(--ink3)}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.role-sw{display:flex;border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.rbtn{font-size:11px;font-weight:500;padding:4px 10px;background:transparent;color:var(--ink3);
+      border:none;cursor:pointer;transition:all .1s;white-space:nowrap}
+.rbtn.on{background:var(--ink);color:var(--bg)}
+
+/* ─── Shell ─── */
+#SH{flex:1;display:flex;overflow:hidden}
+
+/* ─── Sidebar ─── */
+.sb{width:200px;background:var(--bg2);border-right:1px solid var(--rule);
+    display:flex;flex-direction:column;flex-shrink:0}
+.sb-top{padding:14px 14px 12px;border-bottom:1px solid var(--rule)}
+.sb-logo{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-.02em}
+.sb-sub{font-family:'Geist Mono',monospace;font-size:10px;color:var(--ink3);margin-top:3px;line-height:1.5}
+.sb-nav{padding:8px 6px;flex:1;overflow-y:auto}
+.sb-sec{font-family:'Geist Mono',monospace;font-size:9px;font-weight:600;color:var(--ink3);
+        letter-spacing:.14em;text-transform:uppercase;padding:10px 8px 5px}
+.si{display:flex;align-items:center;justify-content:space-between;
+    padding:7px 10px;border-radius:6px;font-size:13px;font-weight:500;color:var(--ink2);
+    cursor:pointer;margin-bottom:1px;user-select:none;transition:background .1s}
+.si:hover{background:var(--bg3)}
+.si.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.sc{font-family:'Geist Mono',monospace;font-size:10px;color:var(--ink3);background:var(--bg3);border-radius:4px;padding:1px 5px}
+.sc.alert{background:rgba(153,27,27,.12);color:var(--R)}
+.sc.warn{background:rgba(146,64,14,.12);color:var(--A)}
+.sb-bot{padding:10px 14px;border-top:1px solid var(--rule)}
+.sb-usr{display:flex;align-items:center;gap:8px}
+.sb-av{width:25px;height:25px;border-radius:50%;background:var(--bg3);display:grid;place-items:center;font-size:9.5px;font-weight:700;color:var(--ink2);flex-shrink:0}
+.sb-un{font-size:12px;font-weight:500}
+.sb-ur{font-size:10px;color:var(--ink3);margin-top:1px}
+
+/* ─── Main ─── */
+main{flex:1;overflow-y:auto;background:var(--bg)}
+main::-webkit-scrollbar{width:5px}
+main::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
+
+/* ─── Views ─── */
+.view{display:none;padding:28px 30px 60px}
+.view.on{display:block}
+
+/* ─── Atoms ─── */
+.ph-tag{font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--ink3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:7px}
+.ph-h{font-size:20px;font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1.3;max-width:680px}
+.pills{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.pill{font-size:11.5px;color:var(--ink3);background:var(--bg2);border:1px solid var(--rule);border-radius:20px;padding:3px 10px;display:inline-flex;align-items:center;gap:5px}
+.pill b{color:var(--ink2);font-weight:500}
+.pdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.slabel{font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:600;color:var(--ink3);letter-spacing:.13em;text-transform:uppercase;margin-bottom:11px}
+.btn{font-size:12.5px;font-weight:500;padding:6px 13px;border-radius:6px;border:1px solid var(--rule);cursor:pointer;transition:background .1s}
+.btn-p{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn-p:hover{background:var(--ink2)}
+.btn-s{background:var(--bg2);color:var(--ink2)}
+.btn-s:hover{background:var(--bg3)}
+.btn-row{display:flex;gap:6px;margin-top:10px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.blink{animation:blink 2s ease-in-out infinite}
+
+/* ─── HOME (Missions) ─── */
+.home-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:22px}
+.mission-card{border:1px solid var(--rule);border-radius:8px;padding:16px;background:var(--bg);cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.mission-card:hover{border-color:rgba(15,15,14,.18);box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.mc-header{display:flex;align-items:start;justify-content:space-between;margin-bottom:10px}
+.mc-type{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase}
+.mc-status{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.mc-client{font-size:15px;font-weight:600;color:var(--ink);letter-spacing:-.015em;margin-bottom:3px}
+.mc-q{font-size:12px;color:var(--ink3);line-height:1.4;margin-bottom:12px}
+.mc-bar{height:3px;background:var(--bg3);border-radius:2px;margin-bottom:10px}
+.mc-bar-f{height:100%;border-radius:2px;background:var(--ink)}
+.mc-footer{display:flex;justify-content:space-between;align-items:center}
+.mc-team{display:flex;gap:-4px}
+.av-sm{width:22px;height:22px;border-radius:50%;background:var(--bg3);border:2px solid var(--bg);display:grid;place-items:center;font-size:9px;font-weight:700;color:var(--ink2);margin-left:-6px}
+.av-sm:first-child{margin-left:0}
+.mc-day{font-family:'Geist Mono',monospace;font-size:10.5px;color:var(--ink3)}
+.mc-add{border:1.5px dashed var(--bg3);background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:130px;color:var(--ink3);font-size:13px;transition:all .1s}
+.mc-add:hover{border-color:var(--ink3);color:var(--ink2);background:var(--bg2)}
+.mc-add-icon{font-size:22px;font-weight:300;line-height:1}
+
+/* New mission modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;display:none}
+.modal-overlay.on{display:flex}
+.modal{background:var(--bg);border-radius:10px;width:560px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal h3{font-size:17px;font-weight:600;letter-spacing:-.015em;margin-bottom:16px}
+.form-row{margin-bottom:14px}
+.form-label{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase;display:block;margin-bottom:6px}
+.form-input{width:100%;padding:9px 11px;border:1px solid var(--rule);border-radius:6px;background:var(--bg2);font-size:13.5px;font-family:'Geist',sans-serif;color:var(--ink);outline:none;transition:border-color .1s}
+.form-input:focus{border-color:var(--ink)}
+.template-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tmpl-btn{padding:9px 12px;border:1px solid var(--rule);border-radius:6px;background:var(--bg2);font-size:12.5px;font-weight:500;color:var(--ink2);cursor:pointer;text-align:left;transition:all .1s}
+.tmpl-btn:hover{background:var(--bg3)}
+.tmpl-btn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tmpl-sub{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);margin-top:2px;font-weight:400}
+.tmpl-btn.on .tmpl-sub{color:#ccc}
+
+/* Staffing panel */
+.staff-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.staff-col-title{font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:600;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+.staff-person,.staff-module{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--bg2);margin-bottom:6px;cursor:pointer;transition:all .1s}
+.staff-person:hover,.staff-module:hover{background:var(--bg3)}
+.staff-person.on,.staff-module.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.staff-person.on .sp-role,.staff-module.on .sm-type{color:#aaa}
+.sp-av{width:26px;height:26px;border-radius:50%;background:var(--bg3);display:grid;place-items:center;font-size:10px;font-weight:700;color:var(--ink2);flex-shrink:0}
+.staff-person.on .sp-av{background:rgba(255,255,255,.15);color:#fff}
+.sp-name{font-size:12.5px;font-weight:500}
+.sp-role{font-size:10.5px;color:var(--ink3);margin-top:1px}
+.sm-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sm-name{font-size:12px;font-weight:500;font-family:'Geist Mono',monospace}
+.sm-type{font-size:10px;color:var(--ink3);margin-top:1px}
+
+/* ─── WORKPLAN: Phase bar + vertical milestones ─── */
+.phase-bar{display:flex;border:1px solid var(--rule);border-radius:8px;overflow:hidden;margin-bottom:24px}
+.phase{flex:1;padding:12px 14px;border-right:1px solid var(--rule);position:relative;cursor:default}
+.phase:last-child{border-right:none}
+.phase.done{background:var(--bg2)}
+.phase.now{background:var(--ink)}
+.phase.future{background:var(--bg)}
+.phase-n{font-family:'Geist Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px}
+.phase.done .phase-n{color:var(--ink3)}
+.phase.now .phase-n{color:rgba(255,255,255,.55)}
+.phase.future .phase-n{color:var(--bg3)}
+.phase-label{font-size:12.5px;font-weight:600;letter-spacing:-.01em}
+.phase.done .phase-label{color:var(--ink2)}
+.phase.now .phase-label{color:#fff}
+.phase.future .phase-label{color:var(--ink3)}
+.phase-days{font-family:'Geist Mono',monospace;font-size:10px;margin-top:3px}
+.phase.done .phase-days{color:var(--ink3)}
+.phase.now .phase-days{color:rgba(255,255,255,.5)}
+.phase.future .phase-days{color:var(--bg3)}
+.phase-mod-count{position:absolute;top:10px;right:10px;font-family:'Geist Mono',monospace;font-size:10px}
+.phase.now .phase-mod-count{color:rgba(255,255,255,.5)}
+.phase.done .phase-mod-count{color:var(--ink3)}
+.phase.future .phase-mod-count{color:var(--bg3)}
+
+.two{display:grid;grid-template-columns:1fr 296px;gap:24px;align-items:start}
+
+/* milestones */
+.ml{display:grid;grid-template-columns:22px 1fr;position:relative;margin-bottom:1px}
+.ml::after{content:'';position:absolute;left:10px;top:22px;bottom:-1px;width:1px;background:var(--rule)}
+.ml:last-child::after{display:none}
+.ml-spine{display:flex;flex-direction:column;align-items:center;padding-top:4px}
+.mln{width:12px;height:12px;border-radius:50%;border:1.5px solid var(--bg3);background:var(--bg);flex-shrink:0;z-index:1}
+.mln.done{background:var(--ink);border-color:var(--ink)}
+.mln.now{background:var(--G);border-color:var(--G);box-shadow:0 0 0 3px rgba(22,101,52,.14)}
+.ml-body{padding:0 0 18px 12px}
+.ml-when{font-family:'Geist Mono',monospace;font-size:10px;color:var(--ink3);letter-spacing:.04em;text-transform:uppercase}
+.ml-name{font-size:13px;font-weight:500;color:var(--ink);margin-top:2px;letter-spacing:-.01em}
+.ml-name.dim{color:var(--ink3);font-weight:400}
+.ml-name.now{color:var(--G)}
+.ml-desc{font-size:11.5px;color:var(--ink3);margin-top:2px;line-height:1.45}
+.ml-tags{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.ml-tag{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);border:1px solid var(--rule);background:var(--bg2);border-radius:3px;padding:1px 6px;display:flex;align-items:center;gap:3px}
+.ml-tag.active{color:var(--A);border-color:rgba(146,64,14,.25);background:rgba(146,64,14,.06)}
+.gate-link{display:inline-flex;align-items:center;gap:5px;font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--A);border:1px solid rgba(146,64,14,.25);background:rgba(146,64,14,.06);border-radius:3px;padding:2px 7px;margin-top:5px;cursor:pointer}
+.gate-link:hover{background:rgba(146,64,14,.1)}
+
+/* right panel */
+.card{border:1px solid var(--rule);border-radius:7px;padding:12px 14px;background:var(--bg);margin-bottom:10px}
+.card-tag{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.06em;text-transform:uppercase}
+.card-title{font-size:14px;font-weight:600;color:var(--ink);margin-top:4px;letter-spacing:-.015em}
+.card-body{font-size:12px;color:var(--ink3);margin-top:4px;line-height:1.5}
+.flag{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--rule);border-radius:6px;background:var(--bg);margin-bottom:6px;cursor:pointer}
+.flag:hover{border-color:rgba(15,15,14,.18)}
+.fbar{width:3px;border-radius:2px;align-self:stretch;min-height:10px;flex-shrink:0}
+.ft{font-size:12px;font-weight:500;color:var(--ink);line-height:1.3}
+.fn{font-size:11px;color:var(--ink3);margin-top:2px;line-height:1.35}
+.fwho{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);margin-top:4px}
+
+/* ─── OUTPUTS ─── */
+.outputs-stream{display:flex;flex-direction:column;gap:8px}
+.output-card{border:1px solid var(--rule);border-radius:7px;padding:13px 15px;background:var(--bg);cursor:pointer;transition:border-color .1s}
+.output-card:hover{border-color:rgba(15,15,14,.18)}
+.oc-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.oc-module{font-family:'Geist Mono',monospace;font-size:10px;font-weight:600;color:var(--ink2);letter-spacing:.04em;background:var(--bg2);border:1px solid var(--rule);border-radius:4px;padding:2px 7px}
+.oc-time{font-family:'Geist Mono',monospace;font-size:10px;color:var(--ink3);margin-left:auto}
+.oc-title{font-size:13.5px;font-weight:500;color:var(--ink);letter-spacing:-.01em;line-height:1.3}
+.oc-body{font-size:12px;color:var(--ink3);margin-top:5px;line-height:1.5}
+.oc-conf{display:inline-flex;align-items:center;gap:5px;font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:600;letter-spacing:.06em;border-radius:3px;padding:2px 6px;margin-top:7px}
+.c-known{background:rgba(22,101,52,.09);color:var(--G)}
+.c-reasoned{background:rgba(146,64,14,.09);color:var(--A)}
+.c-low{background:rgba(153,27,27,.09);color:var(--R)}
+.oc-src{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);margin-top:5px}
+
+/* ─── COORDINATION (visual) ─── */
+.coord-wrap{position:relative;background:var(--bg2);border:1px solid var(--rule);border-radius:8px;overflow:hidden;margin-bottom:20px}
+.coord-svg{display:block;width:100%;height:260px}
+.coord-node{cursor:pointer}
+.coord-legend{display:flex;gap:16px;padding:12px 16px;border-top:1px solid var(--rule);font-family:'Geist Mono',monospace;font-size:10px;color:var(--ink3);letter-spacing:.06em}
+.coord-leg-item{display:flex;align-items:center;gap:5px}
+.coord-active-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mod-row{border:1px solid var(--rule);border-radius:6px;padding:10px 12px;background:var(--bg);display:flex;gap:10px;align-items:start;cursor:pointer;transition:border-color .1s}
+.mod-row:hover{border-color:rgba(15,15,14,.18)}
+.mod-row.sel{border-color:var(--ink)}
+.mod-st{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.st-run{background:var(--G);animation:blink 2s ease-in-out infinite}
+.st-wait{background:var(--A)}
+.st-idle{background:var(--bg3)}
+.mod-name{font-family:'Geist Mono',monospace;font-size:11.5px;font-weight:500;color:var(--ink)}
+.mod-task{font-size:11px;color:var(--ink3);margin-top:2px;line-height:1.35}
+.mod-out{font-size:10.5px;color:var(--ink2);margin-top:4px;line-height:1.35;font-style:italic}
+.mod-model{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);margin-top:4px}
+.mod-detail{border:1px solid var(--rule);border-radius:7px;padding:14px;background:var(--bg);margin-top:12px;display:none}
+.mod-detail.on{display:block}
+.md-row{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid var(--rule)}
+.md-lbl{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.08em;text-transform:uppercase}
+.md-val{font-size:12.5px;font-weight:500;color:var(--ink2);text-align:right;max-width:400px;line-height:1.35}
+
+/* ─── GATE ─── */
+.gate-banner{background:rgba(146,64,14,.06);border:1px solid rgba(146,64,14,.22);border-radius:8px;padding:14px 16px;margin-bottom:18px}
+.gate-type{font-family:'Geist Mono',monospace;font-size:9.5px;font-weight:600;color:var(--A);letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px}
+.gate-title{font-size:16px;font-weight:600;color:var(--ink);letter-spacing:-.015em;line-height:1.3}
+.gate-desc{font-size:12px;color:var(--ink3);margin-top:5px;line-height:1.5}
+.claim-card{border:1px solid var(--rule);border-radius:7px;padding:13px 15px;background:var(--bg);margin-bottom:10px}
+.claim-n{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.claim-text{font-size:13.5px;font-weight:500;color:var(--ink);line-height:1.4;letter-spacing:-.01em}
+.claim-source{display:flex;align-items:center;gap:8px;margin-top:8px}
+.claim-src-badge{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);background:var(--bg2);border:1px solid var(--rule);border-radius:3px;padding:2px 6px}
+.claim-sowhat{font-size:11.5px;color:var(--ink3);margin-top:6px;line-height:1.4;font-style:italic}
+.claim-btns{display:flex;gap:6px;margin-top:10px}
+.btn-val{background:rgba(22,101,52,.09);color:var(--G);border:1px solid rgba(22,101,52,.22)}
+.btn-val:hover{background:rgba(22,101,52,.15)}
+.btn-flag{background:rgba(146,64,14,.09);color:var(--A);border:1px solid rgba(146,64,14,.22)}
+.btn-flag:hover{background:rgba(146,64,14,.15)}
+.ql-box{border:1px solid var(--rule);border-radius:7px;padding:13px 15px;background:var(--bg);margin-top:12px}
+.ql-from{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:7px}
+.ql-text{font-size:13px;color:var(--ink2);line-height:1.5;margin-bottom:10px}
+.ql-opts{display:flex;flex-direction:column;gap:6px}
+.ql-opt{padding:9px 12px;border:1px solid var(--rule);border-radius:6px;font-size:12.5px;color:var(--ink2);cursor:pointer;transition:all .1s}
+.ql-opt:hover{background:var(--bg2);border-color:rgba(15,15,14,.18)}
+.ql-opt.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.gate-result{display:none;margin-top:12px;padding:11px 13px;background:rgba(22,101,52,.06);border:1px solid rgba(22,101,52,.2);border-radius:6px}
+.gate-result.on{display:block}
+.gate-result-tag{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--G);letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px}
+.gate-result-text{font-size:12.5px;color:var(--ink2);line-height:1.45}
+
+/* ─── HYPOTHESES ─── */
+.hyp-table{border:1px solid var(--rule);border-radius:7px;overflow:hidden}
+.hyp-head{display:grid;grid-template-columns:36px 28px 1fr 120px 100px;gap:12px;padding:7px 13px;background:var(--bg2);font-family:'Geist Mono',monospace;font-size:9px;font-weight:600;color:var(--ink3);letter-spacing:.13em;text-transform:uppercase}
+.hyp-row{display:grid;grid-template-columns:36px 28px 1fr 120px 100px;gap:12px;padding:12px 13px;border-top:1px solid var(--rule);align-items:start;cursor:pointer;transition:background .1s}
+.hyp-row:hover{background:var(--bg2)}
+.hyp-id{font-family:'Geist Mono',monospace;font-size:11.5px;color:var(--ink3);font-weight:500}
+.hstat{width:26px;height:16px;border-radius:3px;display:grid;place-items:center;font-size:8.5px;font-weight:700;font-family:'Geist Mono',monospace;letter-spacing:.04em}
+.hs-val{background:rgba(22,101,52,.12);color:var(--G)}
+.hs-test{background:rgba(146,64,14,.12);color:var(--A)}
+.hs-act{background:rgba(30,58,95,.1);color:var(--B)}
+.hs-cond{background:rgba(109,105,96,.12);color:var(--ink3)}
+.hs-inv{background:rgba(153,27,27,.12);color:var(--R)}
+.hyp-text{font-size:12.5px;font-weight:500;color:var(--ink);line-height:1.35}
+.hyp-finding{font-size:11px;color:var(--ink3);line-height:1.35;margin-top:2px}
+.hyp-mod{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3)}
+.hyp-detail{border:1px solid var(--rule);border-radius:7px;padding:14px;background:var(--bg);margin-top:12px;display:none}
+.hyp-detail.on{display:block}
+
+/* ─── TWEAKS ─── */
+#TW{position:fixed;right:14px;bottom:14px;width:256px;background:var(--bg);border:1px solid var(--ink);border-radius:9px;padding:13px;display:none;box-shadow:0 8px 30px rgba(0,0,0,.14);z-index:9999}
+#TW.on{display:block}
+#TW h4{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:2px}
+#TW .sub{font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);margin-bottom:11px;letter-spacing:.06em}
+#TW label{display:block;font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.1em;text-transform:uppercase;margin:10px 0 5px}
+.tw-g{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.tw-b{padding:5px 4px;border:1px solid var(--rule);border-radius:5px;background:var(--bg2);font-size:9.5px;font-family:'Geist Mono',monospace;color:var(--ink2);cursor:pointer;text-align:center;transition:all .1s}
+.tw-b:hover{background:var(--bg3)}
+.tw-b.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+</style>
+</head>
+<body>
+
+<div id="W">
+  <div class="tb">
+    <div class="dots">
+      <div class="dot" style="background:#FF5F57"></div>
+      <div class="dot" style="background:#FEBC2E"></div>
+      <div class="dot" style="background:#28C840"></div>
+    </div>
+    <div class="url">
+      <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><rect x="1.5" y="3.5" width="6" height="5" rx=".6" stroke="#6E6960" stroke-width="1"/><path d="M3 3.5V2.5a1.5 1.5 0 013 0v1" stroke="#6E6960" stroke-width="1" stroke-linecap="round"/></svg>
+      <span>marvin.local</span>
+    </div>
+    <div class="tb-right">
+      <div class="role-sw" id="role-sw">
+        <button class="rbtn" data-role="partner">Partner</button>
+        <button class="rbtn" data-role="cd">CD</button>
+        <button class="rbtn on" data-role="manager">Manager</button>
+        <button class="rbtn" data-role="consultant">Consultant</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="SH">
+    <nav class="sb">
+      <div class="sb-top">
+        <div class="sb-logo">MARVIN</div>
+        <div class="sb-sub">v1 · by H&amp;ai</div>
+      </div>
+      <div class="sb-nav" id="nav">
+        <div class="sb-sec">Cabinet</div>
+        <div class="si on" data-view="home">Missions <span class="sc">3 active</span></div>
+        <div class="sb-sec" style="margin-top:4px">NovaSec CDD</div>
+        <div class="si" data-view="mission">Workplan</div>
+        <div class="si" data-view="outputs">Outputs <span class="sc">14</span></div>
+        <div class="si" data-view="hyps">Hypotheses <span class="sc">6</span></div>
+        <div class="si" data-view="gate">Gate J10 <span class="sc warn">due</span></div>
+        <div class="si" data-view="coord">Modules</div>
+      </div>
+      <div class="sb-bot">
+        <div class="sb-usr">
+          <div class="sb-av" id="sb-av">ML</div>
+          <div>
+            <div class="sb-un" id="sb-un">Marc Leconte</div>
+            <div class="sb-ur" id="sb-ur">Manager</div>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <main>
+
+      <!-- ═══════════ HOME ═══════════ -->
+      <div class="view on" id="view-home">
+        <div style="margin-bottom:6px">
+          <div class="ph-tag">MARVIN · Missions actives · April 2026</div>
+          <div class="ph-h">3 missions en cours. <span style="color:var(--ink3);font-weight:400">9 modules actifs.</span></div>
+        </div>
+        <div class="home-grid">
+
+          <!-- Mission 1 -->
+          <div class="mission-card" onclick="switchView('mission')">
+            <div class="mc-header">
+              <div>
+                <div class="mc-type">CDD · Cybersec SaaS</div>
+                <div class="mc-client">NovaSec / Meridian</div>
+              </div>
+              <div class="mc-status blink" style="background:var(--G)"></div>
+            </div>
+            <div class="mc-q">Should Meridian acquire NovaSec at $220M EV?</div>
+            <div class="mc-bar"><div class="mc-bar-f" style="width:48%"></div></div>
+            <div class="mc-footer">
+              <div class="mc-team">
+                <div class="av-sm">SM</div>
+                <div class="av-sm">RS</div>
+                <div class="av-sm">ML</div>
+                <div class="av-sm">LD</div>
+                <div class="av-sm">TB</div>
+              </div>
+              <div class="mc-day">J10 / 21 · Gate J10 due</div>
+            </div>
+          </div>
+
+          <!-- Mission 2 -->
+          <div class="mission-card">
+            <div class="mc-header">
+              <div>
+                <div class="mc-type">Board prep · PE</div>
+                <div class="mc-client">Heliodyne / Summit</div>
+              </div>
+              <div class="mc-status" style="background:var(--A)"></div>
+            </div>
+            <div class="mc-q">Board defense memo — activist campaign response</div>
+            <div class="mc-bar"><div class="mc-bar-f" style="width:82%"></div></div>
+            <div class="mc-footer">
+              <div class="mc-team">
+                <div class="av-sm">SM</div>
+                <div class="av-sm">KC</div>
+                <div class="av-sm">PL</div>
+              </div>
+              <div class="mc-day">J8 / 10 · delivery Mon</div>
+            </div>
+          </div>
+
+          <!-- Mission 3 -->
+          <div class="mission-card">
+            <div class="mc-header">
+              <div>
+                <div class="mc-type">Red-team · Strategy</div>
+                <div class="mc-client">Calyx / Internal</div>
+              </div>
+              <div class="mc-status" style="background:var(--B)"></div>
+            </div>
+            <div class="mc-q">Is the EU market entry thesis defensible at board level?</div>
+            <div class="mc-bar"><div class="mc-bar-f" style="width:20%"></div></div>
+            <div class="mc-footer">
+              <div class="mc-team">
+                <div class="av-sm">RS</div>
+                <div class="av-sm">AD</div>
+              </div>
+              <div class="mc-day">J3 / 17 · framing</div>
+            </div>
+          </div>
+
+          <!-- Add new -->
+          <div class="mission-card mc-add" onclick="openModal()">
+            <div class="mc-add-icon">+</div>
+            <div>New mission</div>
+          </div>
+        </div>
+
+        <!-- Staffing overview -->
+        <div style="margin-top:28px">
+          <div class="slabel">Cabinet staffing · today</div>
+          <div style="border:1px solid var(--rule);border-radius:7px;overflow:hidden">
+            <div style="display:grid;grid-template-columns:160px 1fr 1fr 100px;gap:0;padding:7px 14px;background:var(--bg2);font-family:'Geist Mono',monospace;font-size:9px;font-weight:600;color:var(--ink3);letter-spacing:.12em;text-transform:uppercase;gap:16px">
+              <span>Person</span><span>Mission</span><span>Current task</span><span>Load</span>
+            </div>
+            <div id="staff-rows"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ WORKPLAN ═══════════ -->
+      <div class="view" id="view-mission">
+        <div style="margin-bottom:18px">
+          <div class="ph-tag">NovaSec CDD · Meridian Capital · J10/21</div>
+          <div class="ph-h">Should Meridian acquire NovaSec at $220M EV?</div>
+          <div class="pills">
+            <div class="pill"><div class="pdot blink" style="background:var(--G)"></div><b>9 modules</b> active</div>
+            <div class="pill">Day <b>10</b> of 21</div>
+            <div class="pill">COPIL <b>today 14:00</b> + J18</div>
+            <div class="pill">IC deadline <b>J21</b></div>
+          </div>
+        </div>
+
+        <!-- Phase bar -->
+        <div class="phase-bar">
+          <div class="phase done">
+            <div class="phase-n">Phase 1</div>
+            <div class="phase-label">Framing</div>
+            <div class="phase-days">J0 – J2</div>
+            <div class="phase-mod-count">3 modules</div>
+          </div>
+          <div class="phase done">
+            <div class="phase-n">Phase 2</div>
+            <div class="phase-label">Research</div>
+            <div class="phase-days">J3 – J7</div>
+            <div class="phase-mod-count">5 modules</div>
+          </div>
+          <div class="phase now">
+            <div class="phase-n">Phase 3 · Now</div>
+            <div class="phase-label">Analysis</div>
+            <div class="phase-days">J8 – J12</div>
+            <div class="phase-mod-count">9 modules</div>
+          </div>
+          <div class="phase future">
+            <div class="phase-n">Phase 4</div>
+            <div class="phase-label">Synthesis</div>
+            <div class="phase-days">J13 – J17</div>
+            <div class="phase-mod-count">6 modules</div>
+          </div>
+          <div class="phase future">
+            <div class="phase-n">Phase 5</div>
+            <div class="phase-label">Delivery</div>
+            <div class="phase-days">J18 – J21</div>
+            <div class="phase-mod-count">3 modules</div>
+          </div>
+        </div>
+
+        <div class="two">
+          <div>
+            <div class="slabel">Milestones · J0 → J21</div>
+            <div class="ml"><div class="ml-spine"><div class="mln done"></div></div><div class="ml-body"><div class="ml-when">J-2</div><div class="ml-name">Teaser + onboarding memo</div><div class="ml-desc">Sophie sent NovaSec teaser. MARVIN delivered 2-page memo in 4h. Team arrived to kickoff aligned.</div><div class="ml-tags"><div class="ml-tag">researcher</div><div class="ml-tag">case_bank</div></div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln done"></div></div><div class="ml-body"><div class="ml-when">J0</div><div class="ml-name">Kickoff · workplan + H1–H6 generated</div><div class="ml-desc">Marc typed workplan. MARVIN generated 5 hypotheses. Marc added H6 (CTO dependency). 5 gates programmed.</div><div class="ml-tags"><div class="ml-tag">hypothesis_engine</div><div class="ml-tag">storyline_architect</div></div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln done"></div></div><div class="ml-body"><div class="ml-when">J1 – J2</div><div class="ml-name">Dot-dash + framework selection · W1 Market</div><div class="ml-desc">Léa briefed MARVIN. Framework declared: bottom-up TAM + Porter 5 forces + competitive positioning. Validated before analysis.</div><div class="ml-tags"><div class="ml-tag">framework_designer</div><div class="ml-tag">storyline_architect</div></div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln done"></div></div><div class="ml-body"><div class="ml-when">J3</div><div class="ml-name">Gate 1 — review 3 claims · passed</div><div class="ml-desc">Marc reviewed TAM $1.16Bn, CrowdStrike pricing floor, endpoint penetration 94%. Claims passed. Condition: validate 34% penetration in interviews.</div><div class="ml-tags"><div class="ml-tag">verification_agent</div></div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln done"></div></div><div class="ml-body"><div class="ml-when">J3 – J9</div><div class="ml-name">Data room ingested · anomaly detected</div><div class="ml-desc">847 pages. ARR qualified $46.8M vs. management $48.2M. FLAG: 2 contracts &gt;$500K with 90-day exit clauses, renewal imminent, not in management presentation. Sophie contacted Meridian same day.</div><div class="ml-tags"><div class="ml-tag">financial_modeler</div><div class="ml-tag">verification_agent</div></div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln done"></div></div><div class="ml-body"><div class="ml-when">J5 – J9</div><div class="ml-name">7 interviews · 2 patterns confirmed</div><div class="ml-desc">SIEM integration friction 3/7. Support degradation 2/7 (flagged, not confirmed risk). H4 weakened — retention may be price-lock, not product excellence.</div><div class="ml-tags"><div class="ml-tag">interviewer</div></div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln now"></div></div><div class="ml-body"><div class="ml-when">J10 · Today</div><div class="ml-name now">COPIL 14:00 · Gate J10 due</div><div class="ml-desc">Cross-workstream storyline v1 ready. MARVIN self-identified its weak link. Ravi must find one.</div><div class="ml-tags"><div class="ml-tag active">storyline_architect · running</div><div class="ml-tag active">verification_agent · running</div></div><div class="gate-link" onclick="switchView('gate')">Gate J10 · Defend the storyline</div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln"></div></div><div class="ml-body"><div class="ml-when">J11 – J16</div><div class="ml-name dim">Red-team + stress tests</div><div class="ml-desc">Tom requests full red-team on thesis. Scenarios: base / bull / bear / crash.</div><div class="ml-tags"><div class="ml-tag">red_teamer</div><div class="ml-tag">financial_modeler</div></div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln"></div></div><div class="ml-body"><div class="ml-when">J16</div><div class="ml-name dim">Gate 3 — red-team one hypothesis · Sophie</div><div class="ml-desc">Sophie receives H4 and must argue why it could be false.</div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln"></div></div><div class="ml-body"><div class="ml-when">J17 – J19</div><div class="ml-name dim">Lock-in + report generation</div><div class="ml-desc">Marc types final decisions. MARVIN generates 65-page report + exec summary 15 slides in 4 hours.</div><div class="ml-tags"><div class="ml-tag">deliverable_builder</div></div></div></div>
+            <div class="ml"><div class="ml-spine"><div class="mln"></div></div><div class="ml-body"><div class="ml-when">J21</div><div class="ml-name dim">IC presentation + post-mortem</div><div class="ml-desc">Sophie presents. MARVIN on live query during IC. Post-mortem gate → case bank updated.</div></div></div>
+          </div>
+
+          <div>
+            <div class="slabel" style="margin-bottom:8px">Latest deliverable</div>
+            <div class="card">
+              <div class="card-tag">Storyline v1 · J10 · ready</div>
+              <div class="card-title">Cross-workstream narrative</div>
+              <div class="card-body">Market validated · Financial anomaly resolved · Management risk flagged. 3 conditions for thesis.</div>
+              <div class="btn-row"><button class="btn btn-p" onclick="switchView('gate')">Gate J10</button><button class="btn btn-s" onclick="switchView('outputs')">All outputs</button></div>
+            </div>
+
+            <div class="slabel" style="margin-top:16px;margin-bottom:8px">Open flags · 2</div>
+            <div class="flag"><div class="fbar" style="background:var(--R)"></div><div><div class="ft">2 exit-clause contracts not disclosed</div><div class="fn">Contracts &gt;$500K with 90-day exit · renewal imminent</div><div class="fwho">financial_modeler · J8</div></div></div>
+            <div class="flag"><div class="fbar" style="background:var(--A)"></div><div><div class="ft">Support degradation — 2/7 interviews</div><div class="fn">Pattern emerging · not confirmed risk yet</div><div class="fwho">interviewer · Ravi injection · J7</div></div></div>
+
+            <div class="slabel" style="margin-top:16px;margin-bottom:8px">Gates</div>
+            <div class="card" style="padding:0;overflow:hidden">
+              <div style="display:grid;grid-template-columns:44px 1fr 60px;gap:10px;padding:8px 12px;background:var(--bg2);font-family:'Geist Mono',monospace;font-size:9px;font-weight:600;color:var(--ink3);letter-spacing:.12em;text-transform:uppercase">
+                <span>Gate</span><span>Format</span><span>Status</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr 60px;gap:10px;padding:9px 12px;border-top:1px solid var(--rule);font-size:11.5px">
+                <span style="font-family:'Geist Mono',monospace;color:var(--ink3)">J3</span><span>Review 3 claims · Marc</span><span style="color:var(--G);font-family:'Geist Mono',monospace;font-size:9.5px">passed</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr 60px;gap:10px;padding:9px 12px;border-top:1px solid var(--rule);font-size:11.5px;background:rgba(146,64,14,.04)" onclick="switchView('gate')" style="cursor:pointer">
+                <span style="font-family:'Geist Mono',monospace;color:var(--A)">J10</span><span style="font-weight:500">Defend storyline · Ravi</span><span style="color:var(--A);font-family:'Geist Mono',monospace;font-size:9.5px">due now</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr 60px;gap:10px;padding:9px 12px;border-top:1px solid var(--rule);font-size:11.5px;color:var(--ink3)">
+                <span style="font-family:'Geist Mono',monospace">J16</span><span>Red-team hypothesis · Sophie</span><span style="font-family:'Geist Mono',monospace;font-size:9.5px">pending</span>
+              </div>
+              <div style="display:grid;grid-template-columns:44px 1fr 60px;gap:10px;padding:9px 12px;border-top:1px solid var(--rule);font-size:11.5px;color:var(--ink3)">
+                <span style="font-family:'Geist Mono',monospace">J23</span><span>Post-mortem · full team</span><span style="font-family:'Geist Mono',monospace;font-size:9.5px">pending</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ OUTPUTS ═══════════ -->
+      <div class="view" id="view-outputs">
+        <div style="margin-bottom:18px">
+          <div class="ph-tag">NovaSec CDD · Outputs · proof of work · J10</div>
+          <div class="ph-h">14 outputs produced. Every claim traced to a source.</div>
+        </div>
+        <div class="outputs-stream" id="outputs-list"></div>
+      </div>
+
+      <!-- ═══════════ HYPOTHESES ═══════════ -->
+      <div class="view" id="view-hyps">
+        <div style="margin-bottom:18px">
+          <div class="ph-tag">NovaSec CDD · Hypotheses · J10/21</div>
+          <div class="ph-h">6 hypotheses. 3 tested. 0 abandoned without reason.</div>
+        </div>
+        <div class="hyp-table">
+          <div class="hyp-head"><span>ID</span><span>S</span><span>Hypothesis</span><span>Key finding</span><span>Module</span></div>
+          <div id="hyp-rows"></div>
+        </div>
+        <div class="hyp-detail" id="hyp-detail">
+          <div style="font-family:'Geist Mono',monospace;font-size:9.5px;color:var(--ink3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px" id="hd-id"></div>
+          <div style="font-size:14px;font-weight:600;color:var(--ink);letter-spacing:-.015em;line-height:1.3;margin-bottom:8px" id="hd-text"></div>
+          <div id="hd-conf"></div>
+          <div style="font-size:12.5px;color:var(--ink2);line-height:1.5;margin-top:8px" id="hd-detail"></div>
+          <div style="font-family:'Geist Mono',monospace;font-size:10px;color:var(--ink3);margin-top:8px" id="hd-module"></div>
+        </div>
+      </div>
+
+      <!-- ═══════════ GATE J10 ═══════════ -->
+      <div class="view" id="view-gate">
+        <div style="margin-bottom:16px">
+          <div class="ph-tag">Gate J10 · Defend the Storyline · Validator: Ravi (CD)</div>
+          <div class="ph-h">The gate does not accept approval. It demands a found weakness.</div>
+        </div>
+        <div class="gate-banner">
+          <div class="gate-type">Format · Defend the storyline · J10</div>
+          <div class="gate-title">MARVIN presents the storyline + its own weak link. Ravi must find one — same or different. No weak link found = gate fails by design.</div>
+          <div class="gate-desc">This is not a review meeting. It is a forced adversarial test. The mission cannot advance to Phase 4 until a structural weakness is named and actioned.</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start">
+          <div>
+            <div class="slabel">MARVIN's weak link · self-identified</div>
+            <div class="claim-card" style="border-color:rgba(146,64,14,.2);background:rgba(146,64,14,.03)">
+              <div class="claim-n">Weak link · storyline_architect · J10</div>
+              <div class="claim-text">The retention thesis depends on price-lock, not product excellence. If CrowdStrike drops its entry pricing by 30%, H4 (35% growth sustainable) collapses — and the $220M EV is exposed.</div>
+              <div style="margin-top:8px"><span class="oc-conf c-reasoned">REASONED</span></div>
+              <div class="oc-src" style="margin-top:6px">storyline_architect + competitive_mapper · derived from H4 + H2</div>
+            </div>
+
+            <div class="slabel" style="margin-top:18px">Storyline v1 · 3 sections</div>
+            <div class="claim-card">
+              <div class="claim-n">Section 1 · Market</div>
+              <div class="claim-text">Mid-market endpoint security ($1.16Bn TAM) is structurally inaccessible to leaders. NovaSec captures 4.1% — significant room.</div>
+              <span class="oc-conf c-reasoned">REASONED</span>
+              <div class="oc-src">researcher + framework_designer · Gate J3 validated</div>
+              <div class="claim-btns"><button class="btn btn-val" onclick="this.textContent='Validated'">Validate</button><button class="btn btn-flag">Flag</button></div>
+            </div>
+            <div class="claim-card">
+              <div class="claim-n">Section 2 · Financial</div>
+              <div class="claim-text">Recurring ARR is $46.8M (not $48.2M). 2 exit-clause contracts represent undisclosed concentration risk.</div>
+              <span class="oc-conf c-known">KNOWN</span>
+              <div class="oc-src">financial_modeler · data room contracts · J8</div>
+              <div class="claim-btns"><button class="btn btn-val" onclick="this.textContent='Validated'">Validate</button><button class="btn btn-flag">Flag</button></div>
+            </div>
+            <div class="claim-card">
+              <div class="claim-n">Section 3 · Customer signal</div>
+              <div class="claim-text">7 interviews confirm pricing gap as primary purchase driver — not product differentiation. Support quality: watch item, not confirmed risk.</div>
+              <span class="oc-conf c-reasoned">REASONED</span>
+              <div class="oc-src">interviewer · Ravi injection J7 · 7 interviews</div>
+              <div class="claim-btns"><button class="btn btn-val" onclick="this.textContent='Validated'">Validate</button><button class="btn btn-flag">Flag</button></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="slabel">Ravi's position · Gate response</div>
+            <div class="ql-box">
+              <div class="ql-from">Validator · Ravi (CD) · Gate J10</div>
+              <div class="ql-text">You must name one structural weakness. If the same as MARVIN's, confirm it. If different, state it. The gate records your name and your finding.</div>
+              <div class="ql-opts" id="gate-opts">
+                <div class="ql-opt" onclick="chooseGate(this,'same')"><b>Same as MARVIN.</b> CrowdStrike pricing compression kills H4 — confirm and action.</div>
+                <div class="ql-opt" onclick="chooseGate(this,'sample')"><b>Different (Ravi).</b> We under-sampled top-account interviews. Retention conclusion is biased by small accounts — top ARR cohort untested.</div>
+                <div class="ql-opt" onclick="chooseGate(this,'none')"><b>No weak link found.</b> Gate fails by design — mission pauses.</div>
+              </div>
+              <div class="gate-result" id="gate-result">
+                <div class="gate-result-tag">Gate action</div>
+                <div class="gate-result-text" id="gate-action-text"></div>
+                <div class="btn-row" style="margin-top:10px"><button class="btn btn-p">Confirm &amp; advance</button><button class="btn btn-s">Revise</button></div>
+              </div>
+            </div>
+
+            <div class="slabel" style="margin-top:18px">Question loop · open</div>
+            <div class="ql-box">
+              <div class="ql-from">MARVIN to Léa · question loop</div>
+              <div class="ql-text">The 34% penetration rate is the most sensitive TAM variable. At 20%, TAM drops from $1.16Bn to $680M. Options:</div>
+              <div class="ql-opts">
+                <div class="ql-opt"><b>A)</b> Present range $680M–$1.16Bn, marked LOW CONFIDENCE</div>
+                <div class="ql-opt on"><b>B)</b> Add 2–3 CISO mid-market interviews to validate (Léa chose this)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════ MODULES + COORDINATION ═══════════ -->
+      <div class="view" id="view-coord">
+        <div style="margin-bottom:16px">
+          <div class="ph-tag">MARVIN · Modules · NovaSec CDD · J10</div>
+          <div class="ph-h">10 modules. None decide. All execute on instruction.</div>
+        </div>
+
+        <!-- Visual coordination graph -->
+        <div class="coord-wrap">
+          <svg class="coord-svg" viewBox="0 0 900 240" id="coord-svg">
+            <!-- Edges -->
+            <g stroke="#E8E4DC" stroke-width="1.5" fill="none">
+              <!-- researcher → hypothesis_engine -->
+              <path d="M135,50 C200,50 200,120 265,120"/>
+              <!-- interviewer → hypothesis_engine -->
+              <path d="M135,100 C200,100 200,120 265,120"/>
+              <!-- financial_modeler → hypothesis_engine -->
+              <path d="M135,150 C200,150 200,120 265,120"/>
+              <!-- framework_designer → storyline_architect -->
+              <path d="M135,200 C200,200 200,170 395,170"/>
+              <!-- hypothesis_engine → storyline_architect -->
+              <path d="M395,120 L0,0" style="d:path('M395,120 C450,120 450,170 525,170')"/>
+              <!-- competitive_mapper → storyline_architect -->
+              <path d="M135,60 C300,60 400,130 525,170" stroke-dasharray="4,3" opacity=".5"/>
+              <!-- storyline_architect → red_teamer -->
+              <path d="M655,170 C700,170 700,140 735,140"/>
+              <!-- storyline_architect → deliverable_builder -->
+              <path d="M655,170 C700,170 700,195 735,195"/>
+              <!-- verification_agent floats -->
+              <path d="M655,170 C700,130 720,80 735,80" stroke-dasharray="3,3" opacity=".4"/>
+            </g>
+            <!-- Nodes -->
+            <!-- researcher -->
+            <g class="coord-node" onclick="selectModFromGraph('researcher')">
+              <rect x="10" y="30" width="120" height="36" rx="5" fill="#F2EFE8" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="26" cy="48" r="4" fill="#166534" class="blink"/>
+              <text x="36" y="44" font-family="Geist Mono,monospace" font-size="11" fill="#0F0F0E" font-weight="500">researcher</text>
+              <text x="36" y="58" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">market · data</text>
+            </g>
+            <!-- interviewer -->
+            <g class="coord-node" onclick="selectModFromGraph('interviewer')">
+              <rect x="10" y="78" width="120" height="36" rx="5" fill="#F2EFE8" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="26" cy="96" r="4" fill="#92400E"/>
+              <text x="36" y="92" font-family="Geist Mono,monospace" font-size="11" fill="#0F0F0E" font-weight="500">interviewer</text>
+              <text x="36" y="106" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">experts · patterns</text>
+            </g>
+            <!-- financial_modeler -->
+            <g class="coord-node" onclick="selectModFromGraph('financial_modeler')">
+              <rect x="10" y="128" width="120" height="36" rx="5" fill="#F2EFE8" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="26" cy="146" r="4" fill="#166534" class="blink"/>
+              <text x="36" y="142" font-family="Geist Mono,monospace" font-size="11" fill="#0F0F0E" font-weight="500">financial</text>
+              <text x="36" y="156" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">_modeler</text>
+            </g>
+            <!-- framework_designer -->
+            <g class="coord-node" onclick="selectModFromGraph('framework_designer')">
+              <rect x="10" y="178" width="120" height="36" rx="5" fill="#F9F7F2" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="26" cy="196" r="4" fill="#E8E4DC"/>
+              <text x="36" y="192" font-family="Geist Mono,monospace" font-size="11" fill="#6E6960">framework</text>
+              <text x="36" y="206" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">_designer</text>
+            </g>
+            <!-- hypothesis_engine -->
+            <g class="coord-node" onclick="selectModFromGraph('hypothesis_engine')">
+              <rect x="270" y="100" width="120" height="36" rx="5" fill="#F2EFE8" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="286" cy="118" r="4" fill="#166534" class="blink"/>
+              <text x="296" y="114" font-family="Geist Mono,monospace" font-size="11" fill="#0F0F0E" font-weight="500">hypothesis</text>
+              <text x="296" y="128" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">_engine</text>
+            </g>
+            <!-- competitive_mapper -->
+            <g class="coord-node" onclick="selectModFromGraph('competitive_mapper')">
+              <rect x="270" y="40" width="120" height="36" rx="5" fill="#F2EFE8" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="286" cy="58" r="4" fill="#166534" class="blink"/>
+              <text x="296" y="54" font-family="Geist Mono,monospace" font-size="11" fill="#0F0F0E" font-weight="500">competitive</text>
+              <text x="296" y="68" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">_mapper</text>
+            </g>
+            <!-- storyline_architect (center, active) -->
+            <g class="coord-node" onclick="selectModFromGraph('storyline_architect')">
+              <rect x="400" y="150" width="128" height="40" rx="5" fill="#0F0F0E" stroke="#0F0F0E"/>
+              <circle cx="418" cy="170" r="4" fill="#28C840" class="blink"/>
+              <text x="428" y="166" font-family="Geist Mono,monospace" font-size="11" fill="#F9F7F2" font-weight="600">storyline</text>
+              <text x="428" y="180" font-family="Geist Mono,monospace" font-size="9" fill="#999">_architect</text>
+            </g>
+            <!-- red_teamer -->
+            <g class="coord-node" onclick="selectModFromGraph('red_teamer')">
+              <rect x="740" y="120" width="120" height="36" rx="5" fill="#F9F7F2" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="756" cy="138" r="4" fill="#E8E4DC"/>
+              <text x="766" y="134" font-family="Geist Mono,monospace" font-size="11" fill="#6E6960">red_teamer</text>
+              <text x="766" y="148" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">J11 scope</text>
+            </g>
+            <!-- deliverable_builder -->
+            <g class="coord-node" onclick="selectModFromGraph('deliverable_builder')">
+              <rect x="740" y="178" width="120" height="36" rx="5" fill="#F9F7F2" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="756" cy="196" r="4" fill="#E8E4DC"/>
+              <text x="766" y="192" font-family="Geist Mono,monospace" font-size="11" fill="#6E6960">deliverable</text>
+              <text x="766" y="206" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">_builder</text>
+            </g>
+            <!-- verification_agent -->
+            <g class="coord-node" onclick="selectModFromGraph('verification_agent')">
+              <rect x="740" y="60" width="120" height="36" rx="5" fill="#F2EFE8" stroke="#E8E4DC" stroke-width="1"/>
+              <circle cx="756" cy="78" r="4" fill="#166534" class="blink"/>
+              <text x="766" y="74" font-family="Geist Mono,monospace" font-size="11" fill="#0F0F0E" font-weight="500">verification</text>
+              <text x="766" y="88" font-family="Geist Mono,monospace" font-size="9" fill="#6E6960">_agent</text>
+            </g>
+          </svg>
+          <div class="coord-legend">
+            <div class="coord-leg-item"><div style="width:8px;height:8px;border-radius:50%;background:var(--G)"></div>Running</div>
+            <div class="coord-leg-item"><div style="width:8px;height:8px;border-radius:50%;background:var(--A)"></div>Waiting</div>
+            <div class="coord-leg-item"><div style="width:8px;height:8px;border-radius:50%;background:var(--bg3)"></div>Idle</div>
+            <div class="coord-leg-item"><div style="width:24px;height:1px;border-top:1.5px dashed var(--bg3)"></div>Downstream (queued)</div>
+            <span style="margin-left:auto">Click a module to inspect</span>
+          </div>
+        </div>
+
+        <div class="coord-active-list" id="mod-list"></div>
+        <div class="mod-detail" id="mod-detail">
+          <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+            <div style="font-family:'Geist Mono',monospace;font-size:16px;font-weight:600;color:var(--ink)" id="md-name"></div>
+            <div style="font-size:12px;color:var(--ink3)" id="md-role"></div>
+          </div>
+          <div class="md-row"><div class="md-lbl">Current task</div><div class="md-val" id="md-task"></div></div>
+          <div class="md-row"><div class="md-lbl">Scope</div><div class="md-val" id="md-scope"></div></div>
+          <div class="md-row"><div class="md-lbl">Latest output</div><div class="md-val" id="md-output"></div></div>
+          <div class="md-row"><div class="md-lbl">Confidence</div><div class="md-val" id="md-conf"></div></div>
+          <div class="md-row"><div class="md-lbl">Model allocated</div><div class="md-val" id="md-model"></div></div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- New mission modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3>New mission</h3>
+    <div class="form-row">
+      <label class="form-label">Client &amp; target</label>
+      <input class="form-input" placeholder="e.g. Meridian Capital / NovaSec">
+    </div>
+    <div class="form-row">
+      <label class="form-label">The question in one sentence</label>
+      <input class="form-input" placeholder="Should the client acquire / enter / restructure…?">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Mission template</label>
+      <div class="template-grid">
+        <div class="tmpl-btn on" onclick="selectTmpl(this)">CDD<div class="tmpl-sub">3 weeks · 10 modules</div></div>
+        <div class="tmpl-btn" onclick="selectTmpl(this)">Red-team<div class="tmpl-sub">2 weeks · 7 modules</div></div>
+        <div class="tmpl-btn" onclick="selectTmpl(this)">Strategy<div class="tmpl-sub">5 weeks · 8 modules</div></div>
+        <div class="tmpl-btn" onclick="selectTmpl(this)">Board prep<div class="tmpl-sub">10 days · 5 modules</div></div>
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Staffing</label>
+      <div class="staff-grid">
+        <div>
+          <div class="staff-col-title">Humans</div>
+          <div class="staff-person on"><div class="sp-av">SM</div><div><div class="sp-name">Sophie Marceau</div><div class="sp-role">Partner · 40%</div></div></div>
+          <div class="staff-person"><div class="sp-av">RS</div><div><div class="sp-name">Ravi Sharma</div><div class="sp-role">CD · 80%</div></div></div>
+          <div class="staff-person on"><div class="sp-av">ML</div><div><div class="sp-name">Marc Leconte</div><div class="sp-role">Manager · 100%</div></div></div>
+          <div class="staff-person on"><div class="sp-av">LD</div><div><div class="sp-name">Léa Dumont</div><div class="sp-role">Consultant W1</div></div></div>
+          <div class="staff-person on"><div class="sp-av">TB</div><div><div class="sp-name">Tom Berger</div><div class="sp-role">Consultant W2</div></div></div>
+        </div>
+        <div>
+          <div class="staff-col-title">Modules · auto from template</div>
+          <div class="staff-module on"><div class="sm-dot" style="background:var(--G)"></div><div><div class="sm-name">researcher</div></div></div>
+          <div class="staff-module on"><div class="sm-dot" style="background:var(--G)"></div><div><div class="sm-name">interviewer</div></div></div>
+          <div class="staff-module on"><div class="sm-dot" style="background:var(--G)"></div><div><div class="sm-name">financial_modeler</div></div></div>
+          <div class="staff-module on"><div class="sm-dot" style="background:var(--G)"></div><div><div class="sm-name">hypothesis_engine</div></div></div>
+          <div class="staff-module on"><div class="sm-dot" style="background:var(--G)"></div><div><div class="sm-name">framework_designer</div></div></div>
+          <div class="staff-module"><div class="sm-dot" style="background:var(--bg3)"></div><div><div class="sm-name" style="color:var(--ink3)">red_teamer</div><div class="sm-type">Phase 4 only</div></div></div>
+          <div class="staff-module on"><div class="sm-dot" style="background:var(--G)"></div><div><div class="sm-name">storyline_architect</div></div></div>
+          <div class="staff-module on"><div class="sm-dot" style="background:var(--G)"></div><div><div class="sm-name">verification_agent</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+      <button class="btn btn-s" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-p" onclick="closeModal()">Launch mission</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tweaks -->
+<div id="TW">
+  <h4>Tweaks</h4>
+  <div class="sub">marvin · novasec-cdd</div>
+  <label>Role view</label>
+  <div class="tw-g" id="tw-roles"></div>
+  <label>Focus module</label>
+  <div class="tw-g" id="tw-mods"></div>
+</div>
+
+<script>
+const ROLES={
+  partner:{name:'Sophie Marceau',role:'Partner',av:'SM'},
+  cd:{name:'Ravi Sharma',role:'Content Director',av:'RS'},
+  manager:{name:'Marc Leconte',role:'Manager',av:'ML'},
+  consultant:{name:'Léa Dumont',role:'Consultant W1',av:'LD'},
+};
+
+const MODULES=[
+  {id:'researcher',name:'researcher',role:'Market research + sourcing',status:'run',task:'Refreshing bottom-up TAM sensitivity after Question Loop answer',scope:'4,108 sources · rolling 7d',output:'TAM sensitivity: $680M (20%) → $1.16Bn (34%)',conf:'REASONED',model:'Gemini 2.5 Flash'},
+  {id:'interviewer',name:'interviewer',role:'Expert sourcing + transcription',status:'wait',task:'Preparing management interview guides · CEO + CTO + CPO · J11–J13',scope:'LinkedIn + PitchBook + academic',output:'17 expert candidates identified pre-AlphaSight',conf:'N/A',model:'Claude Sonnet'},
+  {id:'financial_modeler',name:'financial_modeler',role:'QoE + scenario modeling',status:'run',task:'Building bear scenario on $46.8M ARR base post-adjustment',scope:'Data room 847 pages · 3 scenarios',output:'Bear: ARR 2027 $72M → MOIC 1.6x · Crash probability 8%',conf:'KNOWN + REASONED',model:'Claude Sonnet'},
+  {id:'hypothesis_engine',name:'hypothesis_engine',role:'Hypothesis tracking + status',status:'run',task:'Updating H4 to CONDITIONAL pending J11 interview data',scope:'6 hypotheses · J0–J10',output:'H4 weakened: retention = price-lock, not product excellence',conf:'REASONED',model:'Claude Sonnet'},
+  {id:'framework_designer',name:'framework_designer',role:'Framework selection + application',status:'idle',task:'Idle — awaiting W4 red-team scope (Tom, J11)',scope:'Library: 40+ frameworks',output:'Applied: bottom-up TAM, Porter 5 forces, QoE, JTBD',conf:'N/A',model:'Claude Sonnet'},
+  {id:'competitive_mapper',name:'competitive_mapper',role:'Landscape + positioning',status:'run',task:'Tracking CrowdStrike mid-market program — pricing threshold',scope:'47 comparables · 9 jurisdictions',output:'Window revised: 14–20 months (was 18–24)',conf:'REASONED',model:'Gemini 2.5 Flash'},
+  {id:'storyline_architect',name:'storyline_architect',role:'Dot-dash + coherence + weak link',status:'run',task:'Cross-workstream coherence check · Gate J10 prep',scope:'Storyline v1 · 3 workstreams',output:'Weak link self-identified: CrowdStrike pricing → H4 collapse',conf:'REASONED',model:'Claude Sonnet'},
+  {id:'red_teamer',name:'red_teamer',role:'Adversarial stress-test',status:'idle',task:'Idle — Tom will invoke at J11',scope:'On demand only',output:'—',conf:'N/A',model:'Claude Sonnet'},
+  {id:'deliverable_builder',name:'deliverable_builder',role:'Report + exec summary',status:'idle',task:'Idle — lock-in J17',scope:'DD template · 65p + 15 slides',output:'Template loaded and ready',conf:'N/A',model:'Gemini 2.5 Flash'},
+  {id:'verification_agent',name:'verification_agent',role:'Claim verification · adversarial',status:'run',task:'Pre-Gate J10 check · 4 claims without source detected',scope:'Isolated from production context',output:'4 unlinked claims flagged · 2 contradictions found',conf:'N/A',model:'Claude Sonnet'},
+];
+
+const OUTPUTS=[
+  {mod:'researcher',time:'J3 09:14',title:'Bottom-up TAM: US $831M, total $1.16Bn',body:'87,400 US firms 500–5000 emp · 94% endpoint penetration (IDC 2023) · 34% addressable gap at $36K avg. International +40%.',conf:'reasoned',src:'Census Bureau 2024 + IDC 2023 + Bessemer benchmarks'},
+  {mod:'financial_modeler',time:'J8 11:02',title:'ARR anomaly: management $48.2M vs. qualified $46.8M',body:'Delta $1.4M non-recurring revenues included in management figure. Top 12 accounts = 23% ARR. Concentration below red line (45%).',conf:'known',src:'Data room P&L 3 years + ARR schedule 601 accounts'},
+  {mod:'financial_modeler',time:'J8 13:45',title:'FLAG: 2 exit-clause contracts not in management presentation',body:'Contracts >$500K with 90-day exit clauses. Renewal imminent. Not disclosed in management presentation. Sophie contacted Meridian GP same day.',conf:'known',src:'Data room top-20 contracts · clause extraction'},
+  {mod:'interviewer',time:'J7 16:30',title:'Pattern confirmed: SIEM integration friction — 3/7 interviews',body:'3 of 7 customers mention Splunk integration as laborious. Not a product defect — a scope gap NovaSec has not addressed. Potential churn vector.',conf:'reasoned',src:'7 customer interviews J5–J9 · Ravi Sharma'},
+  {mod:'interviewer',time:'J7 17:15',title:'Pattern emerging: support degradation — 2/7 interviews',body:'"Response times degraded since 6 months" — Carolyn, VP IT Harwick Mfg. Second mention from Oakridge VP Ops. Watch item, not confirmed risk. Human injection: "scaling stress operational signal" — Ravi.',conf:'reasoned',src:'Ravi Sharma interpretation · J7 · flagged for watch'},
+  {mod:'hypothesis_engine',time:'J7 18:00',title:'H4 status → CONDITIONAL',body:'H4 (35% growth sustainable) weakened by support pattern. Retention may be price-lock rather than product excellence. Conditional on: (a) support data from management, (b) 3 top-account interviews J11.',conf:'reasoned',src:'hypothesis_engine · derived from interviewer patterns + H4'},
+  {mod:'competitive_mapper',time:'J9 09:30',title:'Competitive window revised: 14–20 months (was 18–24)',body:'CrowdStrike announced mid-market program Q1 2025. Pricing threshold under review internally. Window shorter than initially assessed. H2 updated.',conf:'reasoned',src:'CrowdStrike earnings Q1 2025 + channel checks'},
+  {mod:'storyline_architect',time:'J10 08:00',title:'Storyline v1: cross-workstream coherence check passed',body:'3 sections coherent. No internal contradiction. Action titles updated to reflect $46.8M ARR and 14-20mo window. 1 weak link self-identified.',conf:'reasoned',src:'storyline_architect · derived from all workstreams · J10'},
+  {mod:'verification_agent',time:'J10 08:45',title:'Pre-Gate check: 4 claims without source, 2 contradictions',body:'4 claims marked KNOWN without source_id — frozen. 2 contradictions: slide 12 TAM $1.16Bn vs. slide 34 Gartner $2.1Bn (reconciliation missing); exec summary ARR $48.2M vs. QoE section $46.8M.',conf:'known',src:'verification_agent · isolated check · 142 claims reviewed'},
+  {mod:'researcher',time:'J3 14:00',title:'Porter 5 forces: CrowdStrike floor structural — mid-market inaccessible',body:'Pricing minimum $80K/yr structurally inaccessible to 500–5000 emp segment. Entrant threat HIGH on 24 months. H1 supported.',conf:'reasoned',src:'G2 reviews + channel checks + CrowdStrike pricing page'},
+  {mod:'financial_modeler',time:'J9 11:00',title:'3 scenarios: base $728M · bull $861M · bear $691M',body:'Central: ARR 2027 $95M → MOIC 2.2x. Bull: $120M → 2.7x. Bear: $72M → 1.6x (ramp commercial +12mo + 2 churns). Crash: $52M → loss (prob 8%).',conf:'reasoned',src:'Osmund DCF + Monte Carlo 10k paths · 9 iterations'},
+  {mod:'hypothesis_engine',time:'J0 16:00',title:'5 hypotheses generated from kickoff brief',body:'H1: mid-market under-served. H2: 18-24mo window. H3: TAM >$1Bn. H4: 35% growth sustainable. H5: QoE supports EV. Marc added H6: CTO dependency manageable.',conf:'reasoned',src:'hypothesis_engine · kickoff brief + meeting transcript'},
+  {mod:'framework_designer',time:'J2 10:00',title:'Framework selection declared: bottom-up TAM + Porter + JTBD',body:'For H1 and H3: bottom-up TAM (not Gartner), Porter 5 forces (structural barriers to leaders entering), JTBD (purchase driver). Validated by Léa before analysis.',conf:'reasoned',src:'framework_designer · brief + H1/H3 scope · Léa validation'},
+  {mod:'interviewer',time:'J6 09:00',title:'17 expert candidates identified pre-AlphaSight',body:'LinkedIn + PitchBook + academic publications. Shortlist of 17 with angle of value and pertinence context per profile. 8 from Meridian contacts, 9 additional.',conf:'reasoned',src:'interviewer · expert_finder · J6'},
+];
+
+const HYPS=[
+  {id:'H1',s:'val', text:'Mid-market (500–5000 emp) is structurally under-served by endpoint security leaders.',finding:'TAM $1.16Bn bottom-up · CrowdStrike pricing floor structural',mod:'researcher · framework_designer',conf:'reasoned',detail:'Bottom-up: 87,400 US firms × 94% penetration × 34% gap × $36K avg = $831M US. International +40% = $1.16Bn. Porter 5: CrowdStrike floor $80K/yr inaccessible to segment. REASONED: 34% pending interview validation.'},
+  {id:'H2',s:'test',text:'Competitive window of 18–24 months before market compression.',finding:'Window revised 14–20 months · CrowdStrike mid-market program',mod:'competitive_mapper',conf:'reasoned',detail:'CrowdStrike Q1 2025 announced mid-market program. Pricing threshold under internal review. Window shorter. H2 conditional on program execution timeline.'},
+  {id:'H3',s:'val', text:'TAM addressable >$1Bn in 2027.',finding:'$1.16Bn bottom-up · REASONED · 34% rate pending validation',mod:'researcher',conf:'reasoned',detail:'Derived from H1 sizing. REASONED on 34% penetration rate — Question Loop open with Léa for 2-3 CISO interviews to validate.'},
+  {id:'H4',s:'cond',text:'35% YoY growth sustainable — not a sales-push artifact.',finding:'WEAKENED · retention may be price-lock · support degradation 2/7',mod:'interviewer',conf:'reasoned',detail:'Pattern: support degradation 2/7. SIEM friction 3/7. Human injection by Ravi J7: "scaling stress signal." H4 conditional on: (a) support data from management, (b) 3 top-account interviews J11–J13.'},
+  {id:'H5',s:'test',text:'Quality of earnings supports the $220M EV.',finding:'ARR adjusted $46.8M · 2 exit-clause contracts flagged · EV under review',mod:'financial_modeler',conf:'known',detail:'QoE: ARR recurring qualified $46.8M (vs. $48.2M management). Top 12 = 23% ARR. 2 contracts >$500K with 90-day exit. EV at $46.8M = 4.7x multiple — high given concentration + exit clauses. Pending CFO call.'},
+  {id:'H6',s:'act', text:'CTO dependency is manageable post-acquisition.',finding:'Not yet tested · management interviews J11–J13',mod:'interviewer',conf:'n/a',detail:'Added by Marc at kickoff. Workstream: Ravi. CEO + CTO + CPO interviews scheduled J11–J13. Framework: management assessment grid + key man dependency analysis.'},
+];
+
+const STAFF_DATA=[
+  {av:'SM',name:'Sophie Marceau',role:'Partner',mission:'NovaSec + Heliodyne',task:'Gate J16 prep + Heliodyne final review',load:'70%'},
+  {av:'RS',name:'Ravi Sharma',role:'Content Director',mission:'NovaSec CDD',task:'Gate J10 validator — storyline review due today',load:'80%'},
+  {av:'ML',name:'Marc Leconte',role:'Manager',mission:'NovaSec CDD',task:'COPIL 14:00 + managing Gate J10 logistics',load:'100%'},
+  {av:'LD',name:'Léa Dumont',role:'Consultant W1',mission:'NovaSec CDD',task:'Market workstream · CISO interviews to schedule',load:'100%'},
+  {av:'TB',name:'Tom Berger',role:'Consultant W2',mission:'NovaSec CDD',task:'Financial workstream · CFO call prep',load:'100%'},
+];
+
+const TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{
+  "activeRole": "manager",
+  "activeMod": "researcher"
+}/*EDITMODE-END*/;
+let activeRole=TWEAK_DEFAULTS.activeRole, activeMod=TWEAK_DEFAULTS.activeMod;
+
+// Nav
+function switchView(id){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.si').forEach(n=>n.classList.remove('on'));
+  document.getElementById('view-'+id)?.classList.add('on');
+  document.querySelector(`[data-view="${id}"]`)?.classList.add('on');
+  if(id==='coord') renderMods();
+}
+document.getElementById('nav').addEventListener('click',e=>{
+  const it=e.target.closest('.si'); if(it) switchView(it.dataset.view);
+});
+
+// Role
+function setRole(r){
+  activeRole=r;
+  const u=ROLES[r];
+  document.getElementById('sb-av').textContent=u.av;
+  document.getElementById('sb-un').textContent=u.name;
+  document.getElementById('sb-ur').textContent=u.role;
+  document.querySelectorAll('.rbtn').forEach(b=>b.classList.toggle('on',b.dataset.role===r));
+  document.querySelectorAll('.tw-b[data-r]').forEach(b=>b.classList.toggle('on',b.dataset.r===r));
+  try{window.parent.postMessage({type:'__edit_mode_set_keys',edits:{activeRole:r}},'*')}catch(e){}
+}
+document.getElementById('role-sw').addEventListener('click',e=>{
+  const b=e.target.closest('.rbtn'); if(b) setRole(b.dataset.role);
+});
+
+// Modal
+function openModal(){document.getElementById('modal').classList.add('on')}
+function closeModal(){document.getElementById('modal').classList.remove('on')}
+document.getElementById('modal').addEventListener('click',e=>{if(e.target===document.getElementById('modal')) closeModal()})
+function selectTmpl(el){document.querySelectorAll('.tmpl-btn').forEach(b=>b.classList.remove('on'));el.classList.add('on')}
+function toggleStaff(el){el.classList.toggle('on')}
+document.querySelectorAll('.staff-person,.staff-module').forEach(el=>el.addEventListener('click',()=>toggleStaff(el)));
+
+// Gate
+function chooseGate(el,type){
+  document.querySelectorAll('.ql-opt').forEach(o=>o.classList.remove('on'));
+  el.classList.add('on');
+  const res=document.getElementById('gate-result');
+  const act=document.getElementById('gate-action-text');
+  res.classList.add('on');
+  const msgs={
+    same:'MARVIN weak link confirmed. Gate passes. Action: CrowdStrike pricing stress-test added to J11–J16 red-team scope. Tom to invoke explicitly.',
+    sample:'New weak link found (Ravi). Gate passes. Action: 3 top-account interviews added (ARR >$80K). Ravi updates plan. MARVIN adjusts dot-dash.',
+    none:'Gate fails by design. Mission pauses. No Phase 4 advance until a structural weakness is named. Ravi and Marc to review before J11.',
+  };
+  act.textContent=msgs[type];
+}
+
+// Hyps
+function renderHyps(){
+  const sc={val:'hs-val',test:'hs-test',act:'hs-act',cond:'hs-cond',inv:'hs-inv'};
+  const sl={val:'VAL',test:'TEST',act:'ACT',cond:'CND',inv:'INV'};
+  document.getElementById('hyp-rows').innerHTML=HYPS.map(h=>`
+    <div class="hyp-row" onclick="showHyp('${h.id}')">
+      <div class="hyp-id">${h.id}</div>
+      <div class="hstat ${sc[h.s]}">${sl[h.s]}</div>
+      <div class="hyp-text">${h.text}</div>
+      <div class="hyp-finding">${h.finding}</div>
+      <div class="hyp-mod">${h.mod}</div>
+    </div>
+  `).join('');
+}
+function showHyp(id){
+  const h=HYPS.find(x=>x.id===id);
+  const d=document.getElementById('hyp-detail');
+  d.classList.add('on');
+  document.getElementById('hd-id').textContent=h.id+' · '+{val:'Validated',test:'Testing',act:'Active',cond:'Conditional',inv:'Invalidated'}[h.s];
+  document.getElementById('hd-text').textContent=h.text;
+  document.getElementById('hd-conf').innerHTML=`<span class="oc-conf c-${h.conf}">${h.conf.toUpperCase()}</span>`;
+  document.getElementById('hd-detail').textContent=h.detail;
+  document.getElementById('hd-module').textContent='Module: '+h.mod;
+}
+
+// Outputs
+function renderOutputs(){
+  const cl={known:'c-known',reasoned:'c-reasoned',low:'c-low'};
+  document.getElementById('outputs-list').innerHTML=OUTPUTS.map(o=>`
+    <div class="output-card">
+      <div class="oc-header">
+        <div class="oc-module">${o.mod}</div>
+        <div class="oc-time">${o.time}</div>
+      </div>
+      <div class="oc-title">${o.title}</div>
+      <div class="oc-body">${o.body}</div>
+      <span class="oc-conf ${cl[o.conf]}">${o.conf.toUpperCase()}</span>
+      <div class="oc-src">${o.src}</div>
+    </div>
+  `).join('');
+}
+
+// Modules
+function renderMods(){
+  const stl={run:'st-run',wait:'st-wait',idle:'st-idle'};
+  const stlbl={run:'running',wait:'waiting',idle:'idle'};
+  document.getElementById('mod-list').innerHTML=MODULES.map(m=>`
+    <div class="mod-row ${m.id===activeMod?'sel':''}" onclick="selectMod('${m.id}')">
+      <div><div class="mod-st ${stl[m.status]}"></div></div>
+      <div style="flex:1">
+        <div class="mod-name">${m.name}</div>
+        <div class="mod-task">${m.task}</div>
+        <div class="mod-out">${m.output}</div>
+        <div class="mod-model">${m.model} · ${stlbl[m.status]}</div>
+      </div>
+    </div>
+  `).join('');
+  showMod(activeMod);
+  // Tweaks
+  document.getElementById('tw-mods').innerHTML=MODULES.map(m=>`
+    <button class="tw-b ${m.id===activeMod?'on':''}" onclick="selectMod('${m.id}')">${m.name.replace('_',' ').split(' ')[0]}</button>
+  `).join('');
+}
+function selectMod(id){
+  activeMod=id;
+  renderMods();
+  try{window.parent.postMessage({type:'__edit_mode_set_keys',edits:{activeMod:id}},'*')}catch(e){}
+}
+function selectModFromGraph(id){activeMod=id;renderMods()}
+function showMod(id){
+  const m=MODULES.find(x=>x.id===id);
+  if(!m) return;
+  const d=document.getElementById('mod-detail');
+  d.classList.add('on');
+  document.getElementById('md-name').textContent=m.name;
+  document.getElementById('md-role').textContent=m.role;
+  document.getElementById('md-task').textContent=m.task;
+  document.getElementById('md-scope').textContent=m.scope;
+  document.getElementById('md-output').textContent=m.output;
+  document.getElementById('md-conf').textContent=m.conf;
+  document.getElementById('md-model').textContent=m.model;
+}
+
+// Staff rows
+document.getElementById('staff-rows').innerHTML=STAFF_DATA.map(s=>`
+  <div style="display:grid;grid-template-columns:160px 1fr 1fr 100px;gap:16px;padding:10px 14px;border-top:1px solid var(--rule);font-size:12.5px;align-items:center">
+    <div style="display:flex;align-items:center;gap:8px"><div style="width:24px;height:24px;border-radius:50%;background:var(--bg3);display:grid;place-items:center;font-size:9px;font-weight:700;color:var(--ink2)">${s.av}</div><div><div style="font-size:12.5px;font-weight:500">${s.name}</div><div style="font-size:10.5px;color:var(--ink3)">${s.role}</div></div></div>
+    <div style="font-size:12px;color:var(--ink2)">${s.mission}</div>
+    <div style="font-size:11.5px;color:var(--ink3)">${s.task}</div>
+    <div style="font-family:'Geist Mono',monospace;font-size:11px;color:var(--ink3)">${s.load}</div>
+  </div>
+`).join('');
+
+// Tweaks role buttons
+document.getElementById('tw-roles').innerHTML=Object.entries(ROLES).map(([k,v])=>`
+  <button class="tw-b ${k===activeRole?'on':''}" data-r="${k}" onclick="setRole('${k}')">${v.av}</button>
+`).join('');
+
+// Edit mode
+const TW=document.getElementById('TW');
+window.addEventListener('message',e=>{
+  if(!e.data) return;
+  if(e.data.type==='__activate_edit_mode') TW.classList.add('on');
+  if(e.data.type==='__deactivate_edit_mode') TW.classList.remove('on');
+});
+try{window.parent.postMessage({type:'__edit_mode_available'},'*')}catch(e){}
+
+renderHyps();
+renderOutputs();
+renderMods();
+</script>
+</body>
+</html>

@@ -244,6 +244,7 @@ def _deliverable_progress_payload(deliverable) -> dict:
         "status": "ready" if is_ready else "pending",
         "file_path": deliverable.file_path if is_ready else None,
         "created_at": deliverable.created_at,
+        "milestone_id": getattr(deliverable, "milestone_id", None),
     }
 
 

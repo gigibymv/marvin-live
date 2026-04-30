@@ -309,13 +309,32 @@ def research_join(state: MarvinState) -> dict:
             # Milestone not seeded for this mission — defensive boundary only.
             pass
 
-    from marvin.tools.papyrus_tools import _generate_workstream_report_impl
+    from marvin.tools.papyrus_tools import (
+        _generate_milestone_report_impl,
+        _generate_workstream_report_impl,
+    )
 
     for workstream_id in ("W1", "W2"):
         report = _generate_workstream_report_impl(workstream_id, mission_id)
         if report.get("status") == "blocked":
             continue
         store.mark_workstream_delivered(mission_id, workstream_id)
+
+    # C-PER-MILESTONE — generate one report per delivered milestone so each
+    # milestone row in the UI gets its own Open button. Best-effort: a
+    # milestone with no findings simply skips. Failures are logged but do
+    # not break the workstream-level pass.
+    for milestone in store.list_milestones(mission_id):
+        if milestone.status != "delivered":
+            continue
+        try:
+            _generate_milestone_report_impl(milestone.id, mission_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "milestone report generation failed for %s: %s",
+                milestone.id,
+                exc,
+            )
 
     # C4 corroboration gate: downgrade any KNOWN finding with <2 independent
     # sources to REASONED before manager review (G1) sees the finding base.

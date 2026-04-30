@@ -102,6 +102,15 @@ Impact rubric:
 2. One-line summary in your final message:
    "{N} findings logged. Top: {one-line top finding}."
 
+## MILESTONE TAGGING (for per-milestone deliverables)
+
+When a finding clearly belongs to a specific milestone (W1.1 market
+size, W1.2 competitive landscape, W1.3 customer segments), pass
+`milestone_id="W1.x"` to add_finding_to_mission. This lets the
+system render a per-milestone report you can hand off independently.
+If you cannot tell which sub-milestone applies, omit `milestone_id` —
+the system falls back to the workstream-level grouping.
+
 # WHAT YOU NEVER DO
 
 - Fabricate sources. If you can't find it, mark LOW_CONFIDENCE.

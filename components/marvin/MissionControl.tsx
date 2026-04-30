@@ -1523,6 +1523,7 @@ export default function MissionControl({
     label: formatDeliverableDisplayName(d),
     deliverable_type: d.deliverable_type,
     file_path: d.file_path,
+    milestone_id: (d as any).milestone_id ?? null,
     status: d.status === "ready" && d.file_path ? "ready" : "pending",
     href: d.status === "ready" && d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
     // Chantier 4 CP3: ready deliverables open the preview modal instead of
@@ -1549,22 +1550,46 @@ export default function MissionControl({
       onOpen: d.onOpen,
       output_label: d.label,
     }));
+  // C-PER-MILESTONE: pair each delivered milestone row with its
+  // milestone_report deliverable so the row exposes Open/Download.
+  // Fall back to the parent workstream report when no per-milestone
+  // artifact exists yet (older missions, or milestones with too few
+  // findings to render a per-milestone report).
   const milestoneOutputs = allMilestones
     .filter((m) => {
       const liveStatus = milestoneStatusOverrides[m.id];
       return (liveStatus ?? m.status) === "delivered";
     })
-    .map((m) => ({
-      id: m.id,
-      kind: "milestone" as const,
-      ag: "MARVIN",
-      text: `Milestone complete · ${m.label}`,
-      claim_text: `Milestone complete · ${m.label}`,
-      confidence: "DONE",
-      section_id: null,
-      workstream_id: m.workstream_id,
-      ts: "",
-    }));
+    .map((m) => {
+      const tied = seedDeliverables.find(
+        (d) => d.status === "ready" && d.milestone_id === m.id,
+      );
+      const wsFallback = !tied
+        ? seedDeliverables.find(
+            (d) =>
+              d.status === "ready" &&
+              routeDeliverableToSectionId({
+                deliverable_type: d.deliverable_type,
+                file_path: d.file_path,
+              }) === m.workstream_id,
+          )
+        : undefined;
+      const linked = tied ?? wsFallback;
+      return {
+        id: m.id,
+        kind: "milestone" as const,
+        ag: "MARVIN",
+        text: `Milestone complete · ${m.label}`,
+        claim_text: `Milestone complete · ${m.label}`,
+        confidence: "DONE",
+        section_id: null,
+        workstream_id: m.workstream_id,
+        ts: "",
+        href: linked?.href,
+        onOpen: linked?.onOpen,
+        output_label: linked?.label,
+      };
+    });
   // Synthesis (W3) is verdict-driven, not finding-driven: merlin doesn't
   // call add_finding_to_mission, so without surfacing the verdict the
   // tab would be permanently empty. Build a synthetic output card from

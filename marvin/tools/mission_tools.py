@@ -558,6 +558,7 @@ def add_finding_to_mission(
     source_type: str | None = None,
     source_url: str | None = None,
     source_quote: str | None = None,
+    milestone_id: str | None = None,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
     """Add a finding to the mission.
@@ -756,10 +757,18 @@ def add_finding_to_mission(
                     ),
                 }
 
+    # Validate optional milestone_id against the mission's milestones to
+    # avoid orphan tags. Unknown ids are silently dropped (best-effort tag).
+    if milestone_id is not None:
+        valid_ids = {m.id for m in store.list_milestones(mission_id)}
+        if milestone_id not in valid_ids:
+            milestone_id = None
+
     finding = Finding(
         id=short_id("f"),
         mission_id=mission_id,
         workstream_id=workstream_id,
+        milestone_id=milestone_id,
         hypothesis_id=hypothesis_id,
         claim_text=claim_text,
         confidence=confidence,
