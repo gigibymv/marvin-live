@@ -606,6 +606,14 @@ def add_finding_to_mission(
             ),
         }
 
+    # LLMs occasionally pass a URL or freeform string as `source_id`. Detect
+    # that here and route it to the source_url path so we don't end up with
+    # a finding pointing at a non-existent sources.id.
+    if source_id is not None and not str(source_id).startswith("s-"):
+        if source_url is None:
+            source_url = str(source_id)
+        source_id = None
+
     if source_id is None and source_url:
         if source_type is None:
             if "sec.gov" in source_url.lower():

@@ -593,13 +593,21 @@ class MissionStore:
                 finding.corroboration_status,
             ),
         )
-        # ensure primary source is in finding_sources for uniform lookup
+        # Mirror the primary source into finding_sources for uniform lookup,
+        # but ONLY if the source_id actually exists in sources. The LLM
+        # occasionally passes a URL string as source_id; we let the finding
+        # save with that bogus id (back-compat), but we will not propagate
+        # the bad ref into the join table where the FK would fire.
         if finding.source_id:
-            self._conn.execute(
-                "INSERT OR IGNORE INTO finding_sources (finding_id, source_id) VALUES (?, ?)",
-                (finding.id, finding.source_id),
-            )
-            self._conn.commit()
+            row = self._conn.execute(
+                "SELECT 1 FROM sources WHERE id = ? LIMIT 1", (finding.source_id,)
+            ).fetchone()
+            if row is not None:
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO finding_sources (finding_id, source_id) VALUES (?, ?)",
+                    (finding.id, finding.source_id),
+                )
+                self._conn.commit()
         return finding
 
     def add_finding_source(self, finding_id: str, source_id: str) -> None:
