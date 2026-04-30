@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import Link from "next/link";
-import RawMissionControlView from "../../UI Marvin/MissionControl.jsx";
+import { MissionControlV2View as RawMissionControlView } from "./v2/MissionControlV2View";
 import {
   buildInitialMessages,
   DEFAULT_WORKSPACE_TAB,
@@ -107,6 +107,34 @@ function humanizeToolName(raw: unknown): string {
 // Cap the live event feed so a long mission doesn't accumulate thousands of
 // rows in memory or scroll the rail forever.
 const MAX_LIVE_TAPE_ENTRIES = 60;
+
+// Bug #7 (frontend label map): show client-friendly verdict text instead of
+// the raw enum. Proper fix is rewriting prompt_merlin.md (Phase C).
+const VERDICT_LABELS: Record<string, string> = {
+  BACK_TO_DRAWING_BOARD: "Needs rework",
+  READY_FOR_REVIEW: "Ready for review",
+  BLOCKED: "Blocked",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+};
+
+function humanizeVerdict(raw: string | null | undefined): string {
+  const v = String(raw ?? "").trim();
+  if (!v) return "";
+  if (VERDICT_LABELS[v]) return VERDICT_LABELS[v];
+  return v
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Strip internal merlin scaffolding so the user doesn't see "Why:/What's
+// needed:/Recommendation:" headings. The model will be retrained in Phase C.
+function stripVerdictScaffolding(raw: string): string {
+  let out = String(raw ?? "");
+  out = out.replace(/^\s*(Why|What['\u2019]?s needed|Recommendation)\s*:\s*/gim, "");
+  return out.trim();
+}
 
 function humanizeToolResultText(raw: unknown): string {
   const text = String(raw ?? "").trim();
@@ -212,6 +240,7 @@ interface MissionControlViewProps {
     message: string;
     headline: string;
   };
+  onOpenDeliverable?: (deliverableId: string) => void;
 }
 
 const MissionControlView = RawMissionControlView as unknown as ComponentType<MissionControlViewProps>;
@@ -403,6 +432,13 @@ export default function MissionControl({
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, "idle" | "active" | "done">>({});
   const [latestNarration, setLatestNarration] = useState<string | null>(null);
+  // Bug #6a: track which agent owns the current narration so we can clear it
+  // when that agent emits `agent_done` (otherwise stale "Calculus — still
+  // working" lingers in chat after the sidebar already shows DONE).
+  const narrationAgentRef = useRef<string | null>(null);
+  // Bug #6b: tab follows phase until the user manually picks one. Reset on
+  // phase changes so subsequent transitions auto-advance again.
+  const userPickedTabRef = useRef<boolean>(false);
   const [liveFindings, setLiveFindings] = useState<LiveFindingEvent[]>([]);
   const [milestoneStatusOverrides, setMilestoneStatusOverrides] = useState<Record<string, string>>({});
   const [gatePayloads, setGatePayloads] = useState<Record<string, MissionGateModalState>>({});
@@ -476,6 +512,8 @@ export default function MissionControl({
           id: makeMessageId(missionId, "deliverable-chat"),
           from: "m",
           text: formatDeliverableReadyChatMessage(label),
+          deliverableId: deliverableId,
+          deliverableLabel: label,
         }),
       );
     },
@@ -705,6 +743,7 @@ export default function MissionControl({
               intent: event.intent,
             });
             setLatestNarration(narrationText);
+            narrationAgentRef.current = event.agent ? String(event.agent).toLowerCase() : null;
             setMessages((current) => {
               const last = current[current.length - 1];
               if (last?.from === "m" && last.text === narrationText) {
@@ -815,10 +854,18 @@ export default function MissionControl({
             setActiveAgent(null);
             const display = normalizeAgentName(event.label);
             if (event.label) {
+              const lower = event.label.toLowerCase();
               setAgentStatuses((current) => ({
                 ...current,
-                [event.label!.toLowerCase()]: "done",
+                [lower]: "done",
               }));
+              // Bug #6a: replace stale narration with a positive "done"
+              // signal so the user sees the transition explicitly. The
+              // narration is cleared on the next narration / phase change.
+              if (narrationAgentRef.current === lower) {
+                setLatestNarration(`${display} — step complete.`);
+                narrationAgentRef.current = null;
+              }
             }
             setLiveFindings((current) =>
               upsertLiveEvent(current, {
@@ -835,6 +882,10 @@ export default function MissionControl({
             if (event.phase && event.phase !== "awaiting_confirmation") {
               setResolvingGateIds(new Set());
             }
+            // Bug #6b: a phase boundary re-arms tab auto-follow so the
+            // highlighted tab tracks the new active step until the user
+            // manually picks one again.
+            userPickedTabRef.current = false;
             setLiveFindings((current) =>
               upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "phase"),
@@ -851,6 +902,18 @@ export default function MissionControl({
             void refreshMissionEvents();
             break;
           case "finding_added":
+            // A finding implies the producing agent is alive even if no
+            // explicit `agent_active` SSE wrapped this work. Without this,
+            // the left-rail agents stay IDLE while the activity feed shows
+            // them streaming claims (observed live with adversus).
+            if (event.agent) {
+              const agentLower = String(event.agent).toLowerCase();
+              setAgentStatuses((current) => {
+                if (current[agentLower] === "done") return current;
+                if (current[agentLower] === "active") return current;
+                return { ...current, [agentLower]: "active" };
+              });
+            }
             setLiveFindings((current) =>
               upsertLiveEvent(current, {
                 id: event.findingId ?? makeMessageId(missionId, "finding"),
@@ -1532,7 +1595,70 @@ export default function MissionControl({
     const liveStatus = milestoneStatusOverrides[m.id];
     return (liveStatus ?? m.status) === "delivered";
   }).length;
-  const progressRatio = allMilestones.length > 0 ? deliveredMilestones / allMilestones.length : 0;
+  // Phase-based progress so the % reflects the workflow stage (brief → W1 →
+  // W2 → W3 → W4 → final) rather than raw milestone delivery counts. Raw
+  // milestone counts under-report progress dramatically when the mission
+  // has done significant analytical work but only one or two milestones
+  // have crossed the "delivered" boundary.
+  // Phase-based progress. Backend `ws.status` is a free-form string and does
+  // NOT reliably equal "completed" when the workstream is finished — that's
+  // why the % was stuck at 33% on a fully-completed mission. Mirror the
+  // same UI signals used by `workstreamContent` (terminal milestones, ready
+  // deliverable, or merlin verdict for W3).
+  const phaseStageCount = (() => {
+    const allMs = progress?.milestones ?? [];
+    const allDels = progress?.deliverables ?? [];
+    const merlinDone = Boolean((progress as any)?.merlin_verdict?.verdict);
+    const wsHasReadyDeliverable = (wsId: string): boolean =>
+      allDels.some((d) => {
+        if (d.status !== "ready" || !d.file_path) return false;
+        return routeDeliverableToSectionId({
+          deliverable_type: d.deliverable_type,
+          file_path: d.file_path,
+        }) === wsId;
+      });
+    const wsAllMilestonesTerminal = (wsId: string): boolean => {
+      const ms = allMs.filter((m: any) => m.workstream_id === wsId);
+      if (ms.length === 0) return false;
+      return ms.every((m: any) => {
+        const live = milestoneStatusOverrides[m.id];
+        return ["delivered", "skipped", "blocked"].includes(live ?? m.status);
+      });
+    };
+    const wsAnyDelivered = (wsId: string): boolean => {
+      const ms = allMs.filter((m: any) => m.workstream_id === wsId);
+      return ms.some((m: any) => {
+        const live = milestoneStatusOverrides[m.id];
+        return (live ?? m.status) === "delivered";
+      });
+    };
+    const wsDone = (id: string): number => {
+      if (wsAllMilestonesTerminal(id)) return 1;
+      if (wsHasReadyDeliverable(id)) return 1;
+      if (id === "W3" && merlinDone) return 1;
+      return 0;
+    };
+    const wsActive = (id: string): number => {
+      if (wsDone(id)) return 0;
+      const agentKey = (progress?.workstreams ?? []).find((w) => w.id === id)?.assigned_agent?.toLowerCase();
+      if (agentKey && (agentStatuses[agentKey] === "active" || activeAgent?.toLowerCase() === agentKey)) return 0.5;
+      if (wsAnyDelivered(id)) return 0.5;
+      return 0;
+    };
+    const briefDone = progress?.framing ? 1 : 0;
+    const finalDone = allDels.some(
+      (d) => /^(final|ic_memo|exec_summary|final_deliverable|investment_memo|data_book)/i.test(d.deliverable_type ?? ""),
+    ) ? 1 : 0;
+    return (
+      briefDone +
+      wsDone("W1") + wsActive("W1") +
+      wsDone("W2") + wsActive("W2") +
+      wsDone("W3") + wsActive("W3") +
+      wsDone("W4") + wsActive("W4") +
+      finalDone
+    );
+  })();
+  const progressRatio = Math.min(1, phaseStageCount / 6);
   const missionStatusLabel = resolvingGateIds.size > 0
     ? "Mission running"
     : hasPendingGate
@@ -1705,7 +1831,7 @@ export default function MissionControl({
       out = out.replace(/\bhyp-[0-9a-f]{6,}\b/gi, "").trim();
       out = out.replace(/[ \t]{2,}/g, " ");
       out = out.replace(/\n{3,}/g, "\n\n");
-      return out;
+      return stripVerdictScaffolding(out);
     };
     const text = sanitizeVerdictNotes(v.notes ?? "");
     return [{
@@ -1714,14 +1840,22 @@ export default function MissionControl({
       ag: "Merlin",
       text,
       claim_text: text,
-      confidence: v.verdict,
+      confidence: humanizeVerdict(v.verdict),
       section_id: null,
       workstream_id: "W3",
       agent_id: "merlin",
       ts: v.created_at ?? "",
     }];
   })();
+  // Live findings (SSE-driven, not yet persisted to /progress.findings) are
+  // merged in alongside DB findings so the user sees adversus/calculus
+  // outputs the moment they are emitted instead of waiting for the
+  // backend persistence round-trip. Deduped by `kind:id` — when the
+  // backend later persists the same row, the DB version wins (later
+  // entries override earlier ones in dedupeByKey ordering).
+  const liveFindingOutputs = activity.filter((a: any) => a.kind === "finding");
   const allSectionOutputs = dedupeByKey([
+    ...liveFindingOutputs,
     ...allFindings,
     ...synthesisOutputs,
     ...deliverableOutputs,
@@ -1817,6 +1951,12 @@ export default function MissionControl({
     : baseSectionTabs;
   const showTyping = missionIsWorking;
   const activeStep = sectionTabs.find((tab) => tab.status === "now") ?? sectionTabs.find((tab) => tab.status === "in_progress");
+  // Bug #6b: when the user hasn't manually picked a tab, surface the active
+  // step's tab as the displayed selection. We don't write back into the
+  // store — that would clobber a real user pick mid-render and also can't
+  // run as an effect here (early returns above). Pure derivation only.
+  const effectiveSelectedTab: WorkspaceTab =
+    userPickedTabRef.current || !activeStep ? selectedTab : activeStep.id;
   const selectedTabId = selectedSectionId === "brief" || selectedSectionId === "final"
     ? selectedSectionId
     : (`ws${selectedSectionId.replace(/^W/i, "")}` as WorkspaceTab);
@@ -1852,8 +1992,11 @@ export default function MissionControl({
         chatDraft={chatDraft}
         onChatDraftChange={(value: string) => setChatDraft(mission.id, value)}
         onSendMessage={handleSendMessage}
-        selectedTab={selectedTab}
-        onSelectTab={(tab: WorkspaceTab) => setWorkspaceTab(mission.id, tab)}
+        selectedTab={effectiveSelectedTab}
+        onSelectTab={(tab: WorkspaceTab) => {
+          userPickedTabRef.current = true;
+          setWorkspaceTab(mission.id, tab);
+        }}
         isTyping={showTyping}
         defaultTab={DEFAULT_WORKSPACE_TAB}
         gateModal={null} // We handle gate modal separately
@@ -1891,6 +2034,7 @@ export default function MissionControl({
         nextCheckpointLabel={nextCheckpointLabel}
         completedTitle={completedTitle}
         completedEmptyText={completedEmptyText}
+        onOpenDeliverable={(id: string) => setPreviewDeliverableId(id)}
       />
 
       {/* Chantier 4 CP3: deliverable preview modal. */}
@@ -2187,11 +2331,11 @@ export default function MissionControl({
               {gateModal.merlinVerdict && (
                 <div style={{ marginBottom: "14px", border: "1px solid #d5e2d8", borderRadius: "8px", padding: "10px 12px", background: "rgba(45,110,78,.06)" }}>
                   <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
-                    Merlin verdict · {gateModal.merlinVerdict.verdict}
+                    Merlin verdict · {humanizeVerdict(gateModal.merlinVerdict.verdict)}
                   </div>
                   {gateModal.merlinVerdict.notes && (
                     <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
-                      {gateModal.merlinVerdict.notes}
+                      {stripVerdictScaffolding(gateModal.merlinVerdict.notes)}
                     </div>
                   )}
                 </div>

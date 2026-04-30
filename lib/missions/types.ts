@@ -32,6 +32,11 @@ export interface MissionChatMessage {
   id: string;
   from: MissionMessageAuthor;
   text: string;
+  // Optional deep-link to a deliverable. When present, the chat bubble
+  // renders an "Open" affordance so the user can jump straight to the
+  // file from the message.
+  deliverableId?: string;
+  deliverableLabel?: string;
 }
 
 export interface MissionRunState {
