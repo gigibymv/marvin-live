@@ -295,6 +295,137 @@ runtime conditions.
 
 ---
 
+## C-VERDICT — Plain-language Merlin synthesis
+
+- **Bucket:** Output quality
+- **Status:** shipped
+- **Commits:** `66bf86c`
+
+**Problem.** Synthesis tab read like an internal log: `MINOR_FIXES`,
+MECE, `KNOWN`/`REASONED`, `hyp-XXXXX` UUIDs all leaked verbatim into
+user-facing prose.
+
+**Shipped.**
+- `merlin.md` rewritten: explicit "writing for a managing partner"
+  audience, banned-jargon list, plain-language verdict templates that
+  drop the verdict enum from the prose (rendered as a badge instead).
+- `MissionControl.tsx::synthesisOutputs` strips any leading
+  `Verdict: <ENUM>` line and `hyp-` UUIDs as a safety net.
+
+---
+
+## C-TAB-SYNC — Tab check marks reflect terminal state
+
+- **Bucket:** UX
+- **Status:** shipped
+- **Commits:** `7b6f6d3`
+
+**Problem.** Tabs stayed `●` after gates passed because (a) blocked
+milestones short-circuited `wsDelivered === wsMilestones.length`, (b)
+stale `liveStatus === "active"` suppressed the completed fallback,
+and (c) Synthesis (W3) was milestone-counted instead of verdict-driven.
+
+**Shipped.** `wsTerminal` counts delivered + skipped + blocked; W3
+reads `merlin_verdict` presence; active liveStatus no longer regresses
+completion.
+
+---
+
+## C-NARRATION — Tool-tape live feed
+
+- **Bucket:** UX
+- **Status:** shipped
+- **Commits:** `1eec719`
+
+**Problem.** During long renders the right rail showed only "Still
+working" — agent activity invisible.
+
+**Shipped.** Tool calls render as a scrolling tape (already appended
+via unique ids; the perceived overwriting was the absence of friendly
+naming + persistence-tool noise drowning the rest). Friendly-name map
+(`fetch_filing_section` → "reading SEC filing"), noisy-tool filter
+(persistence echoes hidden), 60-entry cap.
+
+---
+
+## C-PER-MILESTONE — Per-milestone deliverables (Option B)
+
+- **Bucket:** Output coverage
+- **Status:** shipped (live validation pending)
+- **Commits:** `033099e`
+
+**Problem.** Milestone rows showed DONE but had no Open/Download
+because only one aggregate `Wx_report.md` existed per workstream.
+
+**Shipped.**
+- Schema: additive `findings.milestone_id` + `deliverables.milestone_id`
+  columns.
+- Generation: `_generate_milestone_report_impl(milestone_id, ...)`
+  mirrors workstream report writing standard, filtered by milestone_id
+  (with workstream-level fallback when findings are untagged).
+- `research_join` calls per-milestone gen for every delivered milestone
+  after the workstream-level pass; failures are best-effort.
+- `add_finding_to_mission` accepts optional `milestone_id`; Calculus +
+  Dora prompts updated to tag findings when sub-milestone is clear.
+- `routeDeliverableToSectionId` regex covers `Wx.y_<slug>.md`;
+  `MissionControl::milestoneOutputs` pairs each delivered milestone row
+  with its report (or falls back to the parent workstream report).
+- `/progress` payload exposes `milestone_id` on deliverables so the UI
+  can pair without a second round-trip.
+- 3 unit tests + updated existing event-emission test.
+
+---
+
+## C-CONV — Mid-mission steering (conversational redirect)
+
+- **Bucket:** UX / control
+- **Status:** shipped (live validation pending)
+- **Commits:** `db8b8e4`
+
+**Problem.** "Ask MARVIN or redirect the mission…" input box was wired
+only for read-only Q&A and gate approval keywords. There was no way to
+steer the mission mid-flight.
+
+**Shipped.**
+- New `mission_steering` table queues user instructions during a
+  running graph (additive migration).
+- `marvin/conversational/steering.py` — heuristic classifier
+  (`qa | steer`), English + French imperative cues, question-cue
+  priority. `apply_pending_steering(mission_id)` drains rows into
+  HumanMessage tape at the entry of every agent node
+  (dora/calculus/adversus/merlin).
+- `_stream_chat` classifies non-approval messages while graph is
+  running: `steer` → queue + ack + `run_end` (no graph re-invoke);
+  `qa` → existing `respond_qa` path.
+- 19 unit tests; consumed_at guards against double-replay across
+  agents.
+
+**Open follow-up.** No LLM classifier yet — heuristic-only. If false
+positives or negatives become a problem in live use, swap in a single
+LLM call gated to remaining classifier ambiguity.
+
+---
+
+## Graph correctness pass (audit follow-up)
+
+- **Bucket:** Foundational
+- **Status:** shipped
+- **Commits:** `dc61ce6`, `02f5286`
+
+**Problem.** LangGraph audit identified a CRITICAL (`phase_router`
+doing DB writes — replay-unsafe) plus four warnings/partials
+(missing `gate_entry` route, silent rebuttal exception swallow,
+data-availability fan-out bypass, unclosed checkpoint connection).
+
+**Shipped.** Edge functions are now pure; gate row creation moved to
+`gate_entry_node`. Framing orchestrator route map covers `gate_entry`.
+`research_rebuttal_node` logs at error level + marks the responsible
+workstream blocked when an agent fails. Data-availability route goes
+through `gate_entry`. Lifespan handler closes `_checkpoint_conn` on
+shutdown.
+
+---
+
 ## Pending — backlog
 
 ### Wave 3 — Plus tard
