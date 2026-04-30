@@ -358,10 +358,7 @@ async def framing_node(state: MarvinState) -> dict:
         generate_interview_guides,
         persist_framing_from_brief,
     )
-    from marvin.tools.papyrus_tools import (
-        _generate_framing_memo_impl,
-        generate_engagement_brief,
-    )
+    from marvin.tools.papyrus_tools import generate_engagement_brief
 
     raw_brief = ""
     for message in reversed(messages):
@@ -385,18 +382,6 @@ async def framing_node(state: MarvinState) -> dict:
     hypotheses, reply_prose = generate_framing_with_reply(mission_id, raw_brief)
     generate_interview_guides([hypothesis.id for hypothesis in hypotheses], state=state)
     generate_engagement_brief(state)
-    # Framing memo: a one-page record of the brief plus any clarifications
-    # collected during the orchestrator's question-and-answer rounds.
-    from marvin.graph.subgraphs.framing_orchestrator import get_clarification_answers
-
-    try:
-        _generate_framing_memo_impl(
-            mission_id,
-            clarifications=get_clarification_answers(mission_id),
-        )
-    except Exception as exc:  # noqa: BLE001 — never block framing on memo write
-        logger.warning("framing_node: framing_memo generation failed: %s", exc)
-
     reset_clarification_state(mission_id)
     return {
         "phase": "awaiting_confirmation",
