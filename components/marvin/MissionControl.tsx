@@ -1078,15 +1078,20 @@ export default function MissionControl({
 
       // Set streaming state
       setRunState(mission.id, { isStreaming: true });
-      setLiveFindings((current) =>
-        upsertLiveEvent(current, {
+      // Bug 8: only insert the "Mission starting…" placeholder on the very
+      // first send. Subsequent sends (continue, steering, post-completion
+      // chat) used to overwrite the existing phase row with this stale
+      // label and bury the real phase status in the activity feed.
+      setLiveFindings((current) => {
+        if (current.some((e) => e.id === "startup")) return current;
+        return upsertLiveEvent(current, {
           id: "startup",
           kind: "phase",
           agent: "Workflow",
           claim_text: "Mission starting…",
           ts: String(Date.now()),
-        })
-      );
+        });
+      });
       setLatestNarration("MARVIN — Starting the mission run.");
       setStreamError(null);
 
@@ -1961,14 +1966,14 @@ export default function MissionControl({
     const synthesisDone = ws.id === "W3" && merlinVerdictPresent;
     // Bug 4: when the assigned agent is DONE and the workstream already has
     // a ready deliverable, treat the tab as completed even if individual
-    // milestone rows did not fire their terminal SSE event. After G1 was
-    // approved live we observed Calculus DONE with three ready deliverables
-    // while wsMilestones still had stragglers in pending — the tab spinner
-    // never resolved. Trust the agent-done + deliverable signal as a
-    // fallback for terminal state.
+    // milestone rows did not fire their terminal SSE event.
     const agentDoneWithDeliverable = liveStatus === "done" && wsHasReadyDeliverable;
+    // Bug 8: once the mission itself is completed, every tab must read as
+    // ✓ — leftover milestone bookkeeping should never keep a tab spinning
+    // after the run is over.
+    const missionCompleted = mission.status === "completed";
     const status: WorkstreamViewStatus =
-      allMilestonesDone || synthesisDone || agentDoneWithDeliverable
+      missionCompleted || allMilestonesDone || synthesisDone || agentDoneWithDeliverable
         ? "completed"
         : liveStatus === "active"
           ? "now"

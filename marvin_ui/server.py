@@ -902,6 +902,19 @@ _PHASE_NARRATION: dict[str, str] = {
     "done": "Mission complete; deliverables are ready for review",
 }
 
+# Bug 8: chat-voice copilot narration. When a major reasoning agent first
+# activates we surface a bubble in the chat (not just the rail) so the
+# user has a continuous read on what MARVIN is doing. Emitted once per
+# (node, phase) tuple — see throttle in _emit_for_update.
+_AGENT_CHAT_NARRATION: dict[str, str] = {
+    "dora": "Dora is mapping the competitive landscape and pulling sources.",
+    "calculus": "Calculus is crunching the financial signals and reconciling the numbers.",
+    "adversus": "Adversus is stress-testing the hypotheses and looking for the weakest claims.",
+    "merlin": "Merlin is synthesising the verdict from the evidence collected so far.",
+    "synthesis_critic": "Refining the synthesis and tightening the IC narrative.",
+    "papyrus_phase0": "Papyrus is drafting the framing memo.",
+}
+
 _AGENT_NARRATION: dict[str, str] = {
     "dora": "Mapping the competitive landscape",
     "calculus": "Crunching financial signals",
@@ -1106,6 +1119,19 @@ async def _emit_for_update(
             _intent = _agent_narration(node_name)
             if _intent:
                 out.append(await _emit_narration(node_name, _intent))
+            # Bug 8: copilot chat narration — push a one-line bubble into the
+            # chat the first time a reasoning agent activates within a phase
+            # so the user has a running commentary, not just rail signal.
+            # Dedup by (node, phase) via throttle_state so each agent gets
+            # at most one bubble per phase even if the node re-enters
+            # (e.g., adversus iterating over hypotheses).
+            _chat_intent = _AGENT_CHAT_NARRATION.get(node_name)
+            if _chat_intent:
+                _chat_key = ("chat_narration", f"{node_name}:{current_phase or ''}")
+                if throttle_state is None or _chat_key not in throttle_state:
+                    out.append(await _emit_text(node_name, _chat_intent))
+                    if throttle_state is not None:
+                        throttle_state[_chat_key] = time.monotonic()
 
         for msg in output.get("messages", []):
             if isinstance(msg, AIMessage):
