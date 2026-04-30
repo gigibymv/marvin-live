@@ -123,6 +123,8 @@ function StateTag({ state }) {
 
 // Chantier 4 CP2: rich finding card with confidence badge, hypothesis link,
 // agent + timestamp, source citation, and impact-based emphasis.
+var BADGE_TRUNCATE = { maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+
 function FindingCard({ finding, isOpen, onToggle }) {
   var f = finding || {};
   var kind = f.kind || "finding";
@@ -181,7 +183,7 @@ function FindingCard({ finding, isOpen, onToggle }) {
             fontFamily: "var(--m)", fontSize: "8px", fontWeight: 700,
             letterSpacing: ".1em", color: sourceBadge.color,
             border: "1px solid " + sourceBadge.color, padding: "1px 4px",
-            display: "inline-block", width: "fit-content",
+            display: "inline-block", ...BADGE_TRUNCATE,
           }
         }, sourceBadge.label),
         React.createElement("span", {
@@ -189,7 +191,7 @@ function FindingCard({ finding, isOpen, onToggle }) {
             fontFamily: "var(--m)", fontSize: "8px", fontWeight: 700,
             letterSpacing: ".1em", color: confColor,
             border: "1px solid " + confColor, padding: "1px 4px",
-            display: "inline-block", width: "fit-content",
+            display: "inline-block", ...BADGE_TRUNCATE,
           }
         }, confLabel)
       ),
