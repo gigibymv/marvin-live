@@ -122,9 +122,7 @@ export function formatGatePendingChatMessage(event: GatePendingPresentationInput
   if (summary) lines.push(summary);
   if (unlocksOnApprove?.trim()) lines.push(`Approve → ${unlocksOnApprove.trim()}`);
   if (unlocksOnReject?.trim()) lines.push(`Reject → ${unlocksOnReject.trim()}`);
-  lines.push(
-    "Take your time. Click \u201cReview now\u201d in the banner above to approve, reject, or come back later.",
-  );
+  lines.push("Use the actions below to review the claims, approve, or reject.");
   return lines.join("\n\n");
 }
 

@@ -17,6 +17,7 @@ export interface RightRailProps {
   onOpenDeliverable?: (deliverableId: string) => void;
   onGateApprove?: (gateId: string) => void;
   onGateReject?: (gateId: string) => void;
+  onGateReview?: (gateId: string) => void;
 }
 
 // ─── RightRail ────────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ export function RightRail({
   onOpenDeliverable,
   onGateApprove,
   onGateReject,
+  onGateReview,
 }: RightRailProps): React.ReactElement {
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -135,7 +137,22 @@ export function RightRail({
                   </button>
                 )}
                 {!isUser && m.gateId && m.gateAction === "pending" && onGateApprove && onGateReject && (
-                  <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                    {onGateReview && (
+                      <button
+                        onClick={() => onGateReview(m.gateId!)}
+                        style={{
+                          fontSize: 9, fontFamily: "var(--m)", letterSpacing: ".08em",
+                          textTransform: "uppercase", fontWeight: 700,
+                          padding: "4px 10px", borderRadius: 4, cursor: "pointer",
+                          background: "var(--ink)",
+                          border: "1px solid var(--ink)",
+                          color: "var(--paper)",
+                        }}
+                        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.opacity = "0.85"; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
+                      >Review claims →</button>
+                    )}
                     <button
                       onClick={() => onGateApprove(m.gateId!)}
                       style={{

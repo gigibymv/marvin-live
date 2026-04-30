@@ -369,6 +369,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
         onOpenDeliverable={onOpenDeliverable}
         onGateApprove={onGateApprove ? (gateId) => onGateApprove(gateId, "") : undefined}
         onGateReject={onGateReject ? (gateId) => onGateReject(gateId, "") : undefined}
+        onGateReview={pendingGateBanner?.onResume ? () => pendingGateBanner.onResume() : undefined}
       />
     </div>
   );
