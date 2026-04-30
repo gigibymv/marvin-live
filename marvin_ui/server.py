@@ -1134,12 +1134,41 @@ async def _stream_chat(
         return
     
     mission = store.get_mission(mission_id)
-    
+
     # Verify mission status
     if mission.status != "active":
         yield await _emit_error(f"Mission is not active: {mission.status}")
         return
-    
+
+    # C-CONV — fast-path for steering instructions while a detached resume
+    # is running. The detached driver holds the mission lock for the full
+    # research+synthesis pass; without this fast-path a user instruction
+    # would 5s-timeout on the lock acquire below. Classify before acquiring
+    # the lock so a `steer` message just writes to the steering table and
+    # returns. QA still goes through the locked path so the existing
+    # interrupted-gate routing keeps working.
+    existing_brief_for_steer = store.get_mission_brief(mission_id)
+    if existing_brief_for_steer and (existing_brief_for_steer.raw_brief or "").strip():
+        from marvin.conversational.steering import classify_message, queue_steering
+        if classify_message(text) == "steer":
+            yield await _emit_run_start()
+            try:
+                queue_steering(mission_id, text)
+                yield await _emit_text(
+                    "orchestrator",
+                    "Got it. The next agent that runs will pick up your "
+                    "instruction. To stop the mission and re-frame, reject "
+                    "the next gate.",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("steering queue failed: %s", exc)
+                yield await _emit_text(
+                    "orchestrator",
+                    "Could not queue your instruction; please retry.",
+                )
+            yield await _emit_run_end()
+            return
+
     # Get per-mission lock to prevent concurrent runs
     mission_lock = _get_mission_lock(mission_id)
     
