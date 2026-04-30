@@ -16,6 +16,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { API_BASE, getDeliverableDownloadUrl } from "@/lib/missions/api";
+import { humanizeText as humanizeDeliverableMarkdown } from "@/lib/missions/humanize";
 
 interface LinkedFinding {
   id: string;
@@ -178,7 +179,7 @@ export function DeliverablePreview({ deliverableId, onClose }: Props) {
           {data && data.content_type === "markdown" && (
             <div className="md-preview" style={{ fontFamily: "var(--g, system-ui)", fontSize: "13.5px", lineHeight: 1.6, color: "var(--ink2, #3A362F)" }}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {data.content || "(empty file)"}
+                {humanizeDeliverableMarkdown(data.content || "(empty file)")}
               </ReactMarkdown>
               <style jsx>{`
                 .md-preview :global(h1) { font-size: 20px; font-weight: 700; margin: 0 0 10px; color: var(--ink, #1A1814); }
@@ -209,7 +210,7 @@ export function DeliverablePreview({ deliverableId, onClose }: Props) {
                 margin: 0,
               }}
             >
-              {data.content || "(empty file)"}
+              {humanizeDeliverableMarkdown(data.content || "(empty file)")}
             </pre>
           )}
         </main>

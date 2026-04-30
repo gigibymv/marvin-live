@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import type { MissionChatMessage } from "@/lib/missions/types";
+import { humanizeText } from "@/lib/missions/humanize";
 import { Mono, PulsingM } from "./Primitives";
 
 // ─── Prop types ───────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ export function RightRail({
                 boxShadow: isUser ? "none" : "0 1px 3px rgba(26,24,20,.06)",
                 display: "flex", flexDirection: "column", gap: 8,
               }}>
-                <span>{m.text}</span>
+                <span>{isUser ? m.text : humanizeText(m.text)}</span>
                 {!isUser && m.deliverableId && onOpenDeliverable && (
                   <button
                     type="button"
@@ -148,7 +149,7 @@ export function RightRail({
             <div style={{ maxWidth: "82%", padding: "10px 14px", background: "white", borderRadius: "12px 12px 12px 3px", boxShadow: "0 1px 3px rgba(26,24,20,.06)" }}>
               {currentNarration && (
                 <div style={{ fontSize: 12, lineHeight: 1.6, color: "var(--ink3)", marginBottom: 8 }}>
-                  {currentNarration}
+                  {humanizeText(currentNarration)}
                 </div>
               )}
               <div style={{ display: "flex", gap: 4 }}>

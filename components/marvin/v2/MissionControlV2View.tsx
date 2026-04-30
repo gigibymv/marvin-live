@@ -197,6 +197,10 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
       return 2;
     };
     for (const tab of TAB_IDS) {
+      // Drop ALL milestone rows from outputs — the deliverable row already
+      // conveys "this step is done" with an Open affordance. Milestones
+      // without a paired deliverable are visible in the activity feed.
+      map[tab] = map[tab].filter((item) => item.kind !== "milestone");
       map[tab] = map[tab]
         .map((item, index) => ({ item, index }))
         .sort((a, b) => {

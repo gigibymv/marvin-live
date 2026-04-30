@@ -108,33 +108,12 @@ function humanizeToolName(raw: unknown): string {
 // rows in memory or scroll the rail forever.
 const MAX_LIVE_TAPE_ENTRIES = 60;
 
-// Bug #7 (frontend label map): show client-friendly verdict text instead of
-// the raw enum. Proper fix is rewriting prompt_merlin.md (Phase C).
-const VERDICT_LABELS: Record<string, string> = {
-  BACK_TO_DRAWING_BOARD: "Needs rework",
-  READY_FOR_REVIEW: "Ready for review",
-  BLOCKED: "Blocked",
-  APPROVED: "Approved",
-  REJECTED: "Rejected",
-};
+// Verdict labelling and prose sanitisation moved to lib/missions/humanize.ts
+// (single source of truth used by every rendering boundary).
+import { humanizeText, humanizeVerdict } from "@/lib/missions/humanize";
 
-function humanizeVerdict(raw: string | null | undefined): string {
-  const v = String(raw ?? "").trim();
-  if (!v) return "";
-  if (VERDICT_LABELS[v]) return VERDICT_LABELS[v];
-  return v
-    .replace(/_/g, " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-// Strip internal merlin scaffolding so the user doesn't see "Why:/What's
-// needed:/Recommendation:" headings. The model will be retrained in Phase C.
-function stripVerdictScaffolding(raw: string): string {
-  let out = String(raw ?? "");
-  out = out.replace(/^\s*(Why|What['\u2019]?s needed|Recommendation)\s*:\s*/gim, "");
-  return out.trim();
-}
+// Local alias for clarity at call sites that strip internal scaffolding.
+const stripVerdictScaffolding = humanizeText;
 
 function humanizeToolResultText(raw: unknown): string {
   const text = String(raw ?? "").trim();
@@ -1833,19 +1812,30 @@ export default function MissionControl({
       out = out.replace(/\n{3,}/g, "\n\n");
       return stripVerdictScaffolding(out);
     };
-    const text = sanitizeVerdictNotes(v.notes ?? "");
-    return [{
-      id: `synthesis-verdict-${v.created_at ?? "current"}`,
-      kind: "finding" as const,
+    const prose = sanitizeVerdictNotes(v.notes ?? "");
+    const verdictLabel = humanizeVerdict(v.verdict);
+    // Single dark deliverable row carrying the verdict label as title and
+    // the prose as a multi-line body. Stuffed into `source_id` because
+    // CenterFinding already exposes it as a body block on expand; doubles
+    // as the inline body for the synthesis row (which is always expanded
+    // visually since it has no file to "Open").
+    const baseRow = {
+      kind: "deliverable" as const,
       ag: "Merlin",
-      text,
-      claim_text: text,
-      confidence: humanizeVerdict(v.verdict),
-      section_id: null,
-      workstream_id: "W3",
+      text: `Synthesis · ${verdictLabel || "Verdict"}`,
+      claim_text: `Synthesis · ${verdictLabel || "Verdict"}`,
+      confidence: verdictLabel,
       agent_id: "merlin",
       ts: v.created_at ?? "",
-    }];
+      source_id: prose || null,
+    };
+    // Surface the verdict on BOTH Synthesis (W3) and Final deliverables (final)
+    // so the final tab isn't just a bare file list — the user sees the
+    // verdict + prose at the top of the IC handoff view.
+    return [
+      { ...baseRow, id: `synthesis-verdict-w3-${v.created_at ?? "current"}`, section_id: null, workstream_id: "W3" },
+      { ...baseRow, id: `synthesis-verdict-final-${v.created_at ?? "current"}`, section_id: "final", workstream_id: null },
+    ];
   })();
   // Live findings (SSE-driven, not yet persisted to /progress.findings) are
   // merged in alongside DB findings so the user sees adversus/calculus
