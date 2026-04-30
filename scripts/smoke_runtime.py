@@ -31,7 +31,7 @@ import urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-SMOKE_DURATION = 8  # seconds of SSE we read after sending brief
+SMOKE_DURATION = 25  # seconds of SSE we read after sending brief
 HEALTH_TIMEOUT = 30
 PROGRESS_EVENT_NAMES = {
     "agent_active", "agent_started", "agent_done",
