@@ -1052,6 +1052,13 @@ async def _emit_for_update(
             phase_intent = _phase_narration(new_phase)
             if phase_intent:
                 out.append(await _emit_narration("workflow", phase_intent))
+            # Bug 7: when the graph reaches done, surface the closing chat
+            # bubble immediately rather than waiting on stream close. The
+            # _maybe_emit_mission_complete path on run_end is a defensive
+            # catch — this emit fires the moment the phase flips so the user
+            # sees "Mission complete" without lag.
+            if new_phase == "done":
+                out.append(await _emit_text("papyrus_delivery", _MISSION_COMPLETE_TEXT))
             current_phase = new_phase
 
         if output.get("phase_blocked"):
@@ -1512,9 +1519,13 @@ async def _stream_chat(
         if current_agent is not None:
             yield await _emit_agent_done(current_agent)
 
-        completion = await _maybe_emit_mission_complete(mission_id)
-        if completion:
-            yield completion
+        # Bug 7: skip the defensive completion emit if the phase=="done"
+        # transition already pushed the closing bubble during the update
+        # stream, otherwise the user sees the message twice.
+        if current_phase != "done":
+            completion = await _maybe_emit_mission_complete(mission_id)
+            if completion:
+                yield completion
         yield await _emit_run_end()
 
     except Exception as e:
@@ -1874,7 +1885,9 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
 
         if current_agent is not None:
             yield await _emit_agent_done(current_agent)
-        completion = await _maybe_emit_mission_complete(mission_id)
+        # Bug 7: skip if the phase=="done" transition already emitted the
+        # closing bubble during this stream's update loop.
+        completion = "" if current_phase == "done" else await _maybe_emit_mission_complete(mission_id)
         if completion:
             yield completion
         yield await _emit_run_end()

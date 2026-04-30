@@ -1699,7 +1699,14 @@ export default function MissionControl({
       finalDone
     );
   })();
-  const progressRatio = Math.min(1, phaseStageCount / 6);
+  // Bug 7: progress could reach 100% before mission.status flipped to
+  // "complete" (final deliverable persistence and the run-end chat bubble
+  // both ride on that status flip). Cap at 99% until the backend confirms
+  // completion so the UI never claims "done" while the closing message
+  // and final deliverable are still in flight.
+  const rawProgressRatio = Math.min(1, phaseStageCount / 6);
+  const progressRatio =
+    mission.status === "completed" ? rawProgressRatio : Math.min(rawProgressRatio, 0.99);
   const missionStatusLabel = resolvingGateIds.size > 0
     ? "Mission running"
     : hasPendingGate
