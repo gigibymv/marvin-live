@@ -27,6 +27,7 @@ def _decode_json_list(value: object) -> list[str]:
     return []
 
 from marvin.mission.schema import (
+    DataRoomFile,
     DealTerms,
     Deliverable,
     Finding,
@@ -37,6 +38,8 @@ from marvin.mission.schema import (
     Mission,
     MissionBrief,
     Source,
+    Transcript,
+    TranscriptSegment,
     Workstream,
 )
 
@@ -608,6 +611,90 @@ class MissionStore:
             (mission_id,),
         ).fetchall()
         return [Source.model_validate(dict(row)) for row in rows]
+
+    def save_data_room_file(self, f: DataRoomFile) -> DataRoomFile:
+        self._execute(
+            """
+            INSERT OR REPLACE INTO data_room_files
+            (id, mission_id, filename, file_path, mime_type, size_bytes,
+             parsed_text, parse_error, uploaded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f.id, f.mission_id, f.filename, f.file_path, f.mime_type,
+                f.size_bytes, f.parsed_text, f.parse_error, f.uploaded_at,
+            ),
+        )
+        return f
+
+    def list_data_room_files(self, mission_id: str) -> list[DataRoomFile]:
+        rows = self._execute(
+            "SELECT * FROM data_room_files WHERE mission_id = ? ORDER BY uploaded_at, id",
+            (mission_id,),
+        ).fetchall()
+        return [DataRoomFile.model_validate(dict(r)) for r in rows]
+
+    def get_data_room_file(self, file_id: str) -> DataRoomFile | None:
+        row = self._execute(
+            "SELECT * FROM data_room_files WHERE id = ?", (file_id,)
+        ).fetchone()
+        return DataRoomFile.model_validate(dict(row)) if row else None
+
+    def delete_data_room_file(self, file_id: str) -> bool:
+        cur = self._execute("DELETE FROM data_room_files WHERE id = ?", (file_id,))
+        return cur.rowcount > 0
+
+    def save_transcript(
+        self, t: Transcript, segments: list[TranscriptSegment]
+    ) -> Transcript:
+        self._execute(
+            """
+            INSERT OR REPLACE INTO transcripts
+            (id, mission_id, title, expert_name, expert_role, raw_text,
+             line_count, uploaded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                t.id, t.mission_id, t.title, t.expert_name, t.expert_role,
+                t.raw_text, t.line_count, t.uploaded_at,
+            ),
+        )
+        # replace segments wholesale on each save
+        self._execute(
+            "DELETE FROM transcript_segments WHERE transcript_id = ?", (t.id,)
+        )
+        for seg in segments:
+            self._execute(
+                """
+                INSERT INTO transcript_segments
+                (id, transcript_id, speaker, text, line_start, line_end)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    seg.id, seg.transcript_id, seg.speaker, seg.text,
+                    seg.line_start, seg.line_end,
+                ),
+            )
+        return t
+
+    def list_transcripts(self, mission_id: str) -> list[Transcript]:
+        rows = self._execute(
+            "SELECT * FROM transcripts WHERE mission_id = ? ORDER BY uploaded_at, id",
+            (mission_id,),
+        ).fetchall()
+        return [Transcript.model_validate(dict(r)) for r in rows]
+
+    def list_transcript_segments(self, transcript_id: str) -> list[TranscriptSegment]:
+        rows = self._execute(
+            "SELECT * FROM transcript_segments WHERE transcript_id = ? "
+            "ORDER BY line_start, id",
+            (transcript_id,),
+        ).fetchall()
+        return [TranscriptSegment.model_validate(dict(r)) for r in rows]
+
+    def delete_transcript(self, transcript_id: str) -> bool:
+        cur = self._execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
+        return cur.rowcount > 0
 
     def save_deal_terms(self, terms: DealTerms) -> DealTerms:
         self._execute(

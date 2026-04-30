@@ -99,6 +99,41 @@ CREATE TABLE IF NOT EXISTS deliverables (
     created_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS data_room_files (
+    id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    mime_type TEXT,
+    size_bytes INTEGER,
+    parsed_text TEXT,
+    parse_error TEXT,
+    uploaded_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_data_room_files_mission ON data_room_files(mission_id);
+
+CREATE TABLE IF NOT EXISTS transcripts (
+    id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+    title TEXT,
+    expert_name TEXT,
+    expert_role TEXT,
+    raw_text TEXT NOT NULL,
+    line_count INTEGER,
+    uploaded_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_transcripts_mission ON transcripts(mission_id);
+
+CREATE TABLE IF NOT EXISTS transcript_segments (
+    id TEXT PRIMARY KEY,
+    transcript_id TEXT NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+    speaker TEXT,
+    text TEXT NOT NULL,
+    line_start INTEGER,
+    line_end INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_transcript_segments_tx ON transcript_segments(transcript_id);
+
 CREATE TABLE IF NOT EXISTS deal_terms (
     mission_id TEXT PRIMARY KEY REFERENCES missions(id) ON DELETE CASCADE,
     entry_revenue REAL,

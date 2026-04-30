@@ -17,6 +17,10 @@ dependencies = [
     "langchain-openai>=1,<2",
     "aiosqlite>=0.19,<1",
     "langgraph-checkpoint-sqlite>=3,<4",
+    "pypdf>=4,<7",
+    "openpyxl>=3.1,<4",
+    "python-docx>=1,<2",
+    "python-multipart>=0.0.9,<1",
 ]
 
 [project.optional-dependencies]

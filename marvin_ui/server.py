@@ -25,7 +25,7 @@ from datetime import UTC, datetime, date
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk, ToolMessage
@@ -54,8 +54,19 @@ from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools.common import slugify, short_id, utc_now_iso
 from marvin.tools.mission_tools import compute_hypothesis_status
-from marvin.mission.schema import DealTerms, Finding, Gate, Hypothesis, Mission as MissionModel
+from marvin.mission.schema import (
+    DataRoomFile,
+    DealTerms,
+    Finding,
+    Gate,
+    Hypothesis,
+    Mission as MissionModel,
+    Transcript,
+    TranscriptSegment,
+)
 from marvin.economics.deal_math import compute_deal_math
+from marvin.ingestion.data_room import MAX_BYTES as DATA_ROOM_MAX_BYTES, parse_file as parse_data_room_file
+from marvin.ingestion.transcripts import parse_transcript
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1979,6 +1990,191 @@ async def get_workstream_findings(mission_id: str, ws_id: str):
             for f in workstream_findings
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# C2 — Data room upload + parser
+# ---------------------------------------------------------------------------
+
+def _data_room_dir(mission_id: str) -> Path:
+    base = Path.home() / ".marvin" / "data_rooms" / mission_id
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+@app.post("/api/v1/missions/{mission_id}/data-room/upload")
+async def upload_data_room_file(mission_id: str, file: UploadFile = File(...)):
+    """Upload a data-room file. Stored at ~/.marvin/data_rooms/<mid>/<id>_<name>.
+    Parsed text persisted in DB; parse failures captured in parse_error.
+    """
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    contents = await file.read()
+    if len(contents) > DATA_ROOM_MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"file exceeds {DATA_ROOM_MAX_BYTES} bytes",
+        )
+    file_id = short_id("dr")
+    safe_name = (file.filename or "upload").replace("/", "_")
+    target = _data_room_dir(mission_id) / f"{file_id}_{safe_name}"
+    target.write_bytes(contents)
+    parsed: str | None = None
+    parse_error: str | None = None
+    try:
+        parsed = parse_data_room_file(target)
+    except ValueError as exc:
+        parse_error = str(exc)
+    record = DataRoomFile(
+        id=file_id,
+        mission_id=mission_id,
+        filename=safe_name,
+        file_path=str(target),
+        mime_type=file.content_type,
+        size_bytes=len(contents),
+        parsed_text=parsed,
+        parse_error=parse_error,
+        uploaded_at=utc_now_iso(),
+    )
+    store.save_data_room_file(record)
+    return record.model_dump()
+
+
+@app.get("/api/v1/missions/{mission_id}/data-room")
+async def list_data_room_files_endpoint(mission_id: str):
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    files = store.list_data_room_files(mission_id)
+    return {
+        "mission_id": mission_id,
+        "files": [
+            {
+                "id": f.id,
+                "filename": f.filename,
+                "mime_type": f.mime_type,
+                "size_bytes": f.size_bytes,
+                "parse_error": f.parse_error,
+                "parsed_chars": len(f.parsed_text or ""),
+                "uploaded_at": f.uploaded_at,
+            }
+            for f in files
+        ],
+    }
+
+
+@app.delete("/api/v1/missions/{mission_id}/data-room/{file_id}")
+async def delete_data_room_file_endpoint(mission_id: str, file_id: str):
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    record = store.get_data_room_file(file_id)
+    if record is None or record.mission_id != mission_id:
+        raise HTTPException(status_code=404, detail="File not found")
+    try:
+        Path(record.file_path).unlink(missing_ok=True)
+    except OSError:
+        pass
+    store.delete_data_room_file(file_id)
+    return {"deleted": file_id}
+
+
+# ---------------------------------------------------------------------------
+# C3 — Expert-call transcript ingestion
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v1/missions/{mission_id}/transcripts")
+async def upload_transcript(
+    mission_id: str,
+    file: UploadFile | None = File(None),
+    text: str | None = Form(None),
+    title: str | None = Form(None),
+    expert_name: str | None = Form(None),
+    expert_role: str | None = Form(None),
+):
+    """Upload a transcript either as a .txt file or as a raw text form field.
+    Speaker tagging is parsed at ingest; segments persisted alongside.
+    """
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    raw: str
+    if file is not None:
+        contents = await file.read()
+        if len(contents) > DATA_ROOM_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="file too large")
+        raw = contents.decode("utf-8", errors="replace")
+        if title is None:
+            title = file.filename
+    elif text:
+        raw = text
+    else:
+        raise HTTPException(status_code=400, detail="provide file or text")
+
+    transcript_id = short_id("tx")
+    segments_parsed = parse_transcript(raw)
+    segments = [
+        TranscriptSegment(
+            id=f"{transcript_id}-seg-{i}",
+            transcript_id=transcript_id,
+            speaker=s.speaker,
+            text=s.text,
+            line_start=s.line_start,
+            line_end=s.line_end,
+        )
+        for i, s in enumerate(segments_parsed)
+    ]
+    record = Transcript(
+        id=transcript_id,
+        mission_id=mission_id,
+        title=title,
+        expert_name=expert_name,
+        expert_role=expert_role,
+        raw_text=raw,
+        line_count=raw.count("\n") + 1,
+        uploaded_at=utc_now_iso(),
+    )
+    store.save_transcript(record, segments)
+    return {
+        "transcript": record.model_dump(),
+        "segment_count": len(segments),
+    }
+
+
+@app.get("/api/v1/missions/{mission_id}/transcripts")
+async def list_transcripts_endpoint(mission_id: str):
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    transcripts = store.list_transcripts(mission_id)
+    return {
+        "mission_id": mission_id,
+        "transcripts": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "expert_name": t.expert_name,
+                "expert_role": t.expert_role,
+                "line_count": t.line_count,
+                "uploaded_at": t.uploaded_at,
+            }
+            for t in transcripts
+        ],
+    }
+
+
+@app.delete("/api/v1/missions/{mission_id}/transcripts/{transcript_id}")
+async def delete_transcript_endpoint(mission_id: str, transcript_id: str):
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    transcripts = store.list_transcripts(mission_id)
+    if not any(t.id == transcript_id for t in transcripts):
+        raise HTTPException(status_code=404, detail="Transcript not found")
+    store.delete_transcript(transcript_id)
+    return {"deleted": transcript_id}
 
 
 class DealTermsPayload(BaseModel):

@@ -85,11 +85,17 @@ For every anomaly found:
 
 # DATA SOURCES — IN ORDER OF PREFERENCE
 
-1. Audited financial statements (10-K, 20-F, audit reports)
-2. Quarterly filings (10-Q)
-3. Investor presentations (treat with skepticism)
-4. Data room files (verify against above)
-5. Management decks (claims to verify, not facts)
+1. Audited financial statements (10-K, 20-F, audit reports) — via
+   fetch_filing_section
+2. Quarterly filings (10-Q) — via fetch_filing_section
+3. Data-room files uploaded by the deal team — via query_data_room
+   (returns {file_id, filename, line, snippet, ref}). Use the
+   returned snippet verbatim as source_quote and the ref
+   (data_room://<file_id>#L<line>) as source_url.
+4. Expert-call transcripts — via query_transcripts (returns
+   {transcript_id, speaker, line_start, line_end, snippet, ref}).
+   ref form: transcript://<id>:<line_start>-<line_end>.
+5. Investor presentations and management decks (treat with skepticism)
 6. Industry estimates (last resort, mark LOW_CONFIDENCE)
 
 When no data room is provided, use the EDGAR tools:

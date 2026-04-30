@@ -11,6 +11,7 @@ from marvin.tools.calculus_tools import (
     quality_of_earnings,
     search_sec_filings,
 )
+from marvin.tools.data_room_tools import query_data_room, query_transcripts
 from marvin.tools.mission_tools import (
     add_finding_to_mission,
     get_hypotheses,
@@ -29,6 +30,8 @@ _tools = [
     anomaly_detector,
     search_sec_filings,
     fetch_filing_section,
+    query_data_room,
+    query_transcripts,
     add_finding_to_mission,
     persist_source_for_mission,
     mark_milestone_delivered,

@@ -11,6 +11,7 @@ from marvin.tools.dora_tools import (
     tavily_search,
     win_loss_framework,
 )
+from marvin.tools.data_room_tools import query_data_room, query_transcripts
 from marvin.tools.mission_tools import add_finding_to_mission, mark_milestone_delivered, persist_source_for_mission
 
 _tools = [
@@ -22,6 +23,8 @@ _tools = [
     get_recent_filings,
     moat_analysis,
     win_loss_framework,
+    query_data_room,
+    query_transcripts,
     add_finding_to_mission,
     persist_source_for_mission,
     mark_milestone_delivered,

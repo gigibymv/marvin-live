@@ -139,6 +139,38 @@ class Deliverable(MarvinModel):
         return value
 
 
+class DataRoomFile(MarvinModel):
+    id: str
+    mission_id: str
+    filename: str
+    file_path: str
+    mime_type: str | None = None
+    size_bytes: int | None = None
+    parsed_text: str | None = None
+    parse_error: str | None = None
+    uploaded_at: str | None = None
+
+
+class Transcript(MarvinModel):
+    id: str
+    mission_id: str
+    title: str | None = None
+    expert_name: str | None = None
+    expert_role: str | None = None
+    raw_text: str
+    line_count: int | None = None
+    uploaded_at: str | None = None
+
+
+class TranscriptSegment(MarvinModel):
+    id: str
+    transcript_id: str
+    speaker: str | None = None
+    text: str
+    line_start: int | None = None
+    line_end: int | None = None
+
+
 class DealTerms(MarvinModel):
     """Deal economics captured by the deal team at mission start.
 
