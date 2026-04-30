@@ -54,7 +54,8 @@ from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools.common import slugify, short_id, utc_now_iso
 from marvin.tools.mission_tools import compute_hypothesis_status
-from marvin.mission.schema import Finding, Gate, Hypothesis, Mission as MissionModel
+from marvin.mission.schema import DealTerms, Finding, Gate, Hypothesis, Mission as MissionModel
+from marvin.economics.deal_math import compute_deal_math
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -1977,6 +1978,70 @@ async def get_workstream_findings(mission_id: str, ws_id: str):
             }
             for f in workstream_findings
         ],
+    }
+
+
+class DealTermsPayload(BaseModel):
+    entry_revenue: float | None = None
+    entry_ebitda: float | None = None
+    entry_multiple: float | None = None
+    entry_equity: float | None = None
+    leverage_x: float | None = None
+    hold_years: int | None = None
+    target_irr: float | None = None
+    target_moic: float | None = None
+    sector_multiple_low: float | None = None
+    sector_multiple_high: float | None = None
+    notes: str | None = None
+
+
+@app.get("/api/v1/missions/{mission_id}/deal-terms")
+async def get_deal_terms(mission_id: str):
+    """C10: return current deal terms for a mission, or empty object if unset."""
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    terms = store.get_deal_terms(mission_id)
+    if terms is None:
+        return {"mission_id": mission_id, "terms": None}
+    return {"mission_id": mission_id, "terms": terms.model_dump()}
+
+
+@app.put("/api/v1/missions/{mission_id}/deal-terms")
+async def put_deal_terms(mission_id: str, payload: DealTermsPayload):
+    """C10: upsert deal terms for a mission."""
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    now = utc_now_iso()
+    existing = store.get_deal_terms(mission_id)
+    created_at = existing.created_at if existing else now
+    terms = DealTerms(
+        mission_id=mission_id,
+        **payload.model_dump(),
+        created_at=created_at,
+        updated_at=now,
+    )
+    store.save_deal_terms(terms)
+    return {"mission_id": mission_id, "terms": terms.model_dump()}
+
+
+@app.get("/api/v1/missions/{mission_id}/deal-math")
+async def get_deal_math(mission_id: str):
+    """C10: return computed deal-math view (entry, scenarios, missing inputs).
+
+    If terms are not yet captured, scenarios are absent and missing_inputs
+    lists every required field. The frontend can render this directly.
+    """
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    terms = store.get_deal_terms(mission_id)
+    terms_dict = terms.model_dump() if terms else {}
+    return {
+        "mission_id": mission_id,
+        "terms": terms_dict or None,
+        "math": compute_deal_math(terms_dict),
     }
 
 

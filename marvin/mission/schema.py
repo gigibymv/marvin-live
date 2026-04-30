@@ -139,6 +139,31 @@ class Deliverable(MarvinModel):
         return value
 
 
+class DealTerms(MarvinModel):
+    """Deal economics captured by the deal team at mission start.
+
+    All monetary values in millions. Multiples are expressed as floats
+    (e.g. 12.5x = 12.5). target_irr / target_moic / leverage_x and
+    multiples are dimensionless. None means "not provided yet" — every
+    field is optional so partial captures are valid.
+    """
+
+    mission_id: str
+    entry_revenue: float | None = None
+    entry_ebitda: float | None = None
+    entry_multiple: float | None = None
+    entry_equity: float | None = None
+    leverage_x: float | None = None
+    hold_years: int | None = None
+    target_irr: float | None = None
+    target_moic: float | None = None
+    sector_multiple_low: float | None = None
+    sector_multiple_high: float | None = None
+    notes: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
 class MerlinVerdict(MarvinModel):
     id: str
     mission_id: str

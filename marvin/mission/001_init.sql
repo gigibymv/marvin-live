@@ -99,6 +99,23 @@ CREATE TABLE IF NOT EXISTS deliverables (
     created_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS deal_terms (
+    mission_id TEXT PRIMARY KEY REFERENCES missions(id) ON DELETE CASCADE,
+    entry_revenue REAL,
+    entry_ebitda REAL,
+    entry_multiple REAL,
+    entry_equity REAL,
+    leverage_x REAL,
+    hold_years INTEGER,
+    target_irr REAL,
+    target_moic REAL,
+    sector_multiple_low REAL,
+    sector_multiple_high REAL,
+    notes TEXT,
+    created_at TEXT,
+    updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS merlin_verdicts (
     id TEXT PRIMARY KEY,
     mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,

@@ -27,6 +27,7 @@ def _decode_json_list(value: object) -> list[str]:
     return []
 
 from marvin.mission.schema import (
+    DealTerms,
     Deliverable,
     Finding,
     Gate,
@@ -607,6 +608,43 @@ class MissionStore:
             (mission_id,),
         ).fetchall()
         return [Source.model_validate(dict(row)) for row in rows]
+
+    def save_deal_terms(self, terms: DealTerms) -> DealTerms:
+        self._execute(
+            """
+            INSERT OR REPLACE INTO deal_terms
+            (mission_id, entry_revenue, entry_ebitda, entry_multiple,
+             entry_equity, leverage_x, hold_years, target_irr, target_moic,
+             sector_multiple_low, sector_multiple_high, notes,
+             created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                terms.mission_id,
+                terms.entry_revenue,
+                terms.entry_ebitda,
+                terms.entry_multiple,
+                terms.entry_equity,
+                terms.leverage_x,
+                terms.hold_years,
+                terms.target_irr,
+                terms.target_moic,
+                terms.sector_multiple_low,
+                terms.sector_multiple_high,
+                terms.notes,
+                terms.created_at,
+                terms.updated_at,
+            ),
+        )
+        return terms
+
+    def get_deal_terms(self, mission_id: str) -> DealTerms | None:
+        row = self._execute(
+            "SELECT * FROM deal_terms WHERE mission_id = ?", (mission_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return DealTerms.model_validate(dict(row))
 
     def save_gate(self, gate: Gate) -> Gate:
         questions_json = json.dumps(gate.questions) if gate.questions else None
