@@ -94,7 +94,7 @@ def _persist_brief_with_history(mission_id: str, new_text: str) -> str:
     return raw_brief
 
 
-def _evaluate_brief_via_llm(mission_id: str, raw_brief: str) -> dict:
+async def _evaluate_brief_via_llm(mission_id: str, raw_brief: str) -> dict:
     """Ask the LLM to evaluate brief completeness."""
     try:
         llm = get_chat_llm("framing")
@@ -122,7 +122,7 @@ def _evaluate_brief_via_llm(mission_id: str, raw_brief: str) -> dict:
         f"Brief (with any prior clarifications appended):\n{raw_brief}"
     )
 
-    response = llm.invoke([
+    response = await llm.ainvoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=context),
     ])
@@ -200,7 +200,7 @@ async def framing_orchestrator_node(state: MarvinState) -> dict:
             "phase": "framing",
         }
 
-    evaluation = _evaluate_brief_via_llm(mission_id, merged_brief)
+    evaluation = await _evaluate_brief_via_llm(mission_id, merged_brief)
 
     if evaluation["ready"]:
         return {

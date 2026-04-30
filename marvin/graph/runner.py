@@ -135,11 +135,13 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         return "framing"
 
     if phase == "awaiting_clarification":
-        # Orchestrator just opened a clarification gate and set
-        # pending_gate_id. Route directly to gate_node; gate_node will
-        # dispatch gate_pending over SSE and interrupt for the user's
-        # answers.
-        return "gate"
+        # Route through gate_entry to satisfy CLAUDE.md §4 (every
+        # gate-triggering phase passes gate_entry). gate_entry is a
+        # passthrough for this phase — pending_gate_id has already
+        # been set by the framing orchestrator — but going through it
+        # keeps the invariant uniform and avoids gate_node fallback
+        # behavior on unusual states.
+        return "gate_entry"
 
     if phase == "awaiting_confirmation":
         return "gate_entry"
@@ -216,7 +218,9 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         ]
 
     if phase == "awaiting_data_decision":
-        return "gate"
+        # §4: route through gate_entry. pending_gate_id was set by the
+        # Send fan-out at confirm-time; gate_entry is a passthrough.
+        return "gate_entry"
 
     if phase == "awaiting_data_room":
         return END
@@ -421,6 +425,9 @@ async def gate_entry_node(state: MarvinState) -> dict:
         gate_id = _resolve_gate_by_day(mission_id, day=10)
         return {"pending_gate_id": gate_id}
 
+    # §4 passthrough: phases that already carry pending_gate_id from
+    # upstream (clarification, data_decision) reach gate_entry only
+    # for the invariant; we leave state untouched.
     return {}
 
 
@@ -722,6 +729,11 @@ def build_graph(checkpointer=None):
 
     # Each node returns to phase_router for next routing decision
     builder.add_conditional_edges("framing", phase_router, {
+        # Self-loop: framing_node returns phase="setup" when no human brief
+        # is present yet; phase_router then maps "setup" → "framing".
+        # Without this entry the graph crashes with KeyError: 'framing'.
+        "framing": "framing",
+        "framing_orchestrator": "framing_orchestrator",
         "gate_entry": "gate_entry",
         "gate": "gate",
         "orchestrator": "orchestrator",

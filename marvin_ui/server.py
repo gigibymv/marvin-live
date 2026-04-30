@@ -287,7 +287,7 @@ _RESUME_TIMEOUT_SECONDS = 600
 
 
 def _register_pending_resume(mission_id: str) -> asyncio.Future[dict]:
-    fut = asyncio.get_event_loop().create_future()
+    fut = asyncio.get_running_loop().create_future()
     existing = _pending_resumes.get(mission_id)
     if existing is not None and not existing.done():
         existing.cancel()

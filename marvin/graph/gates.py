@@ -14,6 +14,12 @@ from marvin.tools.arbiter_tools import check_internal_consistency
 
 logger = logging.getLogger(__name__)
 
+# Track gate ids we've already emitted gate_pending for, so a Command(resume)
+# replay of gate_node does not fire the SSE event a second time. Process-local;
+# resets on uvicorn restart, which is acceptable — at worst we re-notify once
+# after a cold start.
+_GATE_PENDING_NOTIFIED: set[str] = set()
+
 
 def _human_copy(gate_type: str) -> dict[str, str]:
     """Backward-compatible alias for existing tests/imports."""
@@ -81,14 +87,18 @@ async def gate_node(state: MarvinState, config=None) -> dict:
     research_findings = payload.get("research_findings", [])
     payload["findings_snapshot"] = research_findings[-3:]
 
-    if config:
+    if config and gate_id not in _GATE_PENDING_NOTIFIED:
         from langchain_core.callbacks import adispatch_custom_event
         import asyncio
 
+        _GATE_PENDING_NOTIFIED.add(gate_id)
         await adispatch_custom_event("gate_pending", payload, config=config)
         await asyncio.sleep(0.1)
 
     decision = interrupt(payload)
+    # Past the interrupt: clear the notify-guard so a future re-open of the
+    # SAME gate_id (rare — typically a rejection-and-retry) re-notifies.
+    _GATE_PENDING_NOTIFIED.discard(gate_id)
 
     # Clarification gate: the decision payload carries `answers`, not a
     # verdict. Persist each answer to the mission, mark the gate completed
