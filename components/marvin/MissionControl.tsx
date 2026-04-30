@@ -58,11 +58,54 @@ function makeMessageId(missionId: string, suffix: string): string {
   return `${missionId}-${Date.now()}-${_msgCounter}-${rand}-${suffix}`;
 }
 
+// Tool calls whose business outcome is already surfaced as a richer event
+// (finding_added, milestone_done, deliverable_ready, gate_pending) — keeping
+// them in the live tool-tape would just be noise.
+const NOISY_TOOL_NAMES = new Set([
+  "add_finding_to_mission",
+  "add_source_to_finding",
+  "mark_milestone_delivered",
+  "mark_milestone_blocked",
+  "set_merlin_verdict",
+  "generate_engagement_brief",
+  "generate_workstream_report",
+  "generate_exec_summary",
+]);
+
+function isNoisyTool(raw: unknown): boolean {
+  const name = String(raw ?? "").trim().toLowerCase();
+  if (!name) return false;
+  if (NOISY_TOOL_NAMES.has(name)) return true;
+  // Anything _persisted is a side-effect echo, not a user-meaningful call.
+  if (name.endsWith("_persisted")) return true;
+  return false;
+}
+
+const TOOL_FRIENDLY_NAMES: Record<string, string> = {
+  fetch_filing_section: "reading SEC filing",
+  search_sec_filings: "searching SEC filings",
+  resolve_cik: "resolving company CIK",
+  list_filings: "listing SEC filings",
+  tavily_search: "web search",
+  query_data_room: "querying data room",
+  query_transcripts: "scanning transcripts",
+  get_findings: "reading findings",
+  get_hypotheses: "reading hypotheses",
+  check_internal_consistency: "checking internal consistency",
+  recompute_mission_corroboration: "recomputing source corroboration",
+};
+
 function humanizeToolName(raw: unknown): string {
   const name = String(raw ?? "tool").trim();
   if (!name) return "tool";
+  const friendly = TOOL_FRIENDLY_NAMES[name.toLowerCase()];
+  if (friendly) return friendly;
   return name.replace(/_/g, " ");
 }
+
+// Cap the live event feed so a long mission doesn't accumulate thousands of
+// rows in memory or scroll the rail forever.
+const MAX_LIVE_TAPE_ENTRIES = 60;
 
 function humanizeToolResultText(raw: unknown): string {
   const text = String(raw ?? "").trim();
@@ -513,24 +556,34 @@ export default function MissionControl({
           case "tool_call":
             // Tool plumbing belongs in the rail (transparency on agent
             // activity), never in chat. Chat is reserved for Marvin's voice.
-            setLiveFindings((current) =>
-              upsertLiveEvent(current, {
+            // Drop noisy persistence echoes — those have richer events of
+            // their own (finding_added, milestone_done, …).
+            if (isNoisyTool(event.text)) break;
+            setLiveFindings((current) => {
+              const next = upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "tool"),
                 kind: "tool_call",
                 claim_text: `${event.agent ?? "Agent"} → ${humanizeToolName(event.text)}`,
                 agent: event.agent,
-              }),
-            );
+              });
+              return next.length > MAX_LIVE_TAPE_ENTRIES
+                ? next.slice(next.length - MAX_LIVE_TAPE_ENTRIES)
+                : next;
+            });
             break;
           case "tool_result":
-            setLiveFindings((current) =>
-              upsertLiveEvent(current, {
+            if (isNoisyTool(event.text)) break;
+            setLiveFindings((current) => {
+              const next = upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "result"),
                 kind: "tool_result",
                 claim_text: humanizeToolResultText(event.text),
                 agent: event.agent,
-              }),
-            );
+              });
+              return next.length > MAX_LIVE_TAPE_ENTRIES
+                ? next.slice(next.length - MAX_LIVE_TAPE_ENTRIES)
+                : next;
+            });
             break;
           case "agent_message":
             // Sub-agent prose (Dora/Calculus/Adversus/Merlin reasoning) goes
