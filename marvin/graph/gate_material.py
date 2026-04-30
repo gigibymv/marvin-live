@@ -131,12 +131,23 @@ def evaluate_gate_material(
 
     elif gate.gate_type == "manager_review":
         coverage = _coverage_payload(workstreams, milestones, findings)
+        # Only "open" once research has been attempted — i.e., at least one
+        # milestone has been resolved (delivered or blocked). This prevents
+        # the gate from showing as pending on a freshly-seeded mission, while
+        # still letting it fire when Tavily/research fails (0 findings but
+        # milestones marked blocked).
+        research_attempted = any(
+            (m.status or "").lower() in ("delivered", "blocked")
+            for m in (milestones or [])
+        )
+        if not research_attempted:
+            missing_material.append("research_not_started")
         payload.update(
             {
                 "research_findings": research_findings[-12:],
                 "findings_total": len(research_findings),
                 "coverage": coverage,
-                "findings_warning": "Research agents ran but produced no persisted findings (possible API failure). Review coverage before approving." if not research_findings else None,
+                "findings_warning": "Research agents ran but produced no persisted findings (possible API failure). Review coverage before approving." if research_attempted and not research_findings else None,
             }
         )
 
