@@ -1562,19 +1562,24 @@ export default function MissionControl({
   // Bug 6 (chantier 2.6): tabs are content-driven (DB findings), not the
   // SSE meta-event stream. Fall back to the agent → workstream map so a
   // finding with workstream_id=null still surfaces in the right tab.
+  // W3 (Synthesis) is verdict-driven, not milestone-driven — once Merlin
+  // has issued a verdict the tab is complete regardless of milestone count.
+  const merlinVerdictPresent = Boolean((progress as any)?.merlin_verdict?.verdict);
   const workstreamContent = (progress?.workstreams ?? []).map((ws) => {
     const wsMilestones = (progress?.milestones ?? []).filter((m: any) => m.workstream_id === ws.id);
+    // Count any terminal status — delivered, skipped, or blocked — as "done".
+    // A legitimately blocked milestone (e.g. LOW_CONFIDENCE finding that
+    // research_join could not progress) used to pin the tab on `●` forever.
+    const wsTerminal = wsMilestones.filter((m: any) => {
+      const liveStatus = milestoneStatusOverrides[m.id];
+      return ["delivered", "skipped", "blocked"].includes(liveStatus ?? m.status);
+    }).length;
     const wsDelivered = wsMilestones.filter((m: any) => {
       const liveStatus = milestoneStatusOverrides[m.id];
       return (liveStatus ?? m.status) === "delivered";
     }).length;
     const agentKey = ws.assigned_agent?.toLowerCase() ?? ws.id.toLowerCase();
     const liveStatus = agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
-    // Status is also satisfied if a deliverable for this workstream is
-    // ready and the assigned agent is no longer active. Without this,
-    // a single blocked milestone (e.g. LOW_CONFIDENCE financial finding)
-    // pinned the section header on `●` even after the deliverable shipped
-    // and the gate moved on.
     const wsHasReadyDeliverable = seedDeliverables.some((d) => {
       if (d.status !== "ready") return false;
       return routeDeliverableToSectionId({
@@ -1582,13 +1587,14 @@ export default function MissionControl({
         file_path: d.file_path,
       }) === ws.id;
     });
+    const allMilestonesDone = wsMilestones.length > 0 && wsTerminal === wsMilestones.length;
+    const synthesisDone = ws.id === "W3" && merlinVerdictPresent;
     const status: WorkstreamViewStatus =
-      (wsMilestones.length > 0 && wsDelivered === wsMilestones.length) ||
-      (wsHasReadyDeliverable && liveStatus !== "active")
+      allMilestonesDone || synthesisDone || wsHasReadyDeliverable
         ? "completed"
         : liveStatus === "active"
           ? "now"
-          : wsDelivered > 0 || wsHasReadyDeliverable
+          : wsDelivered > 0
             ? "in_progress"
             : "pending";
     return {
