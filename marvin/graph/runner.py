@@ -151,32 +151,15 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         # launching Calculus. A private/non-US target with no data room
         # cannot produce KNOWN findings — fire a 3-option gate so the user
         # decides upfront instead of discovering empty findings at G1.
+        #
+        # Per CLAUDE.md §4: gate-triggering phases must route through gate_entry.
+        # The gate row is persisted inside gate_entry_node (not here) to keep
+        # this conditional edge function pure (no side effects, replay-safe).
         data_decision = state.get("data_decision")
         if not data_decision:
             check = _check_data_availability(mission_id)
             if not check["calculus_viable"]:
-                # Persist a data-availability gate row so the gate machinery
-                # can surface it via SSE and resume on user decision.
-                store = MissionStore()
-                gate_id = f"gate-{mission_id}-data-availability"
-                from marvin.mission.schema import Gate
-                existing = next((g for g in store.list_gates(mission_id) if g.id == gate_id), None)
-                if existing is None:
-                    store.save_gate(Gate(
-                        id=gate_id,
-                        mission_id=mission_id,
-                        gate_type="data_availability",
-                        scheduled_day=2,
-                        validator_role="manager",
-                        status="pending",
-                        format="data_decision",
-                        questions=[(
-                            f"Calculus cannot run financial analysis: {check['reason']}. "
-                            "How should we proceed? Options: skip_calculus | "
-                            "proceed_low_confidence | request_data_room."
-                        )],
-                    ))
-                return [Send("gate", {**state, "pending_gate_id": gate_id, "phase": "awaiting_data_decision"})]
+                return "gate_entry"
 
         store = MissionStore()
         mission = store.get_mission(mission_id)
@@ -410,6 +393,37 @@ async def gate_entry_node(state: MarvinState) -> dict:
         gate_id = _resolve_gate_by_day(mission_id, day=10)
         return {"pending_gate_id": gate_id}
 
+    if phase == "confirmed":
+        # Data-availability gate path (Bug 3 / chantier 2.6).
+        # phase_router routed here because data_decision is unset and the
+        # target is not viable for Calculus. Persist the gate row here (not
+        # in phase_router, which must be a pure edge function) and advance
+        # the phase so gate_node knows which resume path to take.
+        check = _check_data_availability(mission_id)
+        gate_id = f"gate-{mission_id}-data-availability"
+        from marvin.mission.schema import Gate
+        store = MissionStore()
+        existing = next((g for g in store.list_gates(mission_id) if g.id == gate_id), None)
+        if existing is None:
+            store.save_gate(Gate(
+                id=gate_id,
+                mission_id=mission_id,
+                gate_type="data_availability",
+                scheduled_day=2,
+                validator_role="manager",
+                status="pending",
+                format="data_decision",
+                questions=[(
+                    f"Calculus cannot run financial analysis: {check['reason']}. "
+                    "How should we proceed? Options: skip_calculus | "
+                    "proceed_low_confidence | request_data_room."
+                )],
+            ))
+        return {
+            "pending_gate_id": gate_id,
+            "phase": "awaiting_data_decision",
+        }
+
     # §4 passthrough: phases that already carry pending_gate_id from
     # upstream (clarification, data_decision) reach gate_entry only
     # for the invariant; we leave state untouched.
@@ -501,17 +515,32 @@ async def research_rebuttal_node(state: MarvinState) -> dict:
     msg = HumanMessage(content=_build_rebuttal_message(attacks))
     state_with_msg = {**state, "messages": messages + [msg]}
 
+    rebuttal_errors: list[str] = []
+
     try:
         cal_out = await calculus_agent_node(state_with_msg)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("research_rebuttal: calculus pass failed: %s", exc)
+        logger.error("research_rebuttal: calculus pass failed for %s: %s", mission_id, exc)
         cal_out = state_with_msg
+        rebuttal_errors.append(f"calculus: {exc}")
 
     try:
         next_state = {**state_with_msg, "messages": cal_out.get("messages", state_with_msg["messages"])}
         await dora_agent_node(next_state)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("research_rebuttal: dora pass failed: %s", exc)
+        logger.error("research_rebuttal: dora pass failed for %s: %s", mission_id, exc)
+        rebuttal_errors.append(f"dora: {exc}")
+
+    if rebuttal_errors:
+        # Persist a visible diagnostic so the UI surfaces partial failure.
+        try:
+            store.mark_milestone_blocked(
+                "W1.1",
+                f"rebuttal_pass_partial_failure: {'; '.join(rebuttal_errors)}",
+                mission_id=mission_id,
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     # C4 gap fix: rebuttal-pass findings bypass research_join, so the
     # corroboration recompute never sees them. Re-run it here so any
@@ -735,10 +764,11 @@ def build_graph(checkpointer=None):
     })
 
     # framing_orchestrator either advances to framing (when ready) or opens
-    # a clarification gate that routes through the standard gate node.
+    # a clarification gate that routes through the standard gate_entry → gate path.
     builder.add_conditional_edges("framing_orchestrator", phase_router, {
         "framing": "framing",
         "framing_orchestrator": "framing_orchestrator",
+        "gate_entry": "gate_entry",
         "gate": "gate",
         END: END,
     })
@@ -759,6 +789,9 @@ def build_graph(checkpointer=None):
         # newly-recorded answer.
         "framing": "framing",
         "framing_orchestrator": "framing_orchestrator",
+        # After a data-decision gate, phase=confirmed routes here when
+        # another gate-triggering branch is needed.
+        "gate_entry": "gate_entry",
         END: END,
     })
     

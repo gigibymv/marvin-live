@@ -80,22 +80,37 @@ def test_check_data_availability_with_data_room_overrides_private(store):
 
 # --- phase_router integration -------------------------------------------
 
-def test_phase_router_creates_data_gate_for_private_target(store):
+def test_phase_router_routes_private_target_to_gate_entry(store):
+    """phase_router must be a pure edge function (no DB writes).
+    For a private target with no data_decision, it must return "gate_entry"
+    (not a Send directly to gate) so the gate row is created inside the node."""
+    import asyncio
+    from marvin.graph.runner import gate_entry_node
+
     _create_mission(store, "m-priv", "Mistral AI")
     state = {"mission_id": "m-priv", "phase": "confirmed", "messages": []}
 
-    routes = phase_router(state)
+    route = phase_router(state)
 
-    assert isinstance(routes, list)
-    assert len(routes) == 1
-    send = routes[0]
-    assert isinstance(send, Send)
-    assert send.node == "gate"
-    assert send.arg["phase"] == "awaiting_data_decision"
-    assert send.arg["pending_gate_id"].endswith("-data-availability")
-    # Gate row was persisted
-    gates = store.list_gates("m-priv")
-    assert any(g.gate_type == "data_availability" for g in gates)
+    # phase_router must return a string route to gate_entry — no Send, no DB write.
+    assert route == "gate_entry", (
+        f"phase_router returned {route!r}; expected 'gate_entry' — "
+        "edge functions must be pure (no DB writes, no Send to gate)"
+    )
+    # No gate row should exist yet (the write belongs in gate_entry_node).
+    gates_before = store.list_gates("m-priv")
+    assert not any(g.gate_type == "data_availability" for g in gates_before), (
+        "phase_router wrote gate row — edge functions must be pure"
+    )
+
+    # gate_entry_node creates the row and sets pending_gate_id + phase.
+    result = asyncio.run(gate_entry_node(state))
+    assert result.get("pending_gate_id", "").endswith("-data-availability")
+    assert result.get("phase") == "awaiting_data_decision"
+    gates_after = store.list_gates("m-priv")
+    assert any(g.gate_type == "data_availability" for g in gates_after), (
+        "gate_entry_node did not persist the data-availability gate row"
+    )
 
 
 def test_phase_router_skips_data_check_for_public_target(store):
