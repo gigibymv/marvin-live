@@ -430,7 +430,23 @@ shutdown.
 
 ### Wave 3 — Plus tard
 
-#### C-RESUME-RECOVERY — Checkpointer recovery semantics on LLM-call failure
+#### C-RESUME-RECOVERY — Checkpointer recovery on LLM-call failure ✅ SHIPPED
+
+- **Status:** Shipped 2026-04-30
+- **Decision:** retries=2 (3 total attempts), backoff 1s/2s; on exhaustion
+  block at the relevant gate with `status="failed"` + structured
+  `failure_reason`. UI shows a Rerun-{agent} card; the rerun re-enters
+  only the failed node (research is not replayed).
+- **Files touched.** `marvin/llm/transient.py` (new), `marvin/graph/runner.py`
+  (adversus_node + merlin_node wrapped, llm_transient_failure phase + edge),
+  `marvin/mission/{schema,store,001_init.sql}` (gates.failure_reason additive),
+  `marvin_ui/server.py` (POST `/api/v1/missions/{id}/agents/{agent}/rerun`,
+  failure_reason in /progress payload), `lib/missions/api.ts` (rerunAgent
+  client), `components/marvin/MissionControl.tsx` (TransientFailureBanner +
+  Rerun button), `tests/test_llm_transient_retry.py` (9 tests covering
+  classifier, retry-then-succeed, exhaustion → typed failure, gate failure
+  persistence, clear/round-trip).
+- **Original spec retained below for traceability.**
 
 - **Bucket:** Foundational (graph reliability)
 - **Effort:** M

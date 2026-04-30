@@ -150,6 +150,12 @@ export async function getMissionProgress(missionId: string): Promise<{
     missing_material: string[];
     review_payload: GateReviewPayload;
     format: string | null;
+    failure_reason: {
+      agent: string;
+      error: string;
+      cause: string;
+      retries_exhausted: number;
+    } | null;
   }>;
   milestones: Array<{
     id: string;
@@ -410,6 +416,38 @@ function parseSSEEvent(raw: string): SSEEvent | null {
     // If not JSON, treat as plain text message
     return { type: eventType, text: data };
   }
+}
+
+/**
+ * C-RESUME-RECOVERY: rerun a specific agent after a transient LLM failure.
+ * The server clears the failed gate, updates the checkpoint phase, and
+ * spawns a detached driver. The client should re-attach via /resume.
+ */
+export async function rerunAgent(
+  missionId: string,
+  agent: "adversus" | "merlin"
+): Promise<{
+  status: string;
+  mission_id: string;
+  agent: string;
+  gate_id: string;
+}> {
+  const response = await fetch(
+    `${API_BASE}/missions/${missionId}/agents/${agent}/rerun`,
+    { method: "POST", headers: { "Content-Type": "application/json" } }
+  );
+  if (!response.ok) {
+    if (response.status === 0) throw new BackendOfflineError();
+    let detail = `Failed to rerun ${agent}: ${response.status}`;
+    try {
+      const body = await response.json();
+      if (body?.detail) detail = body.detail;
+    } catch {
+      /* fall through to default */
+    }
+    throw new Error(detail);
+  }
+  return response.json();
 }
 
 /**

@@ -45,6 +45,7 @@ import {
   getMissionProgress,
   getMissionEvents,
   getDeliverableDownloadUrl,
+  rerunAgent as apiRerunAgent,
 } from "@/lib/missions/api";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
 import { shouldAttachResumeStream } from "@/lib/missions/gate-resume";
@@ -270,6 +271,103 @@ function assertGateLifecycleContract(data: MissionProgressSnapshot): void {
       throw new Error("Backend /progress gate payload is missing lifecycle_status/is_open");
     }
   }
+}
+
+// C-RESUME-RECOVERY: render a fixed banner when any gate is in
+// status="failed" with a structured failure_reason. Offers a "Rerun {agent}"
+// button that re-enters only the failed node (research is not replayed).
+function TransientFailureBanner({
+  gates,
+  missionId,
+  onRerunStarted,
+}: {
+  gates: Array<{
+    id: string;
+    status: string;
+    failure_reason: {
+      agent: string;
+      error: string;
+      cause: string;
+      retries_exhausted: number;
+    } | null;
+  }>;
+  missionId: string;
+  onRerunStarted: () => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const failed = gates.find(
+    (g) => g.status === "failed" && g.failure_reason && g.failure_reason.agent,
+  );
+  if (!failed || !failed.failure_reason) return null;
+
+  const agent = failed.failure_reason.agent as "adversus" | "merlin";
+  const cause = failed.failure_reason.cause;
+  const attempts = failed.failure_reason.retries_exhausted;
+  const agentLabel = agent.charAt(0).toUpperCase() + agent.slice(1);
+
+  const handleRerun = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await apiRerunAgent(missionId, agent);
+      onRerunStarted();
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : "Rerun failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      role="alert"
+      aria-label={`${agentLabel} failed`}
+      style={{
+        position: "fixed",
+        top: "16px",
+        right: "16px",
+        width: "min(420px, calc(100vw - 32px))",
+        background: "#fff5f5",
+        border: "1px solid #f5b5b5",
+        borderRadius: "10px",
+        boxShadow: "0 12px 32px rgba(120, 30, 30, .18)",
+        padding: "14px 16px",
+        zIndex: 950,
+      }}
+    >
+      <div style={{ fontWeight: 600, color: "#8a1d1d", marginBottom: "4px" }}>
+        {agentLabel} failed — upstream LLM unavailable
+      </div>
+      <div style={{ fontSize: "13px", color: "#5a2222", marginBottom: "10px" }}>
+        {cause} · {attempts} attempts. Click Rerun {agentLabel} to retry from
+        this node only — research is not replayed.
+      </div>
+      {error ? (
+        <div style={{ fontSize: "12px", color: "#7a1d1d", marginBottom: "8px" }}>
+          {error}
+        </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={handleRerun}
+        disabled={submitting}
+        style={{
+          background: submitting ? "#d49797" : "#b03434",
+          color: "#fff",
+          border: 0,
+          borderRadius: "6px",
+          padding: "8px 14px",
+          fontSize: "13px",
+          fontWeight: 600,
+          cursor: submitting ? "default" : "pointer",
+        }}
+      >
+        {submitting ? "Restarting…" : `Rerun ${agentLabel}`}
+      </button>
+    </div>
+  );
 }
 
 export default function MissionControl({
@@ -1799,6 +1897,23 @@ export default function MissionControl({
       <DeliverablePreview
         deliverableId={previewDeliverableId}
         onClose={() => setPreviewDeliverableId(null)}
+      />
+
+      {/* C-RESUME-RECOVERY: transient LLM failure banner. Surfaces a Rerun
+          button targeting the failed agent (adversus|merlin). The server's
+          /agents/{agent}/rerun endpoint clears the failed gate and resumes
+          the graph from that node — research is NOT replayed. */}
+      <TransientFailureBanner
+        gates={progress?.gates ?? []}
+        missionId={mission.id}
+        onRerunStarted={() => {
+          // Best-effort progress refresh so the banner clears once the
+          // server has cleared the gate. The detached driver re-emits
+          // SSE events that update progress on the way through.
+          void getMissionProgress(mission.id).then((next) => {
+            if (next) setProgress(next);
+          });
+        }}
       />
 
       {/* Inline clarification panel (does not block other UI like the modal does). */}
