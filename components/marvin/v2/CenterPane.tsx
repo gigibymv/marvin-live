@@ -144,6 +144,7 @@ function MilestoneRow({ f }: { f: CenterFinding }): React.ReactElement {
         {f.agent ?? "MARVIN"}
       </Mono>
       <span style={{ flex: 1, fontSize: 13, fontWeight: 600, lineHeight: 1.6 }}>{humanizeText(f.text ?? "")}</span>
+      <Mono size={9} color="rgba(244,240,234,.45)" style={{ fontStyle: "italic" }}>Report generating…</Mono>
       <Mono size={9} color="rgba(244,240,234,.3)">{formatRowTime(f.ts)}</Mono>
     </div>
   );
@@ -303,6 +304,26 @@ function ActivityItem({ e, isLast }: { e: CenterActivityItem; isLast: boolean })
   );
 }
 
+// ─── Spinner ──────────────────────────────────────────────────────────────────
+
+function Spinner(): React.ReactElement {
+  return (
+    <span
+      aria-label="working"
+      style={{
+        display: "inline-block",
+        width: 8, height: 8,
+        marginRight: 6,
+        verticalAlign: "middle",
+        border: "1.5px solid var(--ruleh)",
+        borderTopColor: "var(--ink)",
+        borderRadius: "50%",
+        animation: "marvin-spin 0.9s linear infinite",
+      }}
+    />
+  );
+}
+
 // ─── CenterPane ───────────────────────────────────────────────────────────────
 
 export function CenterPane({
@@ -355,7 +376,7 @@ export function CenterPane({
                     transition: "color .15s cubic-bezier(0.16,1,0.3,1), border-color .15s cubic-bezier(0.16,1,0.3,1)",
                   }}
                 >
-                  {isDone ? "✓ " : isLive ? "● " : ""}{t.label}
+                  {isDone ? <span style={{ color: "var(--green)" }}>✓ </span> : isLive ? <Spinner /> : null}{t.label}
                 </button>
               );
             })}

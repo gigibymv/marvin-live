@@ -71,6 +71,8 @@ const NOISY_TOOL_NAMES = new Set([
   "generate_engagement_brief",
   "generate_workstream_report",
   "generate_exec_summary",
+  // tavily_search, search_sec_filings, fetch_filing_section, query_data_room,
+  // query_transcripts intentionally NOT here — they show real work in the feed.
 ]);
 
 function isNoisyTool(raw: unknown): boolean {
@@ -409,6 +411,8 @@ export default function MissionControl({
   // Progress state for real-time data from backend
   const [progress, setProgress] = useState<MissionProgressSnapshot | null>(null);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  const [activeAgentSince, setActiveAgentSince] = useState<number | null>(null);
+  const [activeAgentElapsed, setActiveAgentElapsed] = useState(0);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, "idle" | "active" | "done">>({});
   const [latestNarration, setLatestNarration] = useState<string | null>(null);
   // Bug #6a: track which agent owns the current narration so we can clear it
@@ -471,6 +475,19 @@ export default function MissionControl({
   useEffect(() => {
     void refreshProgress();
   }, [refreshProgress]);
+
+  // Tick elapsed seconds while an agent is active so the wait headline shows
+  // how long the agent has been running.
+  useEffect(() => {
+    if (activeAgentSince === null) {
+      setActiveAgentElapsed(0);
+      return;
+    }
+    const interval = window.setInterval(() => {
+      setActiveAgentElapsed(Math.floor((Date.now() - activeAgentSince) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [activeAgentSince]);
 
   const announceDeliverableReady = useCallback(
     (
@@ -674,6 +691,14 @@ export default function MissionControl({
             // Drop noisy persistence echoes — those have richer events of
             // their own (finding_added, milestone_done, …).
             if (isNoisyTool(event.text)) break;
+            {
+              const friendly = humanizeToolName(event.text);
+              if (event.agent && friendly) {
+                const agentDisplay = normalizeAgentName(event.agent);
+                setLatestNarration(`${agentDisplay} — ${friendly}…`);
+                narrationAgentRef.current = String(event.agent).toLowerCase();
+              }
+            }
             setLiveFindings((current) => {
               const next = upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "tool"),
@@ -816,6 +841,7 @@ export default function MissionControl({
           case "agent_active": {
             const display = normalizeAgentName(event.agent);
             setActiveAgent(display);
+            setActiveAgentSince(Date.now());
             setAgentStatuses((current) => ({
               ...current,
               [(event.agent ?? "unknown").toLowerCase()]: "active",
@@ -833,6 +859,8 @@ export default function MissionControl({
           }
           case "agent_done": {
             setActiveAgent(null);
+            setActiveAgentSince(null);
+            setActiveAgentElapsed(0);
             const display = normalizeAgentName(event.label);
             if (event.label) {
               const lower = event.label.toLowerCase();
@@ -1912,12 +1940,16 @@ export default function MissionControl({
     });
     const allMilestonesDone = wsMilestones.length > 0 && wsTerminal === wsMilestones.length;
     const synthesisDone = ws.id === "W3" && merlinVerdictPresent;
+    // Only mark a tab "completed" when ALL milestones are terminal (or for W3,
+    // when Merlin's verdict exists). A single ready deliverable used to flip
+    // the tab to ✓ done while the agent was still working on later
+    // milestones — visible mismatch with the agent status pill.
     const status: WorkstreamViewStatus =
-      allMilestonesDone || synthesisDone || wsHasReadyDeliverable
+      allMilestonesDone || synthesisDone
         ? "completed"
         : liveStatus === "active"
           ? "now"
-          : wsDelivered > 0
+          : wsDelivered > 0 || wsHasReadyDeliverable
             ? "in_progress"
             : "pending";
     return {
@@ -1974,7 +2006,9 @@ export default function MissionControl({
     ? selectedSectionId
     : (`ws${selectedSectionId.replace(/^W/i, "")}` as WorkspaceTab);
   const showWaitInSelectedOutputs = showTyping && activeStep?.id === selectedTabId;
-  const waitHeadline = activeAgent ? `${activeAgent} is working` : "MARVIN is working";
+  const waitHeadline = activeAgent
+    ? `${activeAgent} is working${activeAgentSince ? ` · ${activeAgentElapsed}s` : ""}`
+    : "MARVIN is working";
   const waitBaseMessage =
     latestNarration ??
     (activeAgent

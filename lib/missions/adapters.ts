@@ -94,14 +94,32 @@ export interface GatePendingPresentationInput {
   unlocksOnReject?: string | null;
 }
 
+const TYPE_FALLBACKS: Record<string, { title: string; summary: string }> = {
+  hypothesis_confirmation: {
+    title: "Confirm initial hypotheses",
+    summary: "MARVIN has framed the deal into testable hypotheses. Approve to start parallel research workstreams. Reject to revise the framing before any research runs.",
+  },
+  manager_review: {
+    title: "Manager review of research claims",
+    summary: "Initial research is complete. Review the claims surfaced so far for soundness, sourcing, and confidence before red-team challenges them.",
+  },
+  final_review: {
+    title: "Final IC memo review",
+    summary: "Synthesis is complete. Review Merlin's verdict and the supporting deliverables before signing off.",
+  },
+};
+
 export function formatGatePendingChatMessage(event: GatePendingPresentationInput): string {
   const lines: string[] = [];
-  const heading = event.title?.trim() || "Validation requested";
+  const gateType = (event.gateType ?? event.gate_type ?? "").toString();
+  const fallback = TYPE_FALLBACKS[gateType];
+  const heading = event.title?.trim() || fallback?.title || "Validation requested";
+  const summary = event.summary?.trim() || fallback?.summary || null;
   const unlocksOnApprove = event.unlocksOnApprove ?? event.unlocks_on_approve;
   const unlocksOnReject = event.unlocksOnReject ?? event.unlocks_on_reject;
   lines.push(`🔔 Gate pending — ${heading}`);
   if (event.stage?.trim()) lines.push(`Stage: ${event.stage.trim()}`);
-  if (event.summary?.trim()) lines.push(event.summary.trim());
+  if (summary) lines.push(summary);
   if (unlocksOnApprove?.trim()) lines.push(`Approve → ${unlocksOnApprove.trim()}`);
   if (unlocksOnReject?.trim()) lines.push(`Reject → ${unlocksOnReject.trim()}`);
   lines.push(
