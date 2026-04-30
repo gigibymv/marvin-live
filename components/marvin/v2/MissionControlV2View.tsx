@@ -175,6 +175,21 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
   // so they remain visible somewhere. Sort each tab so deliverables sit at
   // the top of the thread (most "shippable" outputs first), then milestones,
   // then findings. Within a kind we keep insertion order.
+  // Bug 2: tab ✓ flips to completed before lingering milestone rows have
+  // a paired deliverable, so users saw "REPORT GENERATING…" rows on a
+  // tab that was already checked. Use sectionTabs to know which tabs the
+  // backend considers completed and mark milestones on those tabs as
+  // terminal so MilestoneRow suppresses the spinner copy (or hides the
+  // row entirely when no deliverable will ever be paired to it).
+  const completedTabIds = useMemo<Set<WorkspaceTab>>(() => {
+    const set = new Set<WorkspaceTab>();
+    if (!sectionTabs) return set;
+    for (const t of sectionTabs) {
+      if (t.status === "completed") set.add(t.id);
+    }
+    return set;
+  }, [sectionTabs]);
+
   const findingsMap = useMemo<Record<WorkspaceTab, CenterFinding[]>>(() => {
     const map = emptyTabMap<CenterFinding>();
     for (const f of findings) {
@@ -220,6 +235,12 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
         const key = normalizeMatchText(item.text ?? "");
         return key.length > 0 && !deliverableLabels.has(key);
       });
+      const tabCompleted = completedTabIds.has(tab);
+      if (tabCompleted) {
+        map[tab] = map[tab].map((item) =>
+          item.kind === "milestone" ? { ...item, isTerminal: true } : item,
+        );
+      }
       map[tab] = map[tab]
         .map((item, index) => ({ item, index }))
         .sort((a, b) => {
@@ -229,7 +250,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
         .map((entry) => entry.item);
     }
     return map;
-  }, [findings]);
+  }, [findings, completedTabIds]);
 
   // Activity is a single live tape today — assign to whichever tab the user
   // is on so it remains visible. (When backend gains per-tab activity, this
