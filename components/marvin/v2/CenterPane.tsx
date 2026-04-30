@@ -18,6 +18,7 @@ export interface CenterFinding {
   hypothesis_label?: string | null;
   source?: string | null;
   onOpen?: () => void;
+  isTerminal?: boolean;
 }
 
 export interface CenterActivityItem {
@@ -129,7 +130,9 @@ function FindingRow({ f }: { f: CenterFinding }): React.ReactElement {
 
 // ─── MilestoneRow ─────────────────────────────────────────────────────────────
 
-function MilestoneRow({ f }: { f: CenterFinding }): React.ReactElement {
+function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolean }): React.ReactElement | null {
+  // Fix B: suppress "Report generating…" row when milestone is terminal but has no paired deliverable
+  if (isTerminal && !f.onOpen) return null;
   return (
     <div style={{
       padding: "14px 24px",
@@ -211,8 +214,8 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
 
 // ─── OutputRow ────────────────────────────────────────────────────────────────
 
-function OutputRow({ item }: { item: CenterFinding }): React.ReactElement {
-  if (item.kind === "milestone") return <MilestoneRow f={item} />;
+function OutputRow({ item }: { item: CenterFinding }): React.ReactElement | null {
+  if (item.kind === "milestone") return <MilestoneRow f={item} isTerminal={item.isTerminal} />;
   if (item.kind === "deliverable") return <DeliverableRow f={item} />;
   return <FindingRow f={item} />;
 }

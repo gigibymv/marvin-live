@@ -897,12 +897,23 @@ export default function MissionControl({
             userPickedTabRef.current = false;
             setLiveFindings((current) =>
               upsertLiveEvent(current, {
-                id: makeMessageId(missionId, "phase"),
+                id: "startup",
                 kind: "phase",
                 claim_text: `Phase · ${event.label ?? event.phase}`,
                 confidence: "phase",
               }),
             );
+            // Fix F: phase-specific narration and elapsed timer reset
+            {
+              const phaseNarrations: Record<string, string> = {
+                setup: "MARVIN — Starting the mission run.",
+                framing: "MARVIN — Framing the deal",
+                awaiting_confirmation: "MARVIN — Generating initial hypotheses",
+              };
+              const narration = phaseNarrations[event.phase ?? ""];
+              if (narration) setLatestNarration(narration);
+              setActiveAgentSince(Date.now());
+            }
             // A phase transition flips the active gate, the agent activation
             // map, and milestone scheduling. The detached-resume path emits
             // phase_changed but does not push a fresh /progress payload —
@@ -1842,6 +1853,7 @@ export default function MissionControl({
         href: linked?.href,
         onOpen: linked?.onOpen,
         output_label: linked?.label,
+        isTerminal: true,
       };
     });
   // Synthesis (W3) is verdict-driven, not finding-driven: merlin doesn't
@@ -1989,10 +2001,25 @@ export default function MissionControl({
   ];
   const hasLiveStep = baseSectionTabs.some((tab) => tab.status === "now" || tab.status === "in_progress");
   const nextPendingStepIndex = baseSectionTabs.findIndex((tab) => tab.status === "pending");
-  const sectionTabs = missionIsWorking && !hasPendingGate && !hasLiveStep && nextPendingStepIndex >= 0
-    ? baseSectionTabs.map((tab, index) =>
-        index === nextPendingStepIndex ? { ...tab, status: "now" as const } : tab,
-      )
+  // Fix C: find the tab whose workstream's assigned_agent matches the active agent
+  const activeAgentTabId: string | null = (() => {
+    if (!activeAgent) return null;
+    const ws = (progress?.workstreams ?? []).find(
+      (w: any) => w.assigned_agent?.toLowerCase() === activeAgent.toLowerCase(),
+    );
+    if (!ws) return null;
+    return `ws${ws.id.replace(/^W/i, "")}`;
+  })();
+  const sectionTabs = missionIsWorking && !hasPendingGate && !hasLiveStep
+    ? activeAgentTabId
+      ? baseSectionTabs.map((tab) =>
+          tab.id === activeAgentTabId ? { ...tab, status: "now" as const } : tab,
+        )
+      : nextPendingStepIndex >= 0
+        ? baseSectionTabs.map((tab, index) =>
+            index === nextPendingStepIndex ? { ...tab, status: "now" as const } : tab,
+          )
+        : baseSectionTabs
     : baseSectionTabs;
   const showTyping = missionIsWorking;
   const activeStep = sectionTabs.find((tab) => tab.status === "now") ?? sectionTabs.find((tab) => tab.status === "in_progress");

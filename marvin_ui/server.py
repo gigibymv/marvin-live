@@ -1366,6 +1366,7 @@ async def _stream_chat(
         finding_q: "queue.Queue[dict]" = queue.Queue()
         deliverable_q: "queue.Queue[dict]" = queue.Queue()
         milestone_q: "queue.Queue[dict]" = queue.Queue()
+        graph_event_q: "queue.Queue[str]" = queue.Queue()
 
         def _on_finding(payload: dict) -> None:
             finding_q.put_nowait(payload)
@@ -1376,9 +1377,13 @@ async def _stream_chat(
         def _on_milestone(payload: dict) -> None:
             milestone_q.put_nowait(payload)
 
+        def _on_graph_event(sse_string: str) -> None:
+            graph_event_q.put_nowait(sse_string)
+
         register_finding_listener(mission_id, _on_finding)
         register_deliverable_listener(mission_id, _on_deliverable)
         register_milestone_listener(mission_id, _on_milestone)
+        register_graph_event_listener(mission_id, _on_graph_event)
 
         def _drain_events() -> list[str]:
             out: list[str] = []
@@ -1400,6 +1405,12 @@ async def _stream_chat(
                 except queue.Empty:
                     break
                 out.append(_sse_event("milestone_done", _build_milestone_done_from_emit(payload)))
+            while True:
+                try:
+                    sse_string = graph_event_q.get_nowait()
+                except queue.Empty:
+                    break
+                out.append(sse_string)
             return out
 
         # Drive the graph; on each __interrupt__ frame, park on a per-mission
@@ -1491,6 +1502,10 @@ async def _stream_chat(
             pass
         try:
             unregister_milestone_listener(mission_id, _on_milestone)
+        except (NameError, UnboundLocalError):
+            pass
+        try:
+            unregister_graph_event_listener(mission_id, _on_graph_event)
         except (NameError, UnboundLocalError):
             pass
         mission_lock.release()
@@ -1689,6 +1704,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         finding_q: "queue.Queue[dict]" = queue.Queue()
         deliverable_q: "queue.Queue[dict]" = queue.Queue()
         milestone_q: "queue.Queue[dict]" = queue.Queue()
+        graph_event_q: "queue.Queue[str]" = queue.Queue()
 
         def _on_finding(payload: dict) -> None:
             finding_q.put_nowait(payload)
@@ -1699,9 +1715,13 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         def _on_milestone(payload: dict) -> None:
             milestone_q.put_nowait(payload)
 
+        def _on_graph_event(sse_string: str) -> None:
+            graph_event_q.put_nowait(sse_string)
+
         register_finding_listener(mission_id, _on_finding)
         register_deliverable_listener(mission_id, _on_deliverable)
         register_milestone_listener(mission_id, _on_milestone)
+        register_graph_event_listener(mission_id, _on_graph_event)
 
         def _drain_events() -> list[str]:
             out: list[str] = []
@@ -1723,6 +1743,12 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                 except queue.Empty:
                     break
                 out.append(_sse_event("milestone_done", _build_milestone_done_from_emit(payload)))
+            while True:
+                try:
+                    sse_string = graph_event_q.get_nowait()
+                except queue.Empty:
+                    break
+                out.append(sse_string)
             return out
 
         current_agent: str | None = None
@@ -1813,6 +1839,10 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             pass
         try:
             unregister_milestone_listener(mission_id, _on_milestone)
+        except (NameError, UnboundLocalError):
+            pass
+        try:
+            unregister_graph_event_listener(mission_id, _on_graph_event)
         except (NameError, UnboundLocalError):
             pass
         mission_lock.release()

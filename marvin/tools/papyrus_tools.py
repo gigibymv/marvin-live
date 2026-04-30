@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from marvin.artifacts import artifact_file_readiness_errors
-from marvin.events import emit_deliverable_persisted
+from marvin.events import emit_deliverable_persisted, emit_graph_event
 from marvin.mission.schema import Deliverable, Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore
 from marvin.tools.common import InjectedStateArg, ensure_output_dir, get_store, require_mission_id, utc_now_iso
@@ -183,6 +183,24 @@ def _assert_artifact_can_be_ready(file_path: Path, deliverable_type: str) -> Non
         raise ValueError(f"{deliverable_type} is not ready: {', '.join(errors)}")
 
 
+def _emit_papyrus_narration(mission_id: str, intent: str) -> None:
+    """Emit a 'Papyrus — {intent}' narration event so the live SSE stream
+    surfaces report-writing work happening inside other graph nodes (e.g.
+    research_join calling _generate_workstream_report_impl). Without this,
+    Papyrus is invisible to the user even though it produces every
+    deliverable. Failures are swallowed — narration is best-effort UX, not
+    persistence."""
+    try:
+        from datetime import UTC, datetime
+        import json as _json
+        ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        payload = {"agent": "Papyrus", "intent": intent, "ts": ts}
+        sse_string = f"event: narration\ndata: {_json.dumps(payload)}\n\n"
+        emit_graph_event(mission_id, sse_string)
+    except Exception:  # noqa: BLE001 — defensive boundary
+        pass
+
+
 def _save_deliverable(
     store: MissionStore,
     mission_id: str,
@@ -253,6 +271,7 @@ def _generate_engagement_brief_impl(mission_id: str) -> dict[str, Any]:
             "deliverable_type": deliverable_type,
         }
 
+    _emit_papyrus_narration(mission_id, "Drafting the engagement brief")
     body = _papyrus_llm_generate(
         deliverable_type=deliverable_type,
         mission=mission,
@@ -402,6 +421,7 @@ def _generate_workstream_report_impl(workstream_id: str, mission_id: str) -> dic
     hypotheses = store.list_hypotheses(mission_id)
     mission_brief = store.get_mission_brief(mission_id)
 
+    _emit_papyrus_narration(mission_id, f"Compiling the {workstream_id} workstream report")
     body = _papyrus_llm_generate(
         deliverable_type=deliverable_type,
         mission=mission,
@@ -504,6 +524,7 @@ def _generate_milestone_report_impl(milestone_id: str, mission_id: str) -> dict[
     hypotheses = store.list_hypotheses(mission_id)
     mission_brief = store.get_mission_brief(mission_id)
 
+    _emit_papyrus_narration(mission_id, f"Drafting the {milestone.label} report")
     body = _papyrus_llm_generate(
         deliverable_type=deliverable_type,
         mission=mission,
@@ -596,6 +617,7 @@ def _generate_exec_summary_impl(mission_id: str) -> dict[str, Any]:
     if verdict is not None:
         extra["verdict"] = verdict
 
+    _emit_papyrus_narration(mission_id, "Writing the executive summary")
     body = _papyrus_llm_generate(
         deliverable_type=deliverable_type,
         mission=mission,
@@ -649,6 +671,7 @@ def _generate_data_book_impl(mission_id: str) -> dict[str, Any]:
     hypotheses = store.list_hypotheses(mission_id)
     mission_brief = store.get_mission_brief(mission_id)
 
+    _emit_papyrus_narration(mission_id, "Assembling the data book")
     body = _papyrus_llm_generate(
         deliverable_type=deliverable_type,
         mission=store.get_mission(mission_id),
