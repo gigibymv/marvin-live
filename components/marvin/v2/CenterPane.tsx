@@ -224,15 +224,17 @@ const ANIMATED_ACTIVITY_IDS = new Set<string>();
 
 function useTypewriter(id: string, fullText: string, speedMs = 6): string {
   const alreadyAnimated = ANIMATED_ACTIVITY_IDS.has(id);
-  const [shown, setShown] = React.useState<string>(alreadyAnimated ? fullText : "");
+  // Skip animation for short rows — the staggered reveal only adds value on
+  // multi-sentence prose. Short rows ("Dora finished", "Deliverable ready · X")
+  // would be empty for an instant then snap, which reads as a glitch.
+  const skipAnimation = !fullText || fullText.length <= 60;
+  const initial = alreadyAnimated || skipAnimation ? fullText : "";
+  const [shown, setShown] = React.useState<string>(initial);
 
   React.useEffect(() => {
-    if (alreadyAnimated) {
-      setShown(fullText);
-      return;
-    }
-    if (!fullText) {
+    if (skipAnimation || alreadyAnimated) {
       ANIMATED_ACTIVITY_IDS.add(id);
+      setShown(fullText);
       return;
     }
     let i = 0;
@@ -409,12 +411,21 @@ export function CenterPane({
             <Mono size={9} color="var(--muted)">{findings.length}</Mono>
           </div>
           {findings.length === 0 ? (
-            <div style={{ padding: "32px 24px", textAlign: "center" }}>
+            <div style={{
+              padding: "16px 24px 24px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 10,
+              maxWidth: 460,
+              margin: "0 auto",
+              textAlign: "center",
+            }}>
               {isWorking ? (
                 <>
                   <StatusDot color="var(--amber)" size={7} />
-                  <div style={{ fontSize: 13, color: "var(--ink3)", marginTop: 12, lineHeight: 1.6 }}>
-                    Agents are working — outputs will appear here as they are validated.
+                  <div style={{ fontSize: 12, color: "var(--ink3)", lineHeight: 1.6 }}>
+                    Agents are working. Outputs will appear here as they are validated.
                   </div>
                 </>
               ) : (

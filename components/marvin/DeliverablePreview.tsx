@@ -17,6 +17,7 @@ import remarkGfm from "remark-gfm";
 
 import { API_BASE, getDeliverableDownloadUrl } from "@/lib/missions/api";
 import { humanizeText as humanizeDeliverableMarkdown } from "@/lib/missions/humanize";
+import { formatDeliverableDisplayName } from "@/lib/missions/adapters";
 
 interface LinkedFinding {
   id: string;
@@ -126,7 +127,12 @@ export function DeliverablePreview({ deliverableId, onClose }: Props) {
               Deliverable
             </span>
             <span style={{ fontSize: "16px", fontWeight: 600 }}>
-              {data?.deliverable_type ?? deliverableId}
+              {data
+                ? formatDeliverableDisplayName({
+                    deliverable_type: data.deliverable_type,
+                    file_path: data.file_path,
+                  })
+                : deliverableId}
             </span>
           </div>
           <div style={{ display: "flex", gap: "10px" }}>

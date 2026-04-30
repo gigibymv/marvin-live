@@ -75,6 +75,13 @@ const REPLACEMENTS: Array<[RegExp, string]> = [
   [/^\s*Verdict\s*:\s*[A-Z_]+\s*$/gim, ""],
 ];
 
+// Catch-all snake_case identifiers (lowercase tokens with underscores) that
+// agents occasionally leak as raw type names: `exec_summary`, `engagement_brief`,
+// `framing_memo`, `data_book`. Title-cases them to "Exec summary" etc.
+// Run AFTER REPLACEMENTS so explicit phrase mappings win, and only on
+// identifier-shaped tokens to avoid mangling normal prose.
+const SNAKE_IDENTIFIER = /\b([a-z]{2,}(?:_[a-z]{2,}){1,})\b/g;
+
 export function humanizeText(raw: string | null | undefined): string {
   const text = String(raw ?? "");
   if (!text) return "";
@@ -82,6 +89,12 @@ export function humanizeText(raw: string | null | undefined): string {
   for (const [pattern, replacement] of REPLACEMENTS) {
     out = out.replace(pattern, replacement);
   }
+  // Title-case any remaining snake_case identifiers ("exec_summary" →
+  // "Exec summary"). Sentence-position-aware: lowercase rest, capital first.
+  out = out.replace(SNAKE_IDENTIFIER, (m) => {
+    const spaced = m.replace(/_/g, " ");
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  });
   // Collapse the whitespace damage that ID-stripping leaves behind:
   //   "Rebuttal to attack [f-50c4]  (H3 ..." → "Counter-argument  (H3 ..."
   out = out.replace(/[ \t]{2,}/g, " ");

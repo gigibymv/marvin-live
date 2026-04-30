@@ -214,17 +214,23 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
 
   // Activity is a single live tape today — assign to whichever tab the user
   // is on so it remains visible. (When backend gains per-tab activity, this
-  // is the place to route it properly.)
+  // is the place to route it properly.) Drop `deliverable` and `milestone`
+  // echoes from the activity tape — they already render as full rows in
+  // Outputs, and the duplicate compact mono row was confusing (count went
+  // up but visually nothing new appeared because the eye expects the
+  // larger top-of-pane row).
   const activityMap = useMemo<Record<WorkspaceTab, CenterActivityItem[]>>(() => {
     const map = emptyTabMap<CenterActivityItem>();
     if (!activity) return map;
-    const items: CenterActivityItem[] = activity.map(a => ({
-      id: a.id,
-      kind: a.kind,
-      agent: a.ag,
-      text: a.claim_text ?? a.text ?? "",
-      ts: a.ts ?? "",
-    }));
+    const items: CenterActivityItem[] = activity
+      .filter((a) => a.kind !== "deliverable" && a.kind !== "milestone")
+      .map((a) => ({
+        id: a.id,
+        kind: a.kind,
+        agent: a.ag,
+        text: a.claim_text ?? a.text ?? "",
+        ts: a.ts ?? "",
+      }));
     map[selectedTab] = items;
     return map;
   }, [activity, selectedTab]);
