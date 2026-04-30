@@ -1337,7 +1337,14 @@ async def _stream_chat(
             return
         
         logger.info(f"Starting stream with state: mission_id={initial_state.get('mission_id')}, phase={initial_state.get('phase')}")
-        
+
+        if is_initial_brief:
+            yield await _emit_text(
+                "orchestrator",
+                "Framing the deal thesis from your brief — pulling out the "
+                "target, scope, and key questions before kicking off research.",
+            )
+
         thread_id = mission_id
         config = {
             "configurable": {
