@@ -528,6 +528,15 @@ async def research_rebuttal_node(state: MarvinState) -> dict:
     except Exception as exc:  # noqa: BLE001
         logger.warning("research_rebuttal: dora pass failed: %s", exc)
 
+    # C4 gap fix: rebuttal-pass findings bypass research_join, so the
+    # corroboration recompute never sees them. Re-run it here so any
+    # single-source KNOWN added by Adversus targeting gets downgraded.
+    from marvin.tools.mission_tools import recompute_mission_corroboration
+    try:
+        recompute_mission_corroboration(state={"mission_id": mission_id})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("research_rebuttal: corroboration recompute failed: %s", exc)
+
     return {"phase": "rebuttal_done"}
 
 
