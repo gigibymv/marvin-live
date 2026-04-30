@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS gates (
     status TEXT DEFAULT 'pending'
         CHECK (status IN ('pending','completed','failed')),
     completion_notes TEXT,
-    format TEXT
+    format TEXT,
+    failure_reason TEXT
 );
 
 CREATE TABLE IF NOT EXISTS deliverables (

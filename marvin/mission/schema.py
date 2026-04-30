@@ -122,6 +122,10 @@ class Gate(MarvinModel):
     completion_notes: str | None = None
     format: str | None = None
     questions: list[str] | None = None
+    # C-RESUME-RECOVERY: structured cause for status="failed" gates so the UI
+    # can render a precise "Adversus failed — OpenRouter unavailable" card and
+    # offer a targeted Rerun button. Shape: {agent, error, cause, retries_exhausted}.
+    failure_reason: dict | None = None
 
 
 class Deliverable(MarvinModel):

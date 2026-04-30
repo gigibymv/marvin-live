@@ -2353,6 +2353,7 @@ async def get_mission_progress(mission_id: str):
                 "missing_material": gate_material[g.id].missing_material,
                 "review_payload": gate_material[g.id].review_payload,
                 "format": g.format,
+                "failure_reason": g.failure_reason,
             }
             for g in gates
         ],
@@ -2561,6 +2562,86 @@ async def resume_mission(mission_id: str):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# =============================================================================
+# C-RESUME-RECOVERY — agent rerun endpoint
+# =============================================================================
+
+# Map a failed agent → (gate_type to clear, phase to drop checkpoint into so
+# phase_router re-routes the graph back to that agent on the next astream).
+_RERUN_TARGETS: dict[str, tuple[str, str]] = {
+    "adversus": ("manager_review", "gate_g1_passed"),
+    "merlin": ("final_review", "rebuttal_done"),
+}
+
+
+@app.post("/api/v1/missions/{mission_id}/agents/{agent}/rerun")
+async def rerun_agent(mission_id: str, agent: str):
+    """C-RESUME-RECOVERY: rerun a specific agent after a transient LLM failure.
+
+    Refuses unless the matching gate is in ``status="failed"``. Clears the
+    failure_reason, updates the checkpoint phase so phase_router re-routes
+    back to the target node on the next astream, and spawns a detached
+    driver to run forward to the next interrupt or completion. The client
+    re-attaches via ``GET /api/v1/missions/{id}/resume``.
+
+    Does NOT replay G0/G1/research — the checkpoint already has the prior
+    research state; only the failed node re-executes.
+    """
+    if agent not in _RERUN_TARGETS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported agent for rerun: {agent}. Allowed: {list(_RERUN_TARGETS)}",
+        )
+    gate_type, kick_phase = _RERUN_TARGETS[agent]
+
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    target_gate = next(
+        (g for g in store.list_gates(mission_id)
+         if g.gate_type == gate_type and g.status == "failed"),
+        None,
+    )
+    if target_gate is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"No failed {gate_type} gate to rerun. Rerun is only allowed "
+                "after a transient LLM failure has been recorded."
+            ),
+        )
+
+    store.clear_gate_failure(target_gate.id)
+
+    try:
+        graph = await get_graph()
+        config = {"configurable": {"thread_id": mission_id}}
+        await graph.aupdate_state(config, {"phase": kick_phase, "failed_agent": None})
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("rerun_agent: aupdate_state failed for %s: %s", mission_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not stage checkpoint for rerun: {exc}",
+        ) from exc
+
+    # Synthesize a no-op resume payload — the detached driver loop tolerates
+    # the absence of a parked interrupt and falls through to plain astream.
+    payload = {"gate_id": None, "rerun_agent": agent}
+    spawn_status = _spawn_detached_resume(mission_id, payload)
+    logger.info(
+        "rerun_agent: spawned detached driver for mission=%s agent=%s status=%s",
+        mission_id, agent, spawn_status,
+    )
+
+    return {
+        "status": "spawned",
+        "mission_id": mission_id,
+        "agent": agent,
+        "gate_id": target_gate.id,
+    }
 
 
 # =============================================================================

@@ -218,6 +218,8 @@ class MissionStore:
                 "ALTER TABLE missions ADD COLUMN clarification_answers TEXT DEFAULT '[]'",
             ),
             ("gates", "questions", "ALTER TABLE gates ADD COLUMN questions TEXT"),
+            # C-RESUME-RECOVERY: structured failure cause for status="failed" gates.
+            ("gates", "failure_reason", "ALTER TABLE gates ADD COLUMN failure_reason TEXT"),
             ("hypotheses", "label", "ALTER TABLE hypotheses ADD COLUMN label TEXT"),
             ("missions", "data_room_path", "ALTER TABLE missions ADD COLUMN data_room_path TEXT"),
             ("findings", "impact", "ALTER TABLE findings ADD COLUMN impact TEXT"),
@@ -868,11 +870,12 @@ class MissionStore:
 
     def save_gate(self, gate: Gate) -> Gate:
         questions_json = json.dumps(gate.questions) if gate.questions else None
+        failure_json = json.dumps(gate.failure_reason) if gate.failure_reason else None
         self._execute(
             """
             INSERT OR REPLACE INTO gates
-            (id, mission_id, gate_type, scheduled_day, validator_role, status, completion_notes, format, questions)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, mission_id, gate_type, scheduled_day, validator_role, status, completion_notes, format, questions, failure_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 gate.id,
@@ -884,16 +887,31 @@ class MissionStore:
                 gate.completion_notes,
                 gate.format,
                 questions_json,
+                failure_json,
             ),
         )
         return gate
+
+    def _gate_from_row(self, row) -> Gate:
+        data = dict(row)
+        if data.get("questions"):
+            try:
+                data["questions"] = json.loads(data["questions"])
+            except (TypeError, ValueError):
+                data["questions"] = None
+        if data.get("failure_reason"):
+            try:
+                data["failure_reason"] = json.loads(data["failure_reason"])
+            except (TypeError, ValueError):
+                data["failure_reason"] = None
+        return Gate.model_validate(data)
 
     def list_gates(self, mission_id: str) -> list[Gate]:
         rows = self._execute(
             "SELECT * FROM gates WHERE mission_id = ? ORDER BY scheduled_day, id",
             (mission_id,),
         ).fetchall()
-        return [self._row_to_model(row, Gate) for row in rows]
+        return [self._gate_from_row(row) for row in rows]
 
     def update_gate_status(self, gate_id: str, status: str, notes: str | None = None) -> Gate:
         result = self._execute(
@@ -903,7 +921,44 @@ class MissionStore:
         if result.rowcount == 0:
             raise KeyError(f"gate not found: {gate_id}")
         row = self._execute("SELECT * FROM gates WHERE id = ?", (gate_id,)).fetchone()
-        return self._row_to_model(row, Gate)
+        return self._gate_from_row(row)
+
+    def save_gate_failure(
+        self,
+        gate_id: str,
+        *,
+        agent: str,
+        error: str,
+        cause: str,
+        retries_exhausted: int,
+    ) -> Gate:
+        """C-RESUME-RECOVERY: mark a gate failed with a structured reason.
+
+        Used when adversus or merlin exhausts the LLM transient retry budget
+        so the UI can render a precise diagnostic card with a targeted Rerun
+        button instead of letting the mission silently stall.
+        """
+        reason = {
+            "agent": agent,
+            "error": error,
+            "cause": cause,
+            "retries_exhausted": retries_exhausted,
+        }
+        result = self._execute(
+            "UPDATE gates SET status = 'failed', failure_reason = ? WHERE id = ?",
+            (json.dumps(reason), gate_id),
+        )
+        if result.rowcount == 0:
+            raise KeyError(f"gate not found: {gate_id}")
+        row = self._execute("SELECT * FROM gates WHERE id = ?", (gate_id,)).fetchone()
+        return self._gate_from_row(row)
+
+    def clear_gate_failure(self, gate_id: str) -> None:
+        """Reset a failed gate to pending so a Rerun can repopulate it."""
+        self._execute(
+            "UPDATE gates SET status = 'pending', failure_reason = NULL WHERE id = ?",
+            (gate_id,),
+        )
 
     # ------------------------------------------------------------------
     # Clarification state — persisted on the mission row so the framing

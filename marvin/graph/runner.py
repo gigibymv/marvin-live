@@ -241,6 +241,13 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         # an empty verdict. Terminate the run; user must re-trigger synthesis.
         return END
 
+    if phase == "llm_transient_failure":
+        # C-RESUME-RECOVERY: bounded LLM retry budget exhausted in adversus
+        # or merlin. Gate has been persisted with status="failed" + a
+        # structured failure_reason. Terminate the run; UI exposes a
+        # targeted Rerun-{agent} action that re-enters this node only.
+        return END
+
     if phase == "gate_g3_passed":
         return "papyrus_delivery"
 
@@ -574,14 +581,22 @@ async def research_rebuttal_node(state: MarvinState) -> dict:
 
 
 async def adversus_node(state: MarvinState) -> dict:
-    """Run adversus agent and move to redteam_done phase."""
+    """Run adversus agent and move to redteam_done phase.
+
+    C-RESUME-RECOVERY: wraps the agent call in a bounded retry. On
+    transient LLM failure (e.g. OpenRouter 5xx HTML response), persists
+    the G2 gate as ``status="failed"`` with a structured ``failure_reason``
+    and returns ``phase="llm_transient_failure"`` so the graph stops at a
+    quiescent state and the UI can offer a targeted Rerun button instead
+    of stalling silently.
+    """
     log_node_entry("adversus", state)
     mission_id = state.get("mission_id", "")
     messages = state.get("messages", [])
     store = MissionStore()
     hypotheses = store.list_hypotheses(mission_id, status="active")
     hyp_text = "\n".join([f"[{hypothesis.id}] {hypothesis.text}" for hypothesis in hypotheses])
-    
+
     msg = HumanMessage(
         content=(
             f"Mission: {mission_id}\n"
@@ -592,15 +607,45 @@ async def adversus_node(state: MarvinState) -> dict:
             f"Hypotheses:\n{hyp_text}"
         )
     )
-    
+
     from marvin.graph.subgraphs.adversus import adversus_agent_node as _adversus_agent_node
     from marvin.conversational.steering import apply_pending_steering
+    from marvin.llm.transient import LLMTransientFailure, async_invoke_with_retry
 
     extra = apply_pending_steering(mission_id)
-    result = await _adversus_agent_node(
-        {**state, "messages": messages + [msg] + extra}
-    )
+    payload = {**state, "messages": messages + [msg] + extra}
+
+    try:
+        result = await async_invoke_with_retry(
+            lambda: _adversus_agent_node(payload),
+            agent="adversus",
+        )
+    except LLMTransientFailure as failure:
+        _persist_transient_gate_failure(mission_id, failure, gate_type="manager_review")
+        return {"phase": "llm_transient_failure", "failed_agent": "adversus"}
+
     return {**result, "phase": "redteam_done"}
+
+
+def _persist_transient_gate_failure(mission_id: str, failure, *, gate_type: str) -> None:
+    """C-RESUME-RECOVERY helper — mark the relevant gate failed with a
+    structured cause so the UI can render a Rerun-{agent} card.
+    """
+    try:
+        store = MissionStore()
+        gate_id = _resolve_gate_by_type(mission_id, gate_type)
+        store.save_gate_failure(
+            gate_id,
+            agent=failure.agent,
+            error=failure.error,
+            cause=failure.cause,
+            retries_exhausted=failure.attempts,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "_persist_transient_gate_failure: %s gate persist failed for %s: %s",
+            gate_type, mission_id, exc,
+        )
 
 
 ADVERSUS_FINDING_CAP = 12
@@ -662,11 +707,19 @@ async def merlin_node(state: MarvinState) -> dict:
 
     from marvin.graph.subgraphs.merlin import merlin_agent_node as _merlin_agent_node
     from marvin.conversational.steering import apply_pending_steering
+    from marvin.llm.transient import LLMTransientFailure, async_invoke_with_retry
 
     extra = apply_pending_steering(mission_id)
-    result = await _merlin_agent_node(
-        {**state, "messages": messages + [msg] + extra}
-    )
+    payload = {**state, "messages": messages + [msg] + extra}
+
+    try:
+        result = await async_invoke_with_retry(
+            lambda: _merlin_agent_node(payload),
+            agent="merlin",
+        )
+    except LLMTransientFailure as failure:
+        _persist_transient_gate_failure(mission_id, failure, gate_type="final_review")
+        return {"phase": "llm_transient_failure", "failed_agent": "merlin"}
     store = MissionStore()
     verdict_row = store.get_latest_merlin_verdict(mission_id)
     if not verdict_row:
