@@ -11,6 +11,7 @@ Architecture:
 from __future__ import annotations
 
 import logging
+import os
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -227,6 +228,14 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         return "adversus"
 
     if phase == "redteam_done":
+        # C7: insert a rebuttal pass before synthesis. Calculus + Dora get
+        # one chance to find counter-evidence for Adversus's attacks.
+        # Toggle off via MARVIN_REBUTTAL_ENABLED=0 if it causes regressions.
+        if os.environ.get("MARVIN_REBUTTAL_ENABLED", "1") != "0":
+            return "research_rebuttal"
+        return "merlin"
+
+    if phase == "rebuttal_done":
         return "merlin"
 
     if phase == "synthesis_retry":
@@ -415,6 +424,106 @@ async def gate_entry_node(state: MarvinState) -> dict:
     return {}
 
 
+REBUTTAL_MAX_ATTACKS = 8
+REBUTTAL_FINDING_BUDGET = 5
+
+
+def _select_rebuttal_targets(findings: list, *, limit: int = REBUTTAL_MAX_ATTACKS) -> list:
+    """Pick the Adversus findings worth rebutting.
+
+    Priority: load_bearing impact, then claims that look like attacks
+    ('ANOMALY', 'attack', 'contradicts'). Capped at `limit` so the
+    rebuttal prompt stays focused; the rest are ignored for this pass.
+    """
+    attacks: list = []
+    for f in findings:
+        if getattr(f, "agent_id", None) != "adversus":
+            continue
+        impact = getattr(f, "impact", None)
+        text = (getattr(f, "claim_text", None) or "").lower()
+        if (
+            impact == "load_bearing"
+            or "anomaly" in text
+            or "contradict" in text
+            or "weakest" in text
+        ):
+            attacks.append(f)
+    # load_bearing first, then by created_at order
+    attacks.sort(key=lambda f: (getattr(f, "impact", "") != "load_bearing", getattr(f, "created_at", "") or ""))
+    return attacks[:limit]
+
+
+def _build_rebuttal_message(attacks: list) -> str:
+    """Compose the human message that asks for counter-evidence."""
+    lines = []
+    for a in attacks:
+        label = getattr(a, "id", "")
+        text = (getattr(a, "claim_text", "") or "")[:240]
+        lines.append(f"- [{label}] {text}")
+    body = "\n".join(lines) if lines else "(no specific attacks)"
+    return (
+        "REBUTTAL PASS — read this carefully.\n\n"
+        f"Adversus has produced {len(attacks)} attack(s) against the active "
+        "hypotheses. For each one, look for COUNTER-EVIDENCE in the primary "
+        "data: SEC filings (fetch_filing_section), the data room "
+        "(query_data_room), expert calls (query_transcripts), and Tavily.\n\n"
+        "Three honest outcomes — pick the right one per attack:\n"
+        " 1. The attack is wrong → submit a finding with the contradicting\n"
+        "    primary evidence (KNOWN if quoted, REASONED otherwise).\n"
+        " 2. The attack is partly right → qualify it with a finding that\n"
+        "    narrows the scope (e.g. 'concentration risk holds for top-3\n"
+        "    customers but NOT for top-10').\n"
+        " 3. The attack stands → corroborate an existing related finding\n"
+        "    via add_source_to_finding so the evidence isn't single-sourced.\n\n"
+        f"Hard cap: {REBUTTAL_FINDING_BUDGET} new findings on this pass. "
+        "Use mark_milestone_blocked if a question simply has no reachable "
+        "primary evidence — do not fabricate.\n\n"
+        f"Attacks to address:\n{body}"
+    )
+
+
+async def research_rebuttal_node(state: MarvinState) -> dict:
+    """C7 — iterative finding pushback.
+
+    After Adversus runs, give Calculus and Dora one chance to push back
+    against the strongest attacks with primary-data counter-evidence.
+    Single sequential pass (Calculus first because financial primary
+    sources are richer, then Dora for market/competitive). No retry —
+    one rebuttal pass, then on to Merlin synthesis.
+
+    If Adversus produced no findings worth rebutting (no load_bearing,
+    no anomaly/contradiction text), this node is a no-op and just sets
+    phase=rebuttal_done.
+    """
+    log_node_entry("research_rebuttal", state)
+    mission_id = state.get("mission_id", "")
+    messages = state.get("messages", [])
+    store = MissionStore()
+
+    findings = store.list_findings(mission_id)
+    attacks = _select_rebuttal_targets(findings)
+    if not attacks:
+        logger.info("research_rebuttal: no rebuttal targets for %s; skipping", mission_id)
+        return {"phase": "rebuttal_done"}
+
+    msg = HumanMessage(content=_build_rebuttal_message(attacks))
+    state_with_msg = {**state, "messages": messages + [msg]}
+
+    try:
+        cal_out = await calculus_agent_node(state_with_msg)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("research_rebuttal: calculus pass failed: %s", exc)
+        cal_out = state_with_msg
+
+    try:
+        next_state = {**state_with_msg, "messages": cal_out.get("messages", state_with_msg["messages"])}
+        await dora_agent_node(next_state)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("research_rebuttal: dora pass failed: %s", exc)
+
+    return {"phase": "rebuttal_done"}
+
+
 async def adversus_node(state: MarvinState) -> dict:
     """Run adversus agent and move to redteam_done phase."""
     log_node_entry("adversus", state)
@@ -586,6 +695,7 @@ def build_graph(checkpointer=None):
     builder.add_node("gate_entry", gate_entry_node)
     builder.add_node("gate", gate_node)
     builder.add_node("adversus", adversus_node)
+    builder.add_node("research_rebuttal", research_rebuttal_node)
     builder.add_node("merlin", merlin_node)
     builder.add_node("papyrus_delivery", papyrus_delivery_node)
     builder.add_node("orchestrator", orchestrator_agent_node)
@@ -602,6 +712,7 @@ def build_graph(checkpointer=None):
             "dora": "dora",
             "calculus": "calculus",
             "adversus": "adversus",
+            "research_rebuttal": "research_rebuttal",
             "merlin": "merlin",
             "papyrus_delivery": "papyrus_delivery",
             "orchestrator": "orchestrator",
@@ -659,6 +770,14 @@ def build_graph(checkpointer=None):
     
     builder.add_conditional_edges("adversus", phase_router, {
         "merlin": "merlin",
+        "research_rebuttal": "research_rebuttal",
+        "gate": "gate",
+        "orchestrator": "orchestrator",
+        END: END,
+    })
+
+    builder.add_conditional_edges("research_rebuttal", phase_router, {
+        "merlin": "merlin",
         "gate": "gate",
         "orchestrator": "orchestrator",
         END: END,
@@ -685,6 +804,7 @@ def build_graph(checkpointer=None):
         "dora": "dora",
         "calculus": "calculus",
         "adversus": "adversus",
+        "research_rebuttal": "research_rebuttal",
         "merlin": "merlin",
         "papyrus_delivery": "papyrus_delivery",
         # Self-loop: phase_router falls through to "orchestrator" for any
