@@ -188,6 +188,13 @@ export function routeDeliverableToSectionId(deliverable: {
   return knownTypeRoutes[type] ?? null;
 }
 
+function humanizeSlug(slug: string): string {
+  return slug
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function formatDeliverableDisplayName(deliverable: {
   deliverable_type?: unknown;
   deliverableType?: unknown;
@@ -196,9 +203,18 @@ export function formatDeliverableDisplayName(deliverable: {
 }): string {
   const type = String(deliverable.deliverable_type ?? deliverable.deliverableType ?? "deliverable");
   const sectionId = routeDeliverableToSectionId(deliverable);
+  const filePath = String(deliverable.file_path ?? deliverable.filePath ?? "");
 
   if (type.toLowerCase() === "workstream_report" && sectionId) {
     return WORKSTREAM_REPORT_LABELS[sectionId] ?? "Workstream report";
+  }
+
+  // C-PER-MILESTONE: extract the milestone slug from per-milestone files
+  // like `W2.3_unit_economics.md` → "Unit economics" so the rail doesn't
+  // show six identical "Milestone report" rows.
+  const milestoneMatch = filePath.match(/(?:^|\/)W\d+\.\d+_([^/]+?)\.md$/i);
+  if (milestoneMatch?.[1]) {
+    return humanizeSlug(milestoneMatch[1]);
   }
 
   return DELIVERABLE_LABELS[type] ?? capitalizeFirst(type.replace(/_/g, " "));

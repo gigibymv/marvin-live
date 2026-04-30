@@ -7,6 +7,8 @@ body {
   min-height: 100vh;
   background: #f4f0ea;
   color: #1a1814;
+  font-family: "Geist", -apple-system, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
