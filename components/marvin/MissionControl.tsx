@@ -1519,8 +1519,19 @@ export default function MissionControl({
   const synthesisOutputs: any[] = (() => {
     const v = (progress as any)?.merlin_verdict;
     if (!v?.verdict) return [];
-    const verdictLine = `Verdict: ${v.verdict}`;
-    const text = v.notes ? `${verdictLine}\n\n${v.notes}` : verdictLine;
+    // Safety net: strip any leading "Verdict: <ENUM>" line and
+    // hyp-UUID artifacts the model may still echo despite the
+    // prompt ban. The verdict enum is rendered as a badge via
+    // `confidence`; the prose lives in `text`.
+    const sanitizeVerdictNotes = (raw: string): string => {
+      let out = String(raw ?? "").trim();
+      out = out.replace(/^\s*Verdict:\s*[A-Z_]+\s*\n?/i, "").trim();
+      out = out.replace(/\bhyp-[0-9a-f]{6,}\b/gi, "").trim();
+      out = out.replace(/[ \t]{2,}/g, " ");
+      out = out.replace(/\n{3,}/g, "\n\n");
+      return out;
+    };
+    const text = sanitizeVerdictNotes(v.notes ?? "");
     return [{
       id: `synthesis-verdict-${v.created_at ?? "current"}`,
       kind: "finding" as const,
