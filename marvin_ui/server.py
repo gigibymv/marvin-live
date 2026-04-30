@@ -1764,6 +1764,9 @@ async def lifespan(app: FastAPI):
     logger.info("Graph initialized, server ready")
     yield
     logger.info("Shutting down Marvin server...")
+    if _checkpoint_conn is not None:
+        await _checkpoint_conn.close()
+        logger.info("Closed checkpoint DB connection")
 
 
 # =============================================================================
