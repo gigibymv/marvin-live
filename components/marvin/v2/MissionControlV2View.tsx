@@ -196,11 +196,28 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
       if (k === "milestone") return 1;
       return 2;
     };
+    // Strip a leading "Deliverable ready · " / "Milestone complete · " prefix
+    // and lowercase so we can match the artifact text across kinds.
+    const normalizeMatchText = (raw: string): string =>
+      raw
+        .replace(/^\s*(deliverable\s+ready|milestone\s+complete)\s*[·\-:]\s*/i, "")
+        .trim()
+        .toLowerCase();
     for (const tab of TAB_IDS) {
-      // Drop ALL milestone rows from outputs — the deliverable row already
-      // conveys "this step is done" with an Open affordance. Milestones
-      // without a paired deliverable are visible in the activity feed.
-      map[tab] = map[tab].filter((item) => item.kind !== "milestone");
+      const deliverableLabels = new Set(
+        map[tab].filter((m) => m.kind === "deliverable").map((d) => normalizeMatchText(d.text ?? "")),
+      );
+      // Drop a milestone only when a paired deliverable already exists on
+      // the same tab. Otherwise the milestone is the sole signal that the
+      // step is done (e.g., Dora completed Market size before papyrus has
+      // generated the per-milestone deliverable file). Without this fallback
+      // the Market Analysis tab read as empty even though work was visibly
+      // happening in the activity feed.
+      map[tab] = map[tab].filter((item) => {
+        if (item.kind !== "milestone") return true;
+        const key = normalizeMatchText(item.text ?? "");
+        return key.length > 0 && !deliverableLabels.has(key);
+      });
       map[tab] = map[tab]
         .map((item, index) => ({ item, index }))
         .sort((a, b) => {

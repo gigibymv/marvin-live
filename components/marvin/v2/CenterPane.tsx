@@ -322,14 +322,23 @@ export function CenterPane({
 
   // ── Resizable split ──────────────────────────────────────────────────────────
   // activityPct = height of the Activity pane as % of the split container.
-  // Outputs takes the remainder. Default 50/50.
+  // Default 50/50. When the user has not yet manually dragged the divider,
+  // we auto-bias toward Activity (70%) when Outputs is empty so the user
+  // sees the live agent feed instead of a big white block.
   const [activityPct, setActivityPct] = useState(50);
+  const userDraggedRef = useRef(false);
   const splitRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  const effectiveActivityPct = userDraggedRef.current
+    ? activityPct
+    : findings.length === 0
+      ? 70
+      : 50;
 
   const onHandleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     dragging.current = true;
+    userDraggedRef.current = true;
 
     const onMove = (ev: MouseEvent) => {
       if (!dragging.current || !splitRef.current) return;
@@ -404,7 +413,7 @@ export function CenterPane({
             outputs and activity. */}
         <section
           aria-label="Outputs"
-          style={{ flex: `1 1 ${100 - activityPct}%`, overflowY: "auto", minHeight: 0, background: "white" }}
+          style={{ flex: `1 1 ${100 - effectiveActivityPct}%`, overflowY: "auto", minHeight: 0, background: "white" }}
         >
           <div style={{ padding: "10px 24px 6px", display: "flex", alignItems: "baseline", gap: 8 }}>
             <Mono size={9} weight={700} spacing=".14em" color="var(--ink)">Outputs</Mono>
@@ -412,20 +421,38 @@ export function CenterPane({
           </div>
           {findings.length === 0 ? (
             <div style={{
-              padding: "16px 24px 24px",
+              padding: "20px 24px",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 10,
+              gap: 8,
               maxWidth: 460,
               margin: "0 auto",
               textAlign: "center",
             }}>
               {isWorking ? (
                 <>
-                  <StatusDot color="var(--amber)" size={7} />
-                  <div style={{ fontSize: 12, color: "var(--ink3)", lineHeight: 1.6 }}>
-                    Agents are working. Outputs will appear here as they are validated.
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--ink3)", lineHeight: 1.6 }}>
+                      Agents are working
+                    </span>
+                    <span style={{ display: "inline-flex", gap: 3 }}>
+                      {[0, 1, 2].map((i) => (
+                        <span
+                          key={i}
+                          style={{
+                            width: 4,
+                            height: 4,
+                            borderRadius: 1,
+                            background: "var(--ink3)",
+                            animation: `blink 1.1s ${i * 0.25}s ease-in-out infinite`,
+                          }}
+                        />
+                      ))}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
+                    New findings will appear here as they are validated.
                   </div>
                 </>
               ) : (
@@ -457,7 +484,7 @@ export function CenterPane({
         <section
           aria-label="Activity"
           style={{
-            flex: `1 1 ${activityPct}%`,
+            flex: `1 1 ${effectiveActivityPct}%`,
             overflowY: "auto",
             minHeight: 0,
             background: "var(--bone)",
