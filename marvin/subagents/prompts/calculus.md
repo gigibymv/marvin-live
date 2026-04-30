@@ -92,9 +92,29 @@ For every anomaly found:
 5. Management decks (claims to verify, not facts)
 6. Industry estimates (last resort, mark LOW_CONFIDENCE)
 
-When no data room is provided, use search_sec_filings tool.
-Mark every finding KNOWN if from SEC, REASONED if estimated 
-from public proxies.
+When no data room is provided, use the EDGAR tools:
+
+1. `search_sec_filings(company_name, year)` — resolves the target on
+   EDGAR and returns the real list of filings (form, accession,
+   filing_date, report_date, url). Use it to discover what's available.
+   If `error="company_not_found_on_edgar"` or `filings=[]`, the target
+   is private or the year is wrong — call `mark_milestone_blocked` or
+   submit a LOW_CONFIDENCE finding describing the gap. Do NOT fabricate
+   a citation from an empty result.
+
+2. `fetch_filing_section(company_name, form, year, section)` — pulls
+   the actual text of a section so you can quote it. section ∈
+   {business, risk_factors, mdna, financial_statements}. If the
+   response carries a non-null `text`, the corresponding `url` and
+   `accession` are real and quotable — use them as source_url and
+   source_quote. If `text=None` (error="section_not_isolated" or
+   "fetch_failed"), DO NOT invent a quote: either retry a different
+   section/form/year, cite the filing URL with NO quote, or report
+   the gap.
+
+Mark every finding KNOWN if quoted from a fetched filing section,
+REASONED if estimated from public proxies, LOW_CONFIDENCE if the
+filing was unavailable.
 
 # OUTPUTS — STRICT FORMAT
 

@@ -524,9 +524,15 @@ def test_anomaly_detector_flags_mismatches_and_persists_known(store: MissionStor
     assert any(f.agent_id == "calculus" and f.confidence == "KNOWN" for f in store.list_findings("m-test"))
 
 
-def test_search_sec_filings_returns_stub():
-    result = calculus_tools.search_sec_filings("Acme", 2024)
-    assert result["filings"][0]["form"] == "10-K"
+def test_search_sec_filings_unknown_company_returns_no_filings(monkeypatch):
+    # When EDGAR can't resolve the target, the tool must return an explicit
+    # error and an empty filings list — never a fabricated stub URL.
+    import marvin.tools.edgar_client as ec
+    ec._TICKER_CACHE = {}  # force "not found" without HTTP
+    result = calculus_tools.search_sec_filings("Acme-not-public", 2024)
+    assert result["filings"] == []
+    assert result.get("error") == "company_not_found_on_edgar"
+    ec._TICKER_CACHE = None
 
 
 def test_attack_hypothesis_persists_redteam_finding(store: MissionStore, state: dict[str, str]):

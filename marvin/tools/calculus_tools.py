@@ -291,28 +291,143 @@ def anomaly_detector(
     return result
 
 
-def search_sec_filings(company_name: str, year: int | str = 2024, state: InjectedStateArg = None) -> dict[str, Any]:
-    """Search SEC filings for a company in a given fiscal year.
+def search_sec_filings(
+    company_name: str,
+    year: int | str = 2024,
+    state: InjectedStateArg = None,
+) -> dict[str, Any]:
+    """Search SEC EDGAR for a company's filings filed in a given calendar year.
 
-    No mission state is required — this is a pure lookup. The previous
-    `require_mission_id(state)` call coupled the tool to mission scope without
-    using the mission_id, so it has been removed.
+    Resolves ticker or company name via EDGAR's company_tickers.json, then
+    pulls the recent submissions feed and filters by year. Returns real
+    accession numbers, primary-document URLs, filing dates and report dates.
+    Use the returned `url` with `fetch_filing_section` to retrieve quotable
+    text. If resolution fails the response carries an `error` field and
+    `filings: []` — never fabricate a citation from an empty result.
     """
+    from marvin.tools.edgar_client import list_filings, resolve_cik
+
+    try:
+        year_int = int(year)
+    except (TypeError, ValueError):
+        year_int = 0
+
+    resolved = resolve_cik(company_name)
+    if not resolved:
+        return {
+            "company_name": company_name,
+            "year": year_int,
+            "cik": None,
+            "filings": [],
+            "error": "company_not_found_on_edgar",
+        }
+
+    filings = list_filings(
+        resolved["cik"],
+        forms=("10-K", "10-Q", "20-F", "8-K"),
+        since_year=year_int or None,
+        limit=20,
+    )
+    if year_int:
+        filings = [f for f in filings if (f.get("filing_date") or "").startswith(str(year_int))]
     return {
-        "company_name": company_name,
-        "year": year,
-        "filings": [
-            {
-                "form": "10-K",
-                "title": f"{company_name} 10-K FY{year}",
-                "date": f"{year}-03-31",
-                "url": f"https://sec.gov/{company_name.lower()}-{year}",
-            },
-            {
-                "form": "10-Q",
-                "title": f"{company_name} 10-Q FY{year}",
-                "date": f"{year}-06-30",
-                "url": f"https://sec.gov/{company_name.lower()}-{year}-q2",
-            },
-        ],
+        "company_name": resolved["title"],
+        "ticker": resolved["ticker"],
+        "cik": resolved["cik"],
+        "year": year_int,
+        "filings": filings,
+    }
+
+
+def fetch_filing_section(
+    company_name: str,
+    form: str = "10-K",
+    year: int | str = 2024,
+    section: str = "mdna",
+    state: InjectedStateArg = None,
+) -> dict[str, Any]:
+    """Retrieve a specific section of a SEC filing as quotable text.
+
+    section ∈ {business, risk_factors, mdna, financial_statements}. Returns
+    the most recent matching filing's section text along with its URL,
+    accession, filing_date, and report_date — these MUST be carried into
+    add_finding_to_mission as source_url + source_quote when citing the
+    finding. If the section cannot be isolated, returns text=None and
+    error="section_not_isolated"; do NOT fabricate a quote in that case —
+    use the full filing URL with no quote, or surface a data gap.
+    """
+    from marvin.tools.edgar_client import (
+        extract_sections,
+        fetch_filing_text,
+        list_filings,
+        resolve_cik,
+    )
+
+    try:
+        year_int = int(year)
+    except (TypeError, ValueError):
+        year_int = 0
+
+    resolved = resolve_cik(company_name)
+    if not resolved:
+        return {
+            "company_name": company_name,
+            "form": form,
+            "year": year_int,
+            "section": section,
+            "text": None,
+            "url": None,
+            "error": "company_not_found_on_edgar",
+        }
+
+    filings = list_filings(
+        resolved["cik"], forms=(form,), since_year=year_int or None, limit=10
+    )
+    if year_int:
+        filings = [f for f in filings if (f.get("filing_date") or "").startswith(str(year_int))]
+    if not filings:
+        return {
+            "company_name": resolved["title"],
+            "ticker": resolved["ticker"],
+            "cik": resolved["cik"],
+            "form": form,
+            "year": year_int,
+            "section": section,
+            "text": None,
+            "url": None,
+            "error": "no_matching_filing",
+        }
+
+    filing = filings[0]
+    body = fetch_filing_text(filing)
+    if not body:
+        return {
+            "company_name": resolved["title"],
+            "ticker": resolved["ticker"],
+            "cik": resolved["cik"],
+            "form": form,
+            "year": year_int,
+            "section": section,
+            "text": None,
+            "url": filing["url"],
+            "accession": filing["accession"],
+            "filing_date": filing["filing_date"],
+            "error": "fetch_failed",
+        }
+
+    sections = extract_sections(body)
+    text = sections.get(section)
+    return {
+        "company_name": resolved["title"],
+        "ticker": resolved["ticker"],
+        "cik": resolved["cik"],
+        "form": form,
+        "year": year_int,
+        "section": section,
+        "text": text,
+        "url": filing["url"],
+        "accession": filing["accession"],
+        "filing_date": filing["filing_date"],
+        "report_date": filing.get("report_date"),
+        "error": None if text else "section_not_isolated",
     }
