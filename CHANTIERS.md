@@ -426,6 +426,122 @@ shutdown.
 
 ---
 
+## C-MC-V2 — Mission Control v2 visual port + jargon sweep + 7 platform bugs
+
+- **Bucket:** UX
+- **Status:** shipped (live validation in-flight)
+- **Commits:** `c4b12c9`, `57baaee`, `004a9ca`, `859511f`, `4bbd252`, `dff7cb9`,
+  `2d5d250`
+- **Scope:** frontend-only (no backend, no Python, no SSE-contract change).
+  Phase C (tool-call SSE, full framing-memo removal, merlin prompt rewrite)
+  remains deferred.
+
+**Problem (live test 2026-04-30).** A real CDD mission walk-through surfaced
+seven UX bugs (triple timer, tool calls invisible, framing-memo deliverable
+not removed, double approve prompt, "starting research" no working dots,
+calculus stale "still working" while sidebar said DONE, raw
+`BACK_TO_DRAWING_BOARD` verdict). Separately, an "Impeccable Audit" listed
+ten design issues (pulse animations, blink dots, unicode glyph column,
+"LOAD-BEARING" label, split-pane confusion, finding-row badge overload,
+chat-header overdesign, scattered radii, line-height drift, runaway type
+scale).
+
+**Shipped.**
+
+- **mc v2 component tree** (`components/marvin/v2/`): `Tokens.css`,
+  `Primitives.tsx` (Icon, StatusDot, Mono, Badge, ProgressBar, StateTag,
+  PulsingM, mapAgentStatus), `LeftRail.tsx`, `CenterPane.tsx`,
+  `RightRail.tsx`, `MissionControlV2View.tsx` (wrapper preserving the
+  legacy prop contract). Source design reference kept under
+  `UI Marvin/mc v2/` for traceability.
+- **Design-system invariants:** Bricolage Grotesque (display) + Geist
+  (body) + Geist Mono (mono); 3 mono sizes (9/10.5/12), 3 body sizes
+  (12/13/15); body line-height 1.6; controlled radii (0/4/8); no global
+  `@keyframes pulse`; agent rows static; `@keyframes blink` for typing
+  + empty-state dots; `@keyframes pulseM` for the brand-glyph live
+  indicator. Body font set globally in `app/globals.css` so v2 pages
+  no longer fall back to system serif.
+- **Pulsing M everywhere** for "live" indicators (left rail mission card,
+  center pane status, chat header) via the shared `PulsingM` primitive.
+- **Split-pane Outputs/Activity** with drag-resizable handle. Default
+  50/50, but auto-biases to 70/30 when Outputs is empty so the user
+  never stares at a big white block. Manual drag freezes the auto-bias.
+- **MissionControl.tsx wiring + 7 bugs:** import switched to v2 wrapper;
+  `narrationAgentRef` clears stale narration on `agent_done` and
+  replaces it with a positive `<Agent> — step complete` signal;
+  `userPickedTabRef` + pure-derivation `effectiveSelectedTab` makes the
+  tab follow `activeStep` until the user clicks one (resets on
+  `phase_changed`); `pendingGateBanner` gated on `!gateActionInFlight`
+  to kill the double-approve prompt; live findings merged into
+  `allSectionOutputs` (deduped by `kind:id`) so SSE-driven outputs
+  surface immediately instead of waiting for DB persistence.
+- **Phase-based progress.** Replaced
+  `deliveredMilestones / totalMilestones` (which under-reported badly:
+  33% on a fully-completed mission because backend `ws.status` never
+  equals "completed") with a 6-stage formula mirroring the same UI
+  signals used by `workstreamContent` (terminal milestones / ready
+  deliverable / merlin verdict for W3). Display is `Math.round(ratio
+  * 100)` so users see "42%" not "0.4166666...%".
+- **Synthesis tab artifact.** Merlin verdict surfaces as a single dark
+  deliverable header carrying both the humanised verdict label
+  ("Needs rework") and the prose body inline; same row also surfaces
+  on the Final deliverables tab so the IC handoff view leads with the
+  verdict, not a bare file list.
+- **Outputs polish.** Deliverables sort first (rank 0 → milestone 1 →
+  finding 2). Milestones drop from outputs only when a paired
+  deliverable shares the same label on the same tab — preserves
+  per-milestone progress signal on tabs where papyrus has not yet
+  rendered the file (live: Dora completes Market size before papyrus
+  generates the per-milestone deliverable, otherwise the tab read as
+  empty). Activity tape drops `deliverable`/`milestone` echoes that
+  already render full-row in Outputs.
+- **Per-milestone deliverable names.** `formatDeliverableDisplayName`
+  extracts the slug from `Wx.y_<slug>.md` paths so the rail no longer
+  renders six identical "Milestone report" rows.
+- **Chat deliverable deep-link.** `MissionChatMessage` extended with
+  optional `deliverableId` / `deliverableLabel`. Deliverable-ready
+  bubbles render an inline "Open <name> →" button that opens the
+  existing `DeliverablePreview` modal (`setPreviewDeliverableId`).
+- **Unified jargon sweep** at `lib/missions/humanize.ts` (single source
+  of truth for all client-facing prose). Applied at every rendering
+  boundary: FindingRow, MilestoneRow, DeliverableRow, ActivityItem,
+  RightRail chat bubbles + narration, DeliverablePreview markdown +
+  text fallback, MissionControl synthesisOutputs. Sweeps verdict
+  enums (SHIP/MINOR_FIXES/MAJOR_FIXES/BACK_TO_DRAWING_BOARD/
+  READY_FOR_REVIEW/BLOCKED), compound phrases ("What's needed to reach
+  SHIP" → "What's needed before sign-off"), internal IDs
+  (`[f-XXXXXX]`, `[hyp-XXXXXX]`, `[m-...]`, `gate-...`), adversarial
+  framing ("Rebuttal to attack" → "Counter-argument"), audit #4
+  (load-bearing → key), internal scaffolding line headers (Why:/What's
+  needed:/Recommendation:/Verdict: <ENUM>), and a catch-all
+  snake_case→Title Case rule that defangs leaked agent type tokens
+  (`exec_summary` → "Exec summary").
+- **Empty-state UX.** Replaced static dot + em-dash sentence with
+  "Agents are working" + 3 animated blink dots (same vocabulary as
+  the chat typing indicator) + a small muted "New findings will
+  appear here as they are validated." line.
+- **Typewriter activity reveal.** `useTypewriter` hook progressively
+  reveals long activity items character-by-character on first
+  appearance; module-scoped `ANIMATED_ACTIVITY_IDS` Set memoises so
+  re-renders don't re-trigger. Snaps short rows (≤60 chars) to final
+  text immediately to avoid empty-frame glitch.
+
+**Verification.** `npm run typecheck` clean; `npm run build` green
+(✓ 2.6s, 74 kB / 180 kB First Load JS for `/missions/[id]`); 67/67
+unit tests pass. No `make smoke` because no backend touched.
+
+**Open follow-ups (Phase C, gated by `make smoke`).**
+
+1. Surface tool calls live (`_TOOL_EVENT_BUILDERS` in
+   `marvin_ui/server.py` for `search_*` / `fetch_*` / `tavily_*`).
+2. Full framing-memo removal (`papyrus_tools.py` + `adapters.ts` +
+   server `_TOOL_SUMMARIES`).
+3. Rewrite `prompt_merlin.md` so verdict/scaffolding never leak into
+   prose in the first place — the `humanize.ts` regex sweep is a
+   safety net, not a substitute.
+
+---
+
 ## Pending — backlog
 
 ### Wave 3 — Plus tard
