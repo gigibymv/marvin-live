@@ -731,6 +731,27 @@ def _build_deliverable_ready_from_emit(payload: dict) -> dict:
     return out
 
 
+def _build_papyrus_chat_event(payload: dict) -> str | None:
+    """Build a Papyrus chat bubble SSE string for a freshly persisted deliverable.
+
+    Bug 6: deliverable_ready hydrates the sidebar but produced no chat
+    narration — users saw 7 deliverables READY without any Papyrus voice
+    confirming generation. Emit one bubble per deliverable so MARVIN feels
+    alive and the user has an inline OPEN affordance.
+    """
+    deliverable_id = str(payload.get("deliverable_id") or "").strip()
+    if not deliverable_id:
+        return None
+    raw_type = str(payload.get("deliverable_type") or "deliverable").strip()
+    label = raw_type.replace("_", " ").strip().capitalize() or "Deliverable"
+    display = get_display_name("papyrus_delivery") or "Papyrus"
+    return _sse_event("text", {
+        "agent": display,
+        "text": f"{display} — {label} ready. OPEN \u2192",
+        "deliverableId": deliverable_id,
+    })
+
+
 def _build_milestone_done_from_emit(payload: dict) -> dict:
     out: dict = {"milestoneId": str(payload.get("milestone_id", ""))}
     for src_key, wire_key in (
@@ -1392,6 +1413,8 @@ async def _stream_chat(
         register_milestone_listener(mission_id, _on_milestone)
         register_graph_event_listener(mission_id, _on_graph_event)
 
+        papyrus_chat_emitted: set[str] = set()
+
         def _drain_events() -> list[str]:
             out: list[str] = []
             while True:
@@ -1406,6 +1429,12 @@ async def _stream_chat(
                 except queue.Empty:
                     break
                 out.append(_sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload)))
+                deliverable_id = str(payload.get("deliverable_id") or "").strip()
+                if deliverable_id and deliverable_id not in papyrus_chat_emitted:
+                    chat_event = _build_papyrus_chat_event(payload)
+                    if chat_event:
+                        out.append(chat_event)
+                        papyrus_chat_emitted.add(deliverable_id)
             while True:
                 try:
                     payload = milestone_q.get_nowait()
@@ -1557,6 +1586,8 @@ async def _stream_resume_passive(
     register_deliverable_listener(mission_id, _on_deliverable)
     register_milestone_listener(mission_id, _on_milestone)
 
+    papyrus_chat_emitted: set[str] = set()
+
     try:
         # The driver may already have emitted run_start before we attached.
         # Emit a defensive run_start so the client's UI flips out of stalled
@@ -1583,6 +1614,12 @@ async def _stream_resume_passive(
                 except queue.Empty:
                     break
                 yield _sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload))
+                deliverable_id = str(payload.get("deliverable_id") or "").strip()
+                if deliverable_id and deliverable_id not in papyrus_chat_emitted:
+                    chat_event = _build_papyrus_chat_event(payload)
+                    if chat_event:
+                        yield chat_event
+                        papyrus_chat_emitted.add(deliverable_id)
                 drained_any = True
             while True:
                 try:
@@ -1620,6 +1657,12 @@ async def _stream_resume_passive(
             except queue.Empty:
                 break
             yield _sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload))
+            deliverable_id = str(payload.get("deliverable_id") or "").strip()
+            if deliverable_id and deliverable_id not in papyrus_chat_emitted:
+                chat_event = _build_papyrus_chat_event(payload)
+                if chat_event:
+                    yield chat_event
+                    papyrus_chat_emitted.add(deliverable_id)
         while not milestone_q.empty():
             try:
                 payload = milestone_q.get_nowait()
@@ -1730,6 +1773,8 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         register_milestone_listener(mission_id, _on_milestone)
         register_graph_event_listener(mission_id, _on_graph_event)
 
+        papyrus_chat_emitted: set[str] = set()
+
         def _drain_events() -> list[str]:
             out: list[str] = []
             while True:
@@ -1744,6 +1789,12 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                 except queue.Empty:
                     break
                 out.append(_sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload)))
+                deliverable_id = str(payload.get("deliverable_id") or "").strip()
+                if deliverable_id and deliverable_id not in papyrus_chat_emitted:
+                    chat_event = _build_papyrus_chat_event(payload)
+                    if chat_event:
+                        out.append(chat_event)
+                        papyrus_chat_emitted.add(deliverable_id)
             while True:
                 try:
                     payload = milestone_q.get_nowait()
