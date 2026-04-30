@@ -429,6 +429,108 @@ shutdown.
 ## Pending — backlog
 
 ### Wave 3 — Plus tard
+
+#### C-RESUME-RECOVERY — Checkpointer recovery semantics on LLM-call failure
+
+- **Bucket:** Foundational (graph reliability)
+- **Effort:** M
+- **Priority:** HIGH within Wave 3 — observed live, blocks any mission
+  that hits an OpenRouter transient
+
+**Problem.** When OpenRouter returns a transient 5xx with an HTML
+body (rate limit, gateway error), `langchain-openai` raises
+`json.JSONDecodeError` mid-`agent.ainvoke()`. The exception bubbles
+out of the agent node, the detached resume driver catches it at the
+top level, logs `Detached resume failed`, and exits. The
+AsyncSqliteSaver checkpoint is left at the *entry* of the failed
+node, not past it. Every subsequent `POST /resume` re-enters the
+same node — adversus retries from scratch, accumulates fresh
+findings, and the run never advances to merlin. Live evidence:
+Snowflake mission `m-snowflake-20260430-x-d2ab5802` (2026-04-30) sat
+in adversus replay after a single OpenRouter HTML response, even
+across uvicorn restarts.
+
+**Why this matters.** Any mission that hits a single transient
+OpenRouter blip (1-in-N, but real) becomes effectively unrecoverable
+without manual checkpointer surgery. The chantiers we just shipped
+(C-CONV, C-PER-MILESTONE) are blocked from full live validation
+because of this failure mode, not because of their own logic.
+
+**Out of scope.** Replacing OpenRouter, retrying every LLM call
+forever, or adding a global "best-effort silently skip the agent on
+failure" — that would be silent degradation per CLAUDE.md §1.
+
+**Approach (sketch — confirm before coding).**
+
+1. **Detect the transient class explicitly.** Wrap the `ainvoke()` call
+   in each agent node body (dora / calculus / adversus / merlin) with
+   a narrow `except (json.JSONDecodeError, openai.APIError,
+   httpx.HTTPStatusError)` translator. Re-raise everything else
+   unchanged so real bugs still surface.
+
+2. **Bounded retry inside the node.** On detected transient, retry the
+   ainvoke up to N times (config: `MARVIN_LLM_TRANSIENT_RETRIES`,
+   default 2) with exponential backoff (1s → 4s). Log each retry at
+   warning level so the rail can render `agent retrying — transient
+   upstream error`. After exhausting retries, raise a typed
+   `LLMTransientFailure(agent=..., retries=...)`.
+
+3. **Surface failure, advance phase.** Catch `LLMTransientFailure` at
+   the agent-node boundary and convert to a state delta: persist a
+   workstream-block (Adversus → W4 blocked, etc.) with a clear
+   reason, append a HumanMessage-shaped diagnostic for downstream
+   agents, and return `{"phase": "<expected_next_phase>", ...}`.
+   This gives the checkpointer a clean post-node state to write so
+   `/resume` can advance instead of replaying. Pattern to follow:
+   the existing `research_rebuttal_node` "log + mark milestone
+   blocked, never raise" path landed in `0aa6315`.
+
+4. **Resume endpoint hygiene.** When a resume hits a node that
+   previously raised but the checkpoint is at node-entry, run one
+   forced step — i.e. invoke the node once and let its retry+block
+   logic produce a successor checkpoint. Today the resume just
+   re-streams from the broken checkpoint. Add a small audit-log
+   line so we can trace recovery in production.
+
+5. **Kill-switch.** Env flag `MARVIN_LLM_TRANSIENT_RETRIES=0` disables
+   the retry layer for tests / debugging. Smoke + tests must still
+   pass with retries=0 because the transient never fires there.
+
+**Files (expected).**
+- `marvin/llm_factory.py` (typed exception, retry wrapper)
+- `marvin/graph/subgraphs/{dora,calculus,adversus,merlin}.py`
+  (wrap ainvoke; convert to state-delta on failure)
+- `marvin/graph/runner.py` (`adversus_node` + `merlin_node` post-call
+  surfaces; same pattern as research_rebuttal_node)
+- `marvin_ui/server.py` (resume endpoint forced-step on
+  pre-execution checkpoint; typed audit log)
+- New `tests/test_llm_transient_recovery.py` covering: (a) HTML body
+  triggers retry not crash, (b) repeated failure marks block + still
+  advances phase, (c) resume after agent failure does not replay
+  the same node twice.
+
+**Verification.**
+- `pytest -q` clean
+- `make smoke` clean
+- Live mission with a stubbed OpenRouter that returns HTML for the
+  first request and JSON afterwards — must complete past the agent
+  on first call (retry succeeds) without re-running the node on a
+  separate `/resume`.
+- Live mission with a stubbed OpenRouter that returns HTML for ALL
+  requests — must surface "Adversus blocked: upstream LLM transient"
+  in the rail and still advance the graph to merlin (best-effort).
+
+**Open question for the user before coding.**
+- Default retry count (2 vs 3)?
+- On exhausted retries, do we want the run to **block at G3 with a
+  visible diagnostic and force a manual rerun**, or **synthesize
+  partial results with the verdict template flagged "incomplete due
+  to upstream LLM failure"**? Both are defensible — preference
+  decides the merlin_node behavior.
+
+---
+
+### Other Wave 3 chantiers
 - **C5** — DCF + sensitivity engine. M effort. Depends on C1 (filings)
   + ideally C2 (data room).
 - **C9** — Adversus kill-list ranking. S–M. **Out of scope per user
