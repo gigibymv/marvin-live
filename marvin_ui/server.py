@@ -1084,6 +1084,8 @@ async def _emit_for_update(
         if current_agent is not None:
             out.append(await _emit_agent_done(current_agent))
             current_agent = None
+            from marvin.graph.tool_callbacks import set_active_agent
+            set_active_agent(mission_id, None)
         interrupts = event["__interrupt__"]
         if isinstance(interrupts, tuple) and interrupts:
             interrupt_value = getattr(interrupts[0], "value", None)
@@ -1145,6 +1147,8 @@ async def _emit_for_update(
                     if throttle_state is not None:
                         throttle_state[_throttle_key_done] = _now
             current_agent = node_name
+            from marvin.graph.tool_callbacks import set_active_agent
+            set_active_agent(mission_id, node_name)
             _throttle_key_active = ("agent_active", node_name)
             _now = time.monotonic()
             _last_active = (throttle_state or {}).get(_throttle_key_active, 0.0)
@@ -1261,7 +1265,8 @@ async def _stream_chat(
     existing_brief_for_steer = store.get_mission_brief(mission_id)
     if existing_brief_for_steer and (existing_brief_for_steer.raw_brief or "").strip():
         from marvin.conversational.steering import classify_message, queue_steering
-        if classify_message(text) == "steer":
+        _early_intent = classify_message(text)
+        if _early_intent == "steer":
             yield await _emit_run_start()
             try:
                 queue_steering(mission_id, text)
@@ -1277,6 +1282,16 @@ async def _stream_chat(
                     "orchestrator",
                     "Could not queue your instruction; please retry.",
                 )
+            yield await _emit_run_end()
+            return
+        elif _early_intent == "rerun":
+            yield await _emit_run_start()
+            yield await _emit_text(
+                "orchestrator",
+                "Reruns can be triggered from the agent cards in the left panel — "
+                "click the agent name to see the option. If research is still running, "
+                "it will complete first.",
+            )
             yield await _emit_run_end()
             return
 
@@ -1418,6 +1433,15 @@ async def _stream_chat(
                                 "queue_steering failed: %s — falling through to QA",
                                 exc,
                             )
+                    elif intent == "rerun":
+                        yield await _emit_text(
+                            "orchestrator",
+                            "Reruns can be triggered from the agent cards in the left panel — "
+                            "click the agent name to see the option. If research is still running, "
+                            "it will complete first.",
+                        )
+                        yield await _emit_run_end()
+                        return
 
                 from marvin.graph.subgraphs.orchestrator_qa import respond_qa
 
