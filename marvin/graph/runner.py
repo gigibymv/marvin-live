@@ -285,12 +285,31 @@ def research_join(state: MarvinState) -> dict:
     mission_id = state.get("mission_id", "")
     store = MissionStore()
 
+    # Axis B: research_join was a 60-90s silent black hole — milestones,
+    # workstream reports, per-milestone reports, corroboration recompute all
+    # ran sequentially with zero SSE emissions. Emit conceptual progress
+    # narration at each step so the user sees motion. Same pattern as
+    # framing_node._frame_narrate. Stays in chat (no destination=trace) —
+    # these are MARVIN's progress markers, not raw tool callbacks.
+    from marvin.events import emit_graph_event
+    from datetime import UTC, datetime
+    import json as _json
+
+    def _join_narrate(intent: str) -> None:
+        try:
+            ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            payload = {"agent": "MARVIN", "intent": intent, "ts": ts}
+            emit_graph_event(mission_id, f"event: narration\ndata: {_json.dumps(payload)}\n\n")
+        except Exception:  # noqa: BLE001 — UX best-effort
+            pass
+
     # Phase 3 (Fix D): graph progression stays deterministic — we always
     # advance phase to research_done regardless of findings. But milestone
     # STATUS is now data-driven: a milestone is only "delivered" if its
     # workstream actually produced ≥1 finding. Otherwise it transitions to
     # "blocked" with a reason, so research coverage reports truth instead
     # of rubber-stamping empty branches as complete.
+    _join_narrate("Marking research milestones")
     findings = store.list_findings(mission_id)
     findings_by_workstream: dict[str, int] = {}
     for f in findings:
@@ -322,6 +341,7 @@ def research_join(state: MarvinState) -> dict:
     )
 
     for workstream_id in ("W1", "W2"):
+        _join_narrate(f"Compiling {workstream_id} workstream report")
         report = _generate_workstream_report_impl(workstream_id, mission_id)
         if report.get("status") == "blocked":
             continue
@@ -334,6 +354,7 @@ def research_join(state: MarvinState) -> dict:
     for milestone in store.list_milestones(mission_id):
         if milestone.status != "delivered":
             continue
+        _join_narrate(f"Drafting {milestone.label} milestone report")
         try:
             _generate_milestone_report_impl(milestone.id, mission_id)
         except Exception as exc:  # noqa: BLE001
@@ -345,6 +366,7 @@ def research_join(state: MarvinState) -> dict:
 
     # C4 corroboration gate: downgrade any KNOWN finding with <2 independent
     # sources to REASONED before manager review (G1) sees the finding base.
+    _join_narrate("Recomputing finding corroboration")
     from marvin.tools.mission_tools import recompute_mission_corroboration
     try:
         recompute_mission_corroboration(state={"mission_id": mission_id})
