@@ -1667,6 +1667,27 @@ export default function MissionControl({
     });
   }, [pendingGateForEffect?.id]);
 
+  // P14 + React-rules: this useMemo MUST sit above the early returns below;
+  // otherwise hook count varies between renders → React error #310.
+  const seedDeliverables = useMemo(
+    () =>
+      (progress?.deliverables ?? []).map((d) => ({
+        id: d.id,
+        label: formatDeliverableDisplayName(d),
+        deliverable_type: d.deliverable_type,
+        file_path: d.file_path,
+        milestone_id: (d as any).milestone_id ?? null,
+        status: d.status === "ready" && d.file_path ? "ready" : "pending",
+        href: d.status === "ready" && d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
+        onOpen:
+          d.status === "ready" && d.file_path
+            ? () => setPreviewDeliverableId(d.id)
+            : undefined,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [progress?.deliverables],
+  );
+
   if (!hasLoaded) {
     return null;
   }
@@ -2009,27 +2030,6 @@ export default function MissionControl({
   // This reference instability caused brief render windows where LeftRail received
   // a deliverables array whose items appeared new, producing the "all greyed"
   // visual flicker reported as P14.
-  // Compute deliverables (snapshot + live SSE additions, deduped by id)
-  const seedDeliverables = useMemo(
-    () =>
-      (progress?.deliverables ?? []).map((d) => ({
-        id: d.id,
-        label: formatDeliverableDisplayName(d),
-        deliverable_type: d.deliverable_type,
-        file_path: d.file_path,
-        milestone_id: (d as any).milestone_id ?? null,
-        status: d.status === "ready" && d.file_path ? "ready" : "pending",
-        href: d.status === "ready" && d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
-        // Chantier 4 CP3: ready deliverables open the preview modal instead of
-        // forcing a download. The download link is still available inside.
-        onOpen:
-          d.status === "ready" && d.file_path
-            ? () => setPreviewDeliverableId(d.id)
-            : undefined,
-      })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [progress?.deliverables],
-  );
   const deliverables = seedDeliverables;
   const deliverableOutputs = seedDeliverables
     .filter((d) => d.status === "ready")
