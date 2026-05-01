@@ -119,11 +119,25 @@ export function RightRail({
                 </div>
               )}
               <div style={{
-                maxWidth: "82%", padding: "10px 14px", fontSize: 13, lineHeight: 1.6,
-                color: isUser ? "var(--paper)" : "var(--ink2)",
-                background: isUser ? "var(--ink)" : "white",
+                maxWidth: "82%", padding: "10px 14px",
+                fontSize: 13, lineHeight: 1.6,
+                fontFamily: !isUser && m.deliverableId ? "var(--m)" : undefined,
+                color: isUser
+                  ? "var(--paper)"
+                  : m.deliverableId
+                    ? "#4ade80"
+                    : "var(--ink2)",
+                background: isUser
+                  ? "var(--ink)"
+                  : m.deliverableId
+                    ? "#0a0a0a"
+                    : "white",
                 borderRadius: isUser ? "12px 12px 3px 12px" : "12px 12px 12px 3px",
-                boxShadow: isUser ? "none" : "0 1px 3px rgba(26,24,20,.06)",
+                boxShadow: isUser
+                  ? "none"
+                  : m.deliverableId
+                    ? "0 1px 3px rgba(0,0,0,.18)"
+                    : "0 1px 3px rgba(26,24,20,.06)",
                 display: "flex", flexDirection: "column", gap: 8,
               }}>
                 <span>{isUser ? m.text : humanizeText(m.text)}</span>
@@ -135,12 +149,12 @@ export function RightRail({
                       alignSelf: "flex-start",
                       fontFamily: "var(--m)", fontSize: 9, fontWeight: 700,
                       letterSpacing: ".1em", textTransform: "uppercase",
-                      color: "var(--green)", background: "transparent",
-                      border: "1px solid rgba(45,110,78,.30)",
+                      color: "#4ade80", background: "transparent",
+                      border: "1px solid rgba(74,222,128,.45)",
                       padding: "5px 12px", borderRadius: 4, cursor: "pointer",
                       transition: "background .15s",
                     }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(45,110,78,.08)"; }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(74,222,128,.12)"; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                   >
                     Open {m.deliverableLabel ?? "deliverable"} →

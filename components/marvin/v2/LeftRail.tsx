@@ -195,11 +195,12 @@ function AgentsRail({ agents }: { agents: AgentData[] }): React.ReactElement {
           />
           <div style={{ flex: 1, minWidth: 0 }}>
             <span style={{
-              fontSize: 12,
-              fontWeight: a.state === "running" ? 600 : 500,
+              fontFamily: "var(--m)",
+              fontSize: 11,
+              fontWeight: a.state === "running" ? 700 : 500,
               lineHeight: 1.6,
               textTransform: "uppercase",
-              letterSpacing: ".04em",
+              letterSpacing: ".08em",
             }}>
               {a.name}
             </span>
