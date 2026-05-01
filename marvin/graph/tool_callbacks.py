@@ -80,7 +80,7 @@ _TOOL_VERBS: dict[str, str] = {
     "fetch_filing": "fetching SEC filings",
     "fetch_url": "fetching a source",
     "tavily_search": "searching the web",
-    "add_finding_to_mission": "recording a finding",
+    "add_finding_to_mission": "recording a finding.",
     "get_findings": "reading existing findings",
     "get_hypotheses": "reading hypotheses",
     "get_storyline_findings": "reviewing findings for the storyline",
