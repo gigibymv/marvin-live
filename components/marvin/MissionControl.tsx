@@ -2109,16 +2109,16 @@ export default function MissionControl({
     // ✓ — leftover milestone bookkeeping should never keep a tab spinning
     // after the run is over.
     const missionCompleted = mission.status === "completed";
-    // 9-bug triage C: a tab must not flip ✓ while the workstream's report
-    // deliverable is still generating. Require either a ready deliverable
-    // for this ws OR a verdict (W3 special case) before marking complete.
-    // Race-condition guard: agent_done can fire before the workstream's
-    // deliverable is persisted with status="ready" (papyrus generates the
-    // report asynchronously after Calculus/Dora returns). When the agent
-    // is DONE and all its milestones are terminal, the workstream is
-    // logically complete regardless of whether the deliverable_ready event
-    // has landed yet — without this branch the tab spins forever.
-    const agentDoneAllMilestonesTerminal = liveStatus === "done" && allMilestonesDone;
+    // Tab must not flip ✓ until every non-blocked milestone has a ready
+    // deliverable. Checks seedDeliverables (from REST /progress) so it
+    // works on both live connections and reconnects.
+    const allMilestoneDeliverablesMaterialized = !wsMilestones.some((m: any) => {
+      const mStatus = milestoneStatusOverrides[m.id] ?? m.status;
+      if (["blocked", "skipped"].includes(mStatus)) return false;
+      return !seedDeliverables.some((d) => d.status === "ready" && d.milestone_id === m.id);
+    });
+    const agentDoneAllMilestonesTerminal =
+      liveStatus === "done" && allMilestonesDone && allMilestoneDeliverablesMaterialized;
     const tabCompletedReady = missionCompleted
       || (allMilestonesDone && wsHasReadyDeliverable)
       || synthesisDone
