@@ -37,9 +37,19 @@ export function RightRail({
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Wave 1 transparency fix: scroll-to-bottom must track currentNarration
+  // too, because the typing bubble grows when narration arrives — without
+  // this dep, the latest narration line is hidden under the composer. Use
+  // scrollHeight (not a magic 99999) for safety on long histories, and
+  // schedule via rAF so layout has finished before we measure.
   useEffect(() => {
-    if (chatRef.current) chatRef.current.scrollTop = 99999;
-  }, [messages, isTyping]);
+    const el = chatRef.current;
+    if (!el) return;
+    const id = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [messages, isTyping, currentNarration]);
 
   useEffect(() => {
     const el = inputRef.current;

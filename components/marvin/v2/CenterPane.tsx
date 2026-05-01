@@ -60,6 +60,10 @@ export interface CenterPaneProps {
   missionStatusLabel: string;
   selectedTab: WorkspaceTab;
   onSelectTab: (tab: WorkspaceTab) => void;
+  // Wave 1 transparency: always-visible "what is happening right now" lane.
+  // Driven by the most recent SSE narration / tool-callback event so the
+  // user sees motion even when the per-tab activity is sparse.
+  latestTrace?: { agent: string; text: string; ts?: string } | null;
 }
 
 // ─── FindingRow ───────────────────────────────────────────────────────────────
@@ -339,6 +343,7 @@ export function CenterPane({
   missionStatusLabel,
   selectedTab,
   onSelectTab,
+  latestTrace,
 }: CenterPaneProps): React.ReactElement {
   const findings = findingsMap[selectedTab] ?? [];
   const activity = activityMap[selectedTab] ?? [];
@@ -388,8 +393,53 @@ export function CenterPane({
         </div>
       </div>
 
-      {/* Next-gate strip removed: the tab strip's active-step indicator
-          already conveys the same information without redundancy. */}
+      {/* Trace lane — single-line "what's happening right now" bar. The
+          per-tab activity feed is sparse (filtered by section); the trace
+          lane is global so the user always sees motion even when the
+          selected tab is silent. */}
+      {latestTrace && (latestTrace.text || latestTrace.agent) && (
+        <div
+          aria-label="Latest activity"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 24px",
+            background: "var(--bone)",
+            borderBottom: "1px solid var(--ruleh)",
+            flexShrink: 0,
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "var(--green)",
+              animation: "blink 1.4s ease-in-out infinite",
+              flexShrink: 0,
+            }}
+          />
+          <Mono size={9} weight={700} spacing=".10em" color="var(--ink3)">
+            {latestTrace.agent || "MARVIN"}
+          </Mono>
+          <span
+            style={{
+              fontFamily: "var(--m)",
+              fontSize: 10,
+              color: "var(--ink2)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              flex: 1,
+            }}
+            title={latestTrace.text}
+          >
+            {humanizeText(latestTrace.text)}
+          </span>
+        </div>
+      )}
 
       {/* Split pane: outputs (top) vs activity (bottom) — static 50/50 */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>

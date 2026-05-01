@@ -188,6 +188,7 @@ interface MissionControlViewProps {
   deliverables: { id: string; label: string; status: string; href?: string; onOpen?: () => void }[];
   activeAgent: string | null;
   currentNarration?: string | null;
+  latestTrace?: { agent: string; text: string; ts?: string } | null;
   sectionTabs?: {
     id: WorkspaceTab;
     label: string;
@@ -1785,18 +1786,31 @@ export default function MissionControl({
   // pane is scoped to an explicit section, so Brief, Synthesis, Stress testing,
   // and Final deliverables are distinct instead of sharing a misleading global
   // list.
+  // Wave 1 transparency: the synthesis (W3) and stress testing (W4)
+  // workstreams form a cycle (merlin verdict ↔ adversus retry) — exposing
+  // them as two sequential tabs misled users into thinking the run is
+  // linear. Merge them into one "Red team & verdict" tab. The selected
+  // section id "W3_4" is a synthetic key that the findings filter expands
+  // into both W3 and W4.
   const tabToSectionId = (tab: string): string => {
     if (tab === "brief" || tab === "final") return tab;
     if (tab === "ws5") return "final";
+    if (tab === "ws3" || tab === "ws4") return "W3_4";
     return tab.replace(/^ws/i, "W");
   };
   const selectedSectionId = selectedTab ? tabToSectionId(selectedTab) : "brief";
+  const sectionMatches = (outputSectionId: string | null | undefined, selected: string): boolean => {
+    if (!outputSectionId) return false;
+    if (selected === "W3_4") return outputSectionId === "W3" || outputSectionId === "W4";
+    return outputSectionId === selected;
+  };
   const sectionLabelById: Record<string, string> = {
     brief: "Brief",
     W1: "Market analysis",
     W2: "Financial analysis",
-    W3: "Synthesis",
-    W4: "Stress testing",
+    W3_4: "Red team & verdict",
+    W3: "Red team & verdict",
+    W4: "Red team & verdict",
     final: "Final deliverables",
   };
   const workstreamLabel = sectionLabelById[selectedSectionId] ?? "section";
@@ -1974,7 +1988,7 @@ export default function MissionControl({
   ], (output) => `${output.kind}:${output.id}`);
   const findings = allSectionOutputs.filter((output) => {
     const sectionId = output.section_id ?? output.workstream_id;
-    return sectionId === selectedSectionId;
+    return sectionMatches(sectionId, selectedSectionId);
   });
   const completedTitle = `${workstreamLabel} outputs`;
   const completedEmptyText = `No outputs for ${workstreamLabel} yet.`;
@@ -2062,12 +2076,23 @@ export default function MissionControl({
     workstreamContent.find((ws) => ws.id === workstreamId)?.status ?? "pending";
   const hasFinalDeliverables = deliverableOutputs.some((d) => d.section_id === "final");
   const missionIsWorking = (runState.isStreaming || resolvingGateIds.size > 0) && !pausedForGate;
+  // Combined W3+W4 status: completed only if BOTH legs are completed;
+  // active if either is active; in_progress if either has surfaced output.
+  const w3Status = workstreamStatus("W3");
+  const w4Status = workstreamStatus("W4");
+  const mergedRedTeamStatus: WorkstreamViewStatus =
+    w3Status === "completed" && w4Status === "completed"
+      ? "completed"
+      : w3Status === "now" || w4Status === "now"
+        ? "now"
+        : w3Status === "in_progress" || w4Status === "in_progress"
+          ? "in_progress"
+          : "pending";
   const baseSectionTabs: MissionControlViewProps["sectionTabs"] = [
     { id: "brief", label: "Brief", status: briefStatus },
     { id: "ws1", label: "Market analysis", status: workstreamStatus("W1") },
     { id: "ws2", label: "Financial analysis", status: workstreamStatus("W2") },
-    { id: "ws3", label: "Synthesis", status: workstreamStatus("W3") },
-    { id: "ws4", label: "Stress testing", status: workstreamStatus("W4") },
+    { id: "ws3", label: "Red team & verdict", status: mergedRedTeamStatus },
     { id: "final", label: "Final deliverables", status: hasFinalDeliverables ? "completed" : "pending" },
   ];
   const hasLiveStep = baseSectionTabs.some((tab) => tab.status === "now" || tab.status === "in_progress");
@@ -2075,10 +2100,14 @@ export default function MissionControl({
   // Fix C: find the tab whose workstream's assigned_agent matches the active agent
   const activeAgentTabId: string | null = (() => {
     if (!activeAgent) return null;
+    const lower = activeAgent.toLowerCase();
+    // Merlin/Adversus both surface in the merged Red team & verdict tab.
+    if (lower === "merlin" || lower === "adversus") return "ws3";
     const ws = (progress?.workstreams ?? []).find(
-      (w: any) => w.assigned_agent?.toLowerCase() === activeAgent.toLowerCase(),
+      (w: any) => w.assigned_agent?.toLowerCase() === lower,
     );
     if (!ws) return null;
+    if (ws.id === "W3" || ws.id === "W4") return "ws3";
     return `ws${ws.id.replace(/^W/i, "")}`;
   })();
   const sectionTabs = missionIsWorking && !hasPendingGate && !hasLiveStep
@@ -2102,7 +2131,9 @@ export default function MissionControl({
     userPickedTabRef.current || !activeStep ? selectedTab : activeStep.id;
   const selectedTabId = selectedSectionId === "brief" || selectedSectionId === "final"
     ? selectedSectionId
-    : (`ws${selectedSectionId.replace(/^W/i, "")}` as WorkspaceTab);
+    : selectedSectionId === "W3_4"
+      ? ("ws3" as WorkspaceTab)
+      : (`ws${selectedSectionId.replace(/^W/i, "")}` as WorkspaceTab);
   const showWaitInSelectedOutputs = showTyping && activeStep?.id === selectedTabId;
   const waitHeadline = activeAgent
     ? `${activeAgent} is working${activeAgentSince ? ` · ${activeAgentElapsed}s` : ""}`
@@ -2157,6 +2188,20 @@ export default function MissionControl({
         deliverables={deliverables}
         activeAgent={activeAgent}
         currentNarration={waitState.message}
+        latestTrace={(() => {
+          // Wave 1 transparency: feed the trace lane with the most recent
+          // live event regardless of tab. Pull from liveFindings (newest
+          // first, since `activity` is reversed) and prefer narration over
+          // structured kinds since narration is the deterministic per-step
+          // signal we just plumbed via tool callbacks + framing/papyrus.
+          const latest = activity[0];
+          if (!latest) return null;
+          return {
+            agent: String(latest.ag ?? latest.agent_id ?? "MARVIN"),
+            text: String(latest.text ?? latest.claim_text ?? ""),
+            ts: latest.ts,
+          };
+        })()}
         sectionTabs={sectionTabs}
         workstreamContent={workstreamContent}
         waitState={waitState}

@@ -387,8 +387,26 @@ async def framing_node(state: MarvinState) -> dict:
             logger.info("framing_node: waiting for a non-empty human brief")
             return {"phase": "setup", "messages": messages}
 
+    # Wave 1 transparency: framing's three-step burst used to be a single
+    # silent stretch in the live feed. Emit narration before each LLM/IO call
+    # so the user sees real motion during the pre-gate wait.
+    from marvin.events import emit_graph_event
+    from datetime import UTC, datetime
+    import json as _json
+
+    def _frame_narrate(intent: str) -> None:
+        try:
+            ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            payload = {"agent": "MARVIN", "intent": intent, "ts": ts}
+            emit_graph_event(mission_id, f"event: narration\ndata: {_json.dumps(payload)}\n\n")
+        except Exception:  # noqa: BLE001 — UX best-effort
+            pass
+
+    _frame_narrate("Reading the brief")
     persist_framing_from_brief(mission_id, raw_brief)
+    _frame_narrate("Drafting the hypotheses")
     hypotheses, reply_prose = generate_framing_with_reply(mission_id, raw_brief)
+    _frame_narrate("Drafting interview guides")
     generate_interview_guides([hypothesis.id for hypothesis in hypotheses], state=state)
     generate_engagement_brief(state)
     reset_clarification_state(mission_id)

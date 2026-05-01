@@ -384,7 +384,11 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
             logger.error("Detached resume could not load graph: %s", exc)
             return
 
-        config = {"configurable": {"thread_id": mission_id}}
+        from marvin.graph.tool_callbacks import MarvinToolCallbacks
+        config = {
+            "configurable": {"thread_id": mission_id},
+            "callbacks": [MarvinToolCallbacks(mission_id)],
+        }
         target_gate_id = resume_payload.get("gate_id")
         # If the graph already has a parked interrupt waiting for us, feed the
         # resume payload immediately. Otherwise drive forward with no input
@@ -1404,12 +1408,17 @@ async def _stream_chat(
             )
 
         thread_id = mission_id
+        # Wave 1 transparency: attach the tool-callback handler so every
+        # tool invocation inside an agent node emits an SSE narration event,
+        # turning the previously-blank intra-node periods into a live trace.
+        from marvin.graph.tool_callbacks import MarvinToolCallbacks
         config = {
             "configurable": {
                 "thread_id": thread_id,
-            }
+            },
+            "callbacks": [MarvinToolCallbacks(mission_id)],
         }
-        
+
         current_agent = None
         current_phase: str | None = None
         throttle_state: dict[tuple[str, str], float] = {}
@@ -1770,7 +1779,11 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
     try:
         graph = await get_graph()
         thread_id = mission_id
-        config = {"configurable": {"thread_id": thread_id}}
+        from marvin.graph.tool_callbacks import MarvinToolCallbacks
+        config = {
+            "configurable": {"thread_id": thread_id},
+            "callbacks": [MarvinToolCallbacks(mission_id)],
+        }
 
         snapshot = await graph.aget_state(config)
         # No checkpoint at all → nothing to replay. Don't surface as an error;

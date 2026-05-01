@@ -71,6 +71,9 @@ export interface MissionControlV2ViewProps {
   deliverables: { id: string; label: string; status: string; href?: string; onOpen?: () => void }[];
   activeAgent: string | null;
   currentNarration?: string | null;
+  // Wave 1 transparency: latest live event (narration or finding) for the
+  // always-visible trace lane above the per-tab activity feed.
+  latestTrace?: { agent: string; text: string; ts?: string } | null;
   sectionTabs?: {
     id: WorkspaceTab;
     label: string;
@@ -161,6 +164,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
     pendingGateBanner,
     waitState,
     currentNarration,
+    latestTrace,
     onOpenDeliverable,
     onGateApprove,
     onGateReject,
@@ -387,6 +391,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
           missionStatusLabel={missionStatusLabel}
           selectedTab={selectedTab}
           onSelectTab={onSelectTab}
+          latestTrace={latestTrace ?? null}
         />
       </div>
 
