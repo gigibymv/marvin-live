@@ -1613,11 +1613,18 @@ async def _stream_chat(
                         event, current_agent, current_phase, throttle_state, mission_id=mission_id
                     )
                     agent_ref[0] = current_agent
+                    if is_interrupt:
+                        # Flush side-channel queues before gate_pending so the
+                        # sidebar (milestone reports, findings) is populated by
+                        # the time the gate banner appears to the user.
+                        for s in _drain_events():
+                            yield s
                     for s in sse_strings:
                         if s:
                             yield s
-                    for s in _drain_events():
-                        yield s
+                    if not is_interrupt:
+                        for s in _drain_events():
+                            yield s
                     if is_interrupt:
                         interrupted = True
             finally:
@@ -2098,11 +2105,15 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                         event, current_agent, current_phase, throttle_state, mission_id=mission_id
                     )
                     agent_ref[0] = current_agent
+                    if is_interrupt:
+                        for s in _drain_events():
+                            yield s
                     for s in sse_strings:
                         if s:
                             yield s
-                    for s in _drain_events():
-                        yield s
+                    if not is_interrupt:
+                        for s in _drain_events():
+                            yield s
                     if is_interrupt:
                         interrupted = True
             finally:
