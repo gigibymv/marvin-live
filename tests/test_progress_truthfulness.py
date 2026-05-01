@@ -156,7 +156,14 @@ def test_manager_review_opens_after_research_finding(store: MissionStore):
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    # Gate requires ALL W1+W2 milestones in a terminal state. Seed all six so
+    # the test reflects "research is complete" under the stricter rule.
     store.mark_milestone_delivered("W1.1", "Market research complete", "m-progress")
+    store.mark_milestone_delivered("W1.2", "Competitive mapping complete", "m-progress")
+    store.mark_milestone_delivered("W1.3", "Moat assessment complete", "m-progress")
+    store.mark_milestone_delivered("W2.1", "Unit economics complete", "m-progress")
+    store.mark_milestone_delivered("W2.2", "Public filings review complete", "m-progress")
+    store.mark_milestone_delivered("W2.3", "Anomaly detection complete", "m-progress")
 
     payload = asyncio.run(srv.get_mission_progress("m-progress"))
     gates = {gate["gate_type"]: gate for gate in payload["gates"]}

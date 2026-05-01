@@ -2249,11 +2249,12 @@ export default function MissionControl({
     latestNarration ??
     (activeAgent
       ? `${activeAgent} is working on the next mission step.`
-      : "MARVIN —Starting the research workstreams.");
+      : "MARVIN — Starting the research workstreams.");
+  const ensurePeriod = (s: string) => /[.!?]\s*$/.test(s) ? s.trimEnd() : `${s.trimEnd()}.`;
   const waitMessage = isStalled
     ? "Still working. No action needed — MARVIN will update this panel as soon as the next event arrives."
     : streamElapsedSeconds >= 8
-      ? `${waitBaseMessage} This can take a minute while agents search, reason, and write findings.`
+      ? `${ensurePeriod(waitBaseMessage)} This can take a minute while agents search, reason, and write findings.`
       : waitBaseMessage;
   const waitState: MissionControlViewProps["waitState"] = {
     isWorking: showTyping,

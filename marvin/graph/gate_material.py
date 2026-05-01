@@ -131,23 +131,38 @@ def evaluate_gate_material(
 
     elif gate.gate_type == "manager_review":
         coverage = _coverage_payload(workstreams, milestones, findings)
-        # Only "open" once research has been attempted — i.e., at least one
-        # milestone has been resolved (delivered or blocked). This prevents
-        # the gate from showing as pending on a freshly-seeded mission, while
-        # still letting it fire when Tavily/research fails (0 findings but
-        # milestones marked blocked).
-        research_attempted = any(
-            (m.status or "").lower() in ("delivered", "blocked")
-            for m in (milestones or [])
-        )
-        if not research_attempted:
-            missing_material.append("research_not_started")
+        # Gate opens only when ALL W1+W2 milestones have reached a terminal
+        # state (delivered, skipped, or blocked). W3 (red-team) and W4
+        # (synthesis/adversus) come AFTER manager_review and must NOT be
+        # required here — they would deadlock the gate if checked prematurely.
+        # Edge case: if there are somehow zero W1/W2 milestones (mission seeded
+        # without standard research workstreams), fall back to the old "any
+        # milestone resolved" rule so the gate can still fire.
+        _RESEARCH_WORKSTREAMS = {"W1", "W2"}
+        _TERMINAL = {"delivered", "skipped", "blocked"}
+        research_milestones = [
+            m for m in (milestones or [])
+            if (m.workstream_id or "").upper() in _RESEARCH_WORKSTREAMS
+        ]
+        if research_milestones:
+            research_complete = all(
+                (m.status or "").lower() in _TERMINAL
+                for m in research_milestones
+            )
+        else:
+            # Fallback: no W1/W2 milestones found — open if any milestone resolved
+            research_complete = any(
+                (m.status or "").lower() in _TERMINAL
+                for m in (milestones or [])
+            )
+        if not research_complete:
+            missing_material.append("research_in_progress")
         payload.update(
             {
                 "research_findings": research_findings[-12:],
                 "findings_total": len(research_findings),
                 "coverage": coverage,
-                "findings_warning": "Research agents ran but produced no persisted findings (possible API failure). Review coverage before approving." if research_attempted and not research_findings else None,
+                "findings_warning": "Research agents ran but produced no persisted findings (possible API failure). Review coverage before approving." if research_complete and not research_findings else None,
             }
         )
 

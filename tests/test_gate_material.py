@@ -106,7 +106,14 @@ def test_manager_gate_findings_total_counts_only_research_findings(store: Missio
             created_at=now,
         )
     )
+    # Gate requires ALL W1+W2 milestones terminal; seed all six to reflect
+    # "research complete" under the stricter rule (intent unchanged).
     store.mark_milestone_delivered("W1.1", "Market research complete", "m-gate")
+    store.mark_milestone_delivered("W1.2", "Competitive mapping complete", "m-gate")
+    store.mark_milestone_delivered("W1.3", "Moat assessment complete", "m-gate")
+    store.mark_milestone_delivered("W2.1", "Unit economics complete", "m-gate")
+    store.mark_milestone_delivered("W2.2", "Public filings review complete", "m-gate")
+    store.mark_milestone_delivered("W2.3", "Anomaly detection complete", "m-gate")
     gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G1")
 
     material = evaluate_gate_material(store, "m-gate", gate)
