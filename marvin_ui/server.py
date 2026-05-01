@@ -912,6 +912,8 @@ _PHASE_LABELS: dict[str, str] = {
     "confirmed": "Research kickoff",
     "research_done": "Research complete",
     "gate_g1_passed": "Manager review passed",
+    "research_rebuttal": "Research rebuttal",
+    "rebuttal_done": "Rebuttal complete",
     "redteam_done": "Red-team complete",
     "synthesis_retry": "Synthesis retry",
     "synthesis_done": "Synthesis complete",
@@ -927,6 +929,8 @@ _PHASE_NARRATION: dict[str, str] = {
     "confirmed": "Starting the research workstreams",
     "research_done": "Research is complete and ready for manager review",
     "gate_g1_passed": "Manager review passed; starting the red-team challenge",
+    "research_rebuttal": "Research counter-pass: re-running Dora and Calculus on adversus's weakest claims",
+    "rebuttal_done": "Counter-pass complete; back to red-team synthesis",
     "redteam_done": "Red-team challenge complete; moving into synthesis",
     "synthesis_retry": "Synthesis needs another challenge pass before final review",
     "synthesis_done": "Synthesis is complete and ready for final review",
@@ -1370,6 +1374,22 @@ async def _stream_chat(
                 logger.info(
                     "Chat-driven gate approval: mission=%s gate=%s",
                     mission_id, pending_gate.id,
+                )
+                # #4: when the user types "approve" in chat (vs. clicking the
+                # banner Approve button), the UI's handleGateApprove path is
+                # NOT invoked — so no chat bubble confirms the action. Without
+                # this emit, the very next thing the user sees is the next
+                # agent narration ("Adversus is stress-testing…", "Merlin is
+                # synthesising…") with no acknowledgement that the gate just
+                # opened. Mirror the banner-click confirmation here.
+                _gate_label = {
+                    "hypothesis_confirmation": "G1 — research approved",
+                    "manager_review": "G2 — red-team approved",
+                    "final_review": "G3 — IC sign-off",
+                }.get(pending_gate.gate_type, "Gate approved")
+                yield await _emit_text(
+                    "orchestrator",
+                    f"✓ {_gate_label}. Continuing the mission.",
                 )
             else:
                 # C-CONV — when the graph is *running* (not interrupted) the
