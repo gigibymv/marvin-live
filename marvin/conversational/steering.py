@@ -53,9 +53,11 @@ _QA_CUES = (
     "is there", "are there", "qu'est", "pourquoi", "comment", "explique",
     "qui ", "quand ",
 )
+_RERUN_CUES_EN = ("rerun", "redo", "retry", "try again", "run again", "restart")
+_RERUN_CUES_FR = ("relancer", "réessayer", "redémarrer", "recommencer", "refaire")
 
 
-def classify_message(text: str) -> Literal["qa", "steer"]:
+def classify_message(text: str) -> Literal["qa", "steer", "rerun"]:
     """Heuristic message intent classifier. Default is ``qa`` (safer)."""
     if not text:
         return "qa"
@@ -77,6 +79,10 @@ def classify_message(text: str) -> Literal["qa", "steer"]:
     for cue in _STEER_CUES_EN + _STEER_CUES_FR:
         if cue in head:
             return "steer"
+    # Check for rerun intent (whole-word match to avoid false positives)
+    for cue in _RERUN_CUES_EN + _RERUN_CUES_FR:
+        if cue in lowered:
+            return "rerun"
     return "qa"
 
 
