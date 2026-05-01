@@ -2361,7 +2361,7 @@ export default function MissionControl({
           // SSE events that update progress on the way through.
           void getMissionProgress(mission.id).then((next) => {
             if (next) setProgress(next);
-          });
+          }).catch(() => undefined);
         }}
       />
 

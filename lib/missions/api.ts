@@ -225,7 +225,7 @@ export async function getMissionProgress(missionId: string): Promise<{
   const response = await fetch(`${API_BASE}/missions/${missionId}/progress`);
 
   if (!response.ok) {
-    if (response.status === 0) {
+    if (response.status === 0 || response.status >= 500) {
       throw new BackendOfflineError();
     }
     throw new Error(`Failed to get mission progress: ${response.status}`);
@@ -267,7 +267,7 @@ export async function getMissionEvents(missionId: string): Promise<{
 }> {
   const response = await fetch(`${API_BASE}/missions/${missionId}/events`);
   if (!response.ok) {
-    if (response.status === 0) {
+    if (response.status === 0 || response.status >= 500) {
       throw new BackendOfflineError();
     }
     throw new Error(`Failed to get mission events: ${response.status}`);
