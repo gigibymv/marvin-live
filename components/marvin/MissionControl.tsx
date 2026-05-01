@@ -1664,10 +1664,8 @@ export default function MissionControl({
       milestonesDelivered: delivered,
     };
   });
-  // Append Papyrus only when it has signalled activity or produced output.
-  if (papyrusActive || anyDeliverableReady) {
-    agents.push(papyrusRow as typeof agents[number]);
-  }
+  // Papyrus is always visible from mission start — status reflects its state.
+  agents.push(papyrusRow as typeof agents[number]);
 
   // Compute checkpoints from gates
   const gateStatusToCheckpoint = (g: any) => {
