@@ -141,7 +141,7 @@ export function RightRail({
                     : "0 1px 3px rgba(26,24,20,.06)",
                 display: "flex", flexDirection: "column", gap: 8,
               }}>
-                <span>{isUser ? m.text : humanizeText(m.text)}</span>
+                <span style={{ whiteSpace: "pre-wrap" }}>{isUser ? m.text : humanizeText(m.text)}</span>
                 {!isUser && m.deliverableId && onOpenDeliverable && (
                   <button
                     type="button"

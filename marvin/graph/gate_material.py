@@ -25,7 +25,7 @@ GATE_COPY = {
             "Approve to start parallel research workstreams. "
             "Reject to revise the framing before any research runs."
         ),
-        "unlocks_on_approve": "Dora, Calculus, and Lector begin Day 1-3 research.",
+        "unlocks_on_approve": "Dora and Calculus begin parallel research.",
         "unlocks_on_reject": "MARVIN reopens framing for revision.",
     },
     "manager_review": {
