@@ -2241,12 +2241,22 @@ export default function MissionControl({
         activeAgent={activeAgent}
         currentNarration={waitState.message}
         latestTrace={(() => {
-          // Wave 1 transparency: feed the trace lane with the most recent
-          // live event regardless of tab. Pull from liveFindings (newest
-          // first, since `activity` is reversed) and prefer narration over
-          // structured kinds since narration is the deterministic per-step
-          // signal we just plumbed via tool callbacks + framing/papyrus.
-          const latest = activity[0];
+          // Trace lane = "what's happening right now". Skip terminal/
+          // archival events (deliverable_ready, milestone_done, gate
+          // events, phase markers) — those belong in the activity feed.
+          // Keep narration / finding / agent_active so the user always
+          // sees a live signal, not a stale "Deliverable ready · …".
+          const traceableKinds = new Set([
+            "narration",
+            "finding",
+            "agent_active",
+            "tool_call",
+            "agent_message",
+          ]);
+          const latest = activity.find((e: any) => {
+            const kind = String(e?.kind ?? "");
+            return traceableKinds.has(kind);
+          });
           if (!latest) return null;
           return {
             agent: String(latest.ag ?? latest.agent_id ?? "MARVIN"),
