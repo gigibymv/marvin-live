@@ -110,6 +110,16 @@ function humanizeToolName(raw: unknown): string {
 // rows in memory or scroll the rail forever.
 const MAX_LIVE_TAPE_ENTRIES = 60;
 
+// Workstream → canonical agent name map (mirrors AGENT_TO_WS below).
+// Used for milestone attribution when backend omits the agent field.
+const WS_TO_AGENT: Record<string, string> = {
+  W1: "dora", W2: "calculus", W3: "merlin", W4: "adversus",
+};
+function agentForWorkstream(wsId: string | null | undefined): string | null {
+  if (!wsId) return null;
+  return WS_TO_AGENT[wsId.toUpperCase()] ?? null;
+}
+
 // Verdict labelling and prose sanitisation moved to lib/missions/humanize.ts
 // (single source of truth used by every rendering boundary).
 import { humanizeText, humanizeVerdict } from "@/lib/missions/humanize";
@@ -988,17 +998,25 @@ export default function MissionControl({
                 [event.milestoneId as string]: milestoneStatus,
               }));
             }
-            setLiveFindings((current) =>
-              upsertLiveEvent(current, {
-                id: event.milestoneId ?? makeMessageId(missionId, "milestone"),
-                kind: "milestone",
-                claim_text: event.label
-                  ? `Milestone complete · ${event.label}`
-                  : `Milestone complete · ${event.milestoneId ?? "mission step"}`,
-                confidence: "done",
-                workstreamId: event.workstreamId,
-              }),
-            );
+            // P3: read event.agent from backend; fall back to workstream→agent
+            // map if absent, then "marvin" as last resort.
+            {
+              const milestoneAgentRaw: string = (event as any).agent
+                ?? agentForWorkstream((event as any).workstreamId ?? event.workstreamId)
+                ?? "marvin";
+              setLiveFindings((current) =>
+                upsertLiveEvent(current, {
+                  id: event.milestoneId ?? makeMessageId(missionId, "milestone"),
+                  kind: "milestone",
+                  claim_text: event.label
+                    ? `Milestone complete · ${event.label}`
+                    : `Milestone complete · ${event.milestoneId ?? "mission step"}`,
+                  confidence: "done",
+                  workstreamId: event.workstreamId,
+                  agent: milestoneAgentRaw,
+                }),
+              );
+            }
             void refreshProgress();
             break;
           case "deliverable_ready":
@@ -1769,11 +1787,14 @@ export default function MissionControl({
         return (live ?? m.status) === "delivered";
       });
     };
+    // P2: wsDone requires BOTH milestones terminal AND deliverable ready to
+    // prevent premature ✓. W3 special-cases merlin verdict + deliverable.
+    // Defensive: a workstream with zero milestones never auto-completes.
     const wsDone = (id: string): number => {
-      if (wsAllMilestonesTerminal(id)) return 1;
-      if (wsHasReadyDeliverable(id)) return 1;
-      if (id === "W3" && merlinDone) return 1;
-      return 0;
+      const hasMilestones = (progress?.milestones ?? []).some((m: any) => m.workstream_id === id);
+      if (!hasMilestones) return 0;
+      if (id === "W3") return (merlinDone && wsHasReadyDeliverable(id)) ? 1 : 0;
+      return (wsAllMilestonesTerminal(id) && wsHasReadyDeliverable(id)) ? 1 : 0;
     };
     const wsActive = (id: string): number => {
       if (wsDone(id)) return 0;
@@ -1821,21 +1842,46 @@ export default function MissionControl({
     }
     return null;
   })();
+  // P4: phase label map for header pill contextualisation.
+  const PHASE_TO_LABEL: Record<string, string> = {
+    setup: "Setup",
+    framing: "Framing",
+    awaiting_confirmation: "Review",
+    confirmed: "Research",
+    research_done: "Research",
+    gate_g1_passed: "Research",
+    redteam_done: "Red Team",
+    synthesis_retry: "Red Team",
+    synthesis_done: "Synthesis",
+    gate_g3_passed: "Synthesis",
+    done: "Complete",
+  };
+  const currentPhaseLabel = currentPhase ? (PHASE_TO_LABEL[currentPhase] ?? null) : null;
+  // P4: detect any workstream still in_progress to show phase context in header.
+  const anyWorkstreamInProgress = (progress?.workstreams ?? []).some((ws: any) => {
+    const agentKey = ws.assigned_agent?.toLowerCase() ?? ws.id;
+    const liveAgt = agentStatuses[agentKey] ?? "idle";
+    return liveAgt === "active";
+  });
   const missionStatusLabel = resolvingGateIds.size > 0
-    ? "Mission running"
+    ? currentPhaseLabel ? `M Running — ${currentPhaseLabel}` : "Mission running"
     : hasPendingGate
     ? `Gate pending · ${nextCheckpointLabel ?? "Review"}`
     : progressRatio >= 1 && allMilestones.length > 0
       ? "Complete"
       : activeAgent
-        ? `${activeAgent} running`
-        : phaseStatusLabel
-          ? phaseStatusLabel
-          : runState.isStreaming
-            ? "Mission running"
-            : nextCheckpointLabel
-              ? `Next gate · ${nextCheckpointLabel}`
-              : "Ready";
+        ? currentPhaseLabel
+          ? `${activeAgent} — ${currentPhaseLabel}`
+          : `${activeAgent} running`
+        : mission.status === "active" && anyWorkstreamInProgress && currentPhaseLabel
+          ? `M Running — ${currentPhaseLabel}`
+          : phaseStatusLabel
+            ? phaseStatusLabel
+            : runState.isStreaming
+              ? "Mission running"
+              : nextCheckpointLabel
+                ? `Next gate · ${nextCheckpointLabel}`
+                : "Ready";
   const missionForView = {
     ...mission,
     progress: progressRatio,
@@ -2056,7 +2102,16 @@ export default function MissionControl({
   // backend persistence round-trip. Deduped by `kind:id` — when the
   // backend later persists the same row, the DB version wins (later
   // entries override earlier ones in dedupeByKey ordering).
-  const liveFindingOutputs = activity.filter((a: any) => a.kind === "finding");
+  // P12: live findings whose workstream_id is null are routed by agent_id
+  // using AGENT_TO_WS so adversus findings reach the W3_4 Red Team tab.
+  const liveFindingOutputs = activity
+    .filter((a: any) => a.kind === "finding")
+    .map((a: any) => {
+      if (a.workstream_id) return a;
+      const agentRaw = String(a.agent_id ?? a.ag ?? "").toLowerCase();
+      const derivedWs = AGENT_TO_WS[agentRaw] ?? null;
+      return derivedWs ? { ...a, workstream_id: derivedWs } : a;
+    });
   const allSectionOutputs = dedupeByKey([
     ...liveFindingOutputs,
     ...allFindings,

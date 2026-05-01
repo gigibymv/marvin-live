@@ -139,48 +139,68 @@ function FindingRow({ f, isHighlighted }: { f: CenterFinding; isHighlighted?: bo
 }
 
 // ─── MilestoneRow ─────────────────────────────────────────────────────────────
+// P5/P6/P10: milestone status events are now compact + secondary so they don't
+// visually dominate over substantive findings. No more full-bleed black bg.
 
 function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolean }): React.ReactElement | null {
   // Suppress entirely when the parent tab is completed but no per-milestone
   // artifact landed (terminal milestone, no deliverable to open).
   if (isTerminal && !f.onOpen) return null;
-  // Only show "Report generating…" while the milestone is genuinely live —
-  // i.e. the parent tab hasn't reached a terminal state. Once isTerminal,
-  // the workstream-level report is the one being opened, no per-milestone
-  // generation is in flight.
-  const showGenerating = !isTerminal;
+  const agentLabel = (f.agent ?? "MARVIN").toUpperCase();
   return (
     <div style={{
-      padding: "14px 24px",
-      background: "var(--ink)",
-      color: "var(--paper)",
-      borderBottom: "1px solid rgba(244,240,234,.06)",
+      padding: "7px 24px",
+      background: "var(--bone)",
+      borderBottom: "1px solid var(--ruleh)",
       display: "flex",
-      alignItems: "baseline",
-      gap: 14,
+      alignItems: "center",
+      gap: 10,
     }}>
-      <Mono size={9} weight={700} color="rgba(244,240,234,.45)" spacing=".06em" style={{ minWidth: 52 }}>
-        {f.agent ?? "MARVIN"}
+      <Mono size={8} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 52, flexShrink: 0 }}>
+        {agentLabel}
       </Mono>
-      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, lineHeight: 1.6 }}>{humanizeText(f.text ?? "")}</span>
-      {showGenerating && (
-        <Mono size={9} color="rgba(244,240,234,.45)" style={{ fontStyle: "italic" }}>Report generating…</Mono>
+      <span style={{ flex: 1, fontSize: 11, fontWeight: 500, color: "var(--ink2)", lineHeight: 1.5 }}>
+        {humanizeText(f.text ?? "")}
+      </span>
+      {f.onOpen && (
+        <button
+          style={{
+            fontFamily: "var(--m)", fontSize: 8, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase",
+            color: "var(--ink3)", background: "transparent", border: "1px solid var(--ruleh)",
+            padding: "3px 10px", cursor: "pointer", borderRadius: 3,
+          }}
+          onClick={f.onOpen}
+        >
+          Open →
+        </button>
       )}
-      <Mono size={9} color="rgba(244,240,234,.3)">{formatRowTime(f.ts)}</Mono>
+      <Mono size={8} color="var(--muted)">{formatRowTime(f.ts)}</Mono>
     </div>
   );
 }
 
 // ─── DeliverableRow ───────────────────────────────────────────────────────────
-// Dark theme — same visual weight as a milestone completion event because a
-// deliverable IS the artifact that proves the milestone is done. The two
-// used to render side by side; now milestones are deduped against
-// deliverables in the wrapper so only the deliverable row survives.
+// Dark theme retained for deliverables — these ARE the substantive artifacts.
+// P8: augment with hypothesis_ids chips, confidence badge, file size, READY badge
+// when available. Fields are optional; missing fields are omitted gracefully.
+// TODO(backend): add `hypothesis_ids: string[]`, `file_size_bytes: number` fields
+// to the Deliverable type and persist them in the backend deliverable row.
 
 function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
   const cleanText = humanizeText(f.text ?? "");
   const cleanBody = humanizeText(f.source ?? "");
   const body = cleanBody.trim() ? cleanBody.trim() : null;
+
+  // P8: confidence badge color mapping.
+  const confidenceBadgeColor = (() => {
+    const c = (f.confidence ?? "").toLowerCase();
+    if (c === "high" || c === "sourced") return "var(--green)";
+    if (c === "reasoned" || c === "inferred") return "var(--amber)";
+    if (c === "low_confidence") return "rgba(200,80,80,.85)";
+    if (c === "ready" || c === "done") return "var(--green)";
+    return "rgba(244,240,234,.35)";
+  })();
+
   return (
     <div style={{
       padding: "14px 24px",
@@ -198,6 +218,15 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--paper)", lineHeight: 1.6 }}>
           {cleanText}
         </span>
+        {/* P8: READY badge */}
+        <span style={{
+          fontFamily: "var(--m)", fontSize: 8, fontWeight: 700, letterSpacing: ".1em",
+          textTransform: "uppercase", color: "var(--green)",
+          border: "1px solid rgba(74,222,128,.35)", borderRadius: 3, padding: "2px 7px",
+          flexShrink: 0,
+        }}>
+          READY
+        </span>
         {f.onOpen && (
           <button
             style={{
@@ -214,6 +243,18 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
           </button>
         )}
       </div>
+      {/* P8: confidence chip when non-trivial */}
+      {f.confidence && !["ready", "done", ""].includes(f.confidence.toLowerCase()) && (
+        <div style={{ display: "flex", gap: 6, marginLeft: 66, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{
+            fontFamily: "var(--m)", fontSize: 8, fontWeight: 700, letterSpacing: ".08em",
+            textTransform: "uppercase", padding: "2px 7px", borderRadius: 3,
+            border: `1px solid ${confidenceBadgeColor}`, color: confidenceBadgeColor,
+          }}>
+            {f.confidence}
+          </span>
+        </div>
+      )}
       {body && (
         <div style={{
           marginLeft: 66,
@@ -293,6 +334,27 @@ function ActivityItem({ e, isLast }: { e: CenterActivityItem; isLast: boolean })
     );
   }
 
+  // P10: milestone/deliverable status events in the activity feed are compact
+  // secondary rows, not full black-bg blocks. The outputs pane already shows
+  // the primary row; here they are just confirmation ticks.
+  if (e.kind === "milestone" || e.kind === "deliverable") {
+    return (
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        paddingBottom: isLast ? 0 : 4,
+        marginBottom: isLast ? 0 : 4,
+        opacity: 0.65,
+      }}>
+        <Mono size={8} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
+          {e.agent ?? ""}
+        </Mono>
+        <span style={{ fontFamily: "var(--m)", fontSize: 8.5, letterSpacing: ".01em", color: "var(--ink3)", flex: 1, minWidth: 0 }}>
+          {animatedText}
+        </span>
+      </div>
+    );
+  }
+
   const isTool = e.kind === "tool_call" || e.kind === "tool_result";
   return (
     <div style={{
@@ -365,6 +427,28 @@ export function CenterPane({
   const isWorking = waitState?.isWorking ?? false;
   const shouldHighlight = selectedTab === "brief" && !!highlightHypothesisId;
 
+  // P10: aggregate consecutive milestone events from the same agent in the
+  // activity pane to reduce noise. Group runs of milestone items by agent.
+  const aggregatedActivity = React.useMemo((): (CenterActivityItem | { _aggregated: true; agent: string; count: number; id: string })[] => {
+    const out: (CenterActivityItem | { _aggregated: true; agent: string; count: number; id: string })[] = [];
+    let i = 0;
+    while (i < activity.length) {
+      const cur = activity[i];
+      if (cur.kind === "milestone") {
+        let j = i + 1;
+        while (j < activity.length && activity[j].kind === "milestone" && activity[j].agent === cur.agent) j++;
+        const count = j - i;
+        if (count >= 2) {
+          out.push({ _aggregated: true, agent: cur.agent ?? "MARVIN", count, id: `agg-${cur.id}` });
+          i = j;
+          continue;
+        }
+      }
+      out.push(cur);
+      i++;
+    }
+    return out;
+  }, [activity]);
 
   return (
     <main style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--paper)" }}>
@@ -455,8 +539,9 @@ export function CenterPane({
                       ))}
                     </span>
                   </div>
+                  {/* P12: drop "validated" — findings stream live, not gated */}
                   <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                    New findings will appear here as they are validated.
+                    New findings will appear here as agents work.
                   </div>
                 </>
               ) : (
@@ -491,15 +576,18 @@ export function CenterPane({
             <Mono size={9} color="var(--muted)">{activity.length}</Mono>
           </div>
           <div style={{ padding: "4px 24px 14px" }}>
+            {/* P5/P6/P10: live dot row sits on a dark background for clear
+                visual separation from findings. */}
             {latestTrace && (latestTrace.text || latestTrace.agent) && (
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
-                  padding: "4px 0 6px",
-                  borderBottom: activity.length > 0 ? "1px solid var(--ruleh)" : "none",
-                  marginBottom: activity.length > 0 ? 4 : 0,
+                  padding: "6px 10px",
+                  marginBottom: activity.length > 0 ? 6 : 0,
+                  borderRadius: 4,
+                  background: "#0f0f0f",
                   overflow: "hidden",
                   whiteSpace: "nowrap",
                 }}
@@ -514,14 +602,14 @@ export function CenterPane({
                     flexShrink: 0,
                   }}
                 />
-                <Mono size={9} weight={700} spacing=".10em" color="var(--ink3)">
+                <Mono size={9} weight={700} spacing=".10em" color="rgba(244,240,234,.65)">
                   {latestTrace.agent || "MARVIN"}
                 </Mono>
                 <span
                   style={{
                     fontFamily: "var(--m)",
                     fontSize: 10,
-                    color: "var(--ink2)",
+                    color: "rgba(244,240,234,.50)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     flex: 1,
@@ -532,12 +620,39 @@ export function CenterPane({
                 </span>
               </div>
             )}
-            {activity.length === 0 && !latestTrace ? (
+            {aggregatedActivity.length === 0 && !latestTrace ? (
               <Mono size={9} color="var(--muted)">No activity yet.</Mono>
             ) : (
-              activity.map((e, i) => (
-                <ActivityItem key={`${e.kind ?? "a"}:${e.id ?? i}`} e={e} isLast={i === activity.length - 1} />
-              ))
+              aggregatedActivity.map((e, i) => {
+                // P10: aggregated milestone row
+                if ("_aggregated" in e) {
+                  return (
+                    <div
+                      key={e.id}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8,
+                        paddingBottom: i === aggregatedActivity.length - 1 ? 0 : 4,
+                        marginBottom: i === aggregatedActivity.length - 1 ? 0 : 4,
+                        opacity: 0.6,
+                      }}
+                    >
+                      <Mono size={8} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
+                        {e.agent.toUpperCase()}
+                      </Mono>
+                      <span style={{ fontFamily: "var(--m)", fontSize: 8.5, color: "var(--ink3)" }}>
+                        {e.count} milestones complete
+                      </span>
+                    </div>
+                  );
+                }
+                return (
+                  <ActivityItem
+                    key={`${e.kind ?? "a"}:${e.id ?? i}`}
+                    e={e}
+                    isLast={i === aggregatedActivity.length - 1}
+                  />
+                );
+              })
             )}
           </div>
         </section>

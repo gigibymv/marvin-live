@@ -201,7 +201,10 @@ def test_gate_node_completes_gate_when_approved(monkeypatch: pytest.MonkeyPatch,
             created_at=datetime.now(UTC).isoformat(),
         )
     )
-    graph_store.mark_milestone_delivered("W1.1", "Market research complete", "m-test")
+    # Stricter manager_review gate (Phase A) requires ALL W1+W2 milestones in
+    # terminal state before opening.
+    for mid in ("W1.1", "W1.2", "W1.3", "W2.1", "W2.2", "W2.3"):
+        graph_store.mark_milestone_delivered(mid, "Research complete", "m-test")
     monkeypatch.setattr(gates, "interrupt", lambda payload: {"approved": True, "notes": "Approved"})
     result = asyncio.run(gates.gate_node({"mission_id": "m-test", "pending_gate_id": "gate-m-test-G1"}))
     updated_gate = next(gate for gate in graph_store.list_gates("m-test") if gate.id == "gate-m-test-G1")

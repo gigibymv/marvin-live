@@ -118,10 +118,11 @@ export function RightRail({
                   M
                 </div>
               )}
+              {/* P7: body text uses system font stack, not display Geist */}
               <div style={{
                 maxWidth: "82%", padding: "10px 14px",
-                fontSize: 13, lineHeight: 1.6, letterSpacing: "0.01em",
-                fontFamily: "var(--d)",
+                fontSize: 13, lineHeight: 1.55, letterSpacing: "normal",
+                fontFamily: 'system-ui, -apple-system, "Segoe UI", Inter, sans-serif',
                 color: isUser
                   ? "var(--paper)"
                   : m.deliverableId

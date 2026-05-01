@@ -67,7 +67,11 @@ def test_g1_reject_seeds_retry_gate_and_routes_to_confirmed(
             created_at=datetime.now(UTC).isoformat(),
         )
     )
-    graph_store.mark_milestone_delivered("W1.1", "Market research complete", "m-test")
+    # Stricter manager_review gate (Phase A) requires ALL W1+W2 milestones in
+    # terminal state before opening — seed them all so gate_node treats the
+    # gate as truly pending and runs the reject path.
+    for mid in ("W1.1", "W1.2", "W1.3", "W2.1", "W2.2", "W2.3"):
+        graph_store.mark_milestone_delivered(mid, "Research complete", "m-test")
     result = asyncio.run(
         gates.gate_node({"mission_id": "m-test", "pending_gate_id": "gate-m-test-G1"})
     )

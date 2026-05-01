@@ -769,6 +769,14 @@ def _build_papyrus_chat_event(payload: dict) -> str | None:
     })
 
 
+_WORKSTREAM_AGENT: dict[str, str] = {
+    "W1": "dora",
+    "W2": "calculus",
+    "W3": "merlin",
+    "W4": "adversus",
+}
+
+
 def _build_milestone_done_from_emit(payload: dict) -> dict:
     out: dict = {"milestoneId": str(payload.get("milestone_id", ""))}
     for src_key, wire_key in (
@@ -780,6 +788,12 @@ def _build_milestone_done_from_emit(payload: dict) -> dict:
         value = payload.get(src_key)
         if value:
             out[wire_key] = str(value)
+    # Derive agent attribution from explicit agent_id or workstream_id fallback
+    agent_id = payload.get("agent_id") or _WORKSTREAM_AGENT.get(
+        str(payload.get("workstream_id", ""))
+    )
+    if agent_id:
+        out["agent"] = str(agent_id)
     return out
 
 
