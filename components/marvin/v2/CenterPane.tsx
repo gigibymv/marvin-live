@@ -15,6 +15,7 @@ export interface CenterFinding {
   ts?: string;
   confidence?: string | null;
   impact?: "load_bearing" | "supporting" | "color" | null;
+  hypothesis_id?: string | null;
   hypothesis_label?: string | null;
   source?: string | null;
   onOpen?: () => void;
@@ -64,6 +65,9 @@ export interface CenterPaneProps {
   // Driven by the most recent SSE narration / tool-callback event so the
   // user sees motion even when the per-tab activity is sparse.
   latestTrace?: { agent: string; text: string; ts?: string } | null;
+  // When set (brief tab only), finding rows whose hypothesis_label contains
+  // the matching hypothesis text receive a subtle visual highlight.
+  highlightHypothesisId?: string | null;
 }
 
 // ─── FindingRow ───────────────────────────────────────────────────────────────
@@ -79,12 +83,13 @@ function formatRowTime(raw: string | undefined): string {
   return `${hh}:${mm}`;
 }
 
-function FindingRow({ f }: { f: CenterFinding }): React.ReactElement {
+function FindingRow({ f, isHighlighted }: { f: CenterFinding; isHighlighted?: boolean }): React.ReactElement {
   const [open, setOpen] = React.useState(false);
   const cleanText = humanizeText(f.text ?? "");
   const cleanSource = humanizeText(f.source ?? "");
   const hasSource = !!cleanSource;
   const isKey = f.impact === "load_bearing";
+  const highlightBg = isHighlighted ? "rgba(26,24,20,.04)" : "white";
 
   return (
     <div
@@ -92,12 +97,13 @@ function FindingRow({ f }: { f: CenterFinding }): React.ReactElement {
       style={{
         padding: "14px 24px",
         cursor: "pointer",
-        background: "white",
+        background: highlightBg,
         borderBottom: "1px solid var(--rule)",
+        borderLeft: isHighlighted ? "2px solid var(--ink)" : "2px solid transparent",
         transition: "background .15s cubic-bezier(0.16,1,0.3,1)",
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(26,24,20,.018)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = "white"; }}
+      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(26,24,20,.028)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = highlightBg; }}
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
         <Mono size={9} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 52, flexShrink: 0, paddingTop: 1 }}>
@@ -226,10 +232,10 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
 
 // ─── OutputRow ────────────────────────────────────────────────────────────────
 
-function OutputRow({ item }: { item: CenterFinding }): React.ReactElement | null {
+function OutputRow({ item, isHighlighted }: { item: CenterFinding; isHighlighted?: boolean }): React.ReactElement | null {
   if (item.kind === "milestone") return <MilestoneRow f={item} isTerminal={item.isTerminal} />;
   if (item.kind === "deliverable") return <DeliverableRow f={item} />;
-  return <FindingRow f={item} />;
+  return <FindingRow f={item} isHighlighted={isHighlighted} />;
 }
 
 // ─── ActivityItem ─────────────────────────────────────────────────────────────
@@ -352,10 +358,12 @@ export function CenterPane({
   selectedTab,
   onSelectTab,
   latestTrace,
+  highlightHypothesisId,
 }: CenterPaneProps): React.ReactElement {
   const findings = findingsMap[selectedTab] ?? [];
   const activity = activityMap[selectedTab] ?? [];
   const isWorking = waitState?.isWorking ?? false;
+  const shouldHighlight = selectedTab === "brief" && !!highlightHypothesisId;
 
 
   return (
@@ -456,7 +464,13 @@ export function CenterPane({
               )}
             </div>
           ) : (
-            findings.map(item => <OutputRow key={`${item.kind ?? "f"}:${item.id}`} item={item} />)
+            findings.map(item => (
+              <OutputRow
+                key={`${item.kind ?? "f"}:${item.id}`}
+                item={item}
+                isHighlighted={shouldHighlight && item.hypothesis_id === highlightHypothesisId}
+              />
+            ))
           )}
         </section>
 

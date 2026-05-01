@@ -44,6 +44,8 @@ export interface LeftRailProps {
   agents: LeftRailAgent[];
   hypotheses: LeftRailHypothesis[];
   deliverables: LeftRailDeliverable[];
+  selectedHypothesisId?: string | null;
+  onSelectHypothesis?: (id: string | null) => void;
 }
 
 // ─── Internal data shape ──────────────────────────────────────────────────────
@@ -115,7 +117,15 @@ function statusStyle(s: HypothesisStatus | string): { c: string; l: string } {
   return map[s] ?? { c: "var(--muted)", l: s || "—" };
 }
 
-function HypothesesRail({ hypotheses }: { hypotheses: LeftRailHypothesis[] }): React.ReactElement {
+function HypothesesRail({
+  hypotheses,
+  selectedHypothesisId,
+  onSelectHypothesis,
+}: {
+  hypotheses: LeftRailHypothesis[];
+  selectedHypothesisId?: string | null;
+  onSelectHypothesis?: (id: string | null) => void;
+}): React.ReactElement {
   return (
     <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--ruleh)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -124,10 +134,23 @@ function HypothesesRail({ hypotheses }: { hypotheses: LeftRailHypothesis[] }): R
       {hypotheses.map((h, i) => {
         const c = h.computed;
         const st = statusStyle(c?.status ?? h.status);
+        const isSelected = h.id === selectedHypothesisId;
         return (
           <div
             key={h.id}
-            style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--rule)" }}
+            onClick={() => onSelectHypothesis?.(h.id)}
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 8,
+              padding: "6px 0",
+              borderBottom: "1px solid var(--rule)",
+              cursor: "pointer",
+              background: isSelected ? "rgba(26,24,20,.04)" : "transparent",
+              borderLeft: isSelected ? "2px solid var(--ink)" : "2px solid transparent",
+              paddingLeft: isSelected ? 6 : 0,
+              transition: "background .12s cubic-bezier(0.16,1,0.3,1)",
+            }}
           >
             <Mono size={10.5} weight={700} color="var(--ink)" style={{ minWidth: 22 }}>{h.label ?? `H${i + 1}`}</Mono>
             <span style={{ fontSize: 12, lineHeight: 1.6, color: "var(--ink2)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -214,7 +237,7 @@ function AgentsRail({ agents }: { agents: AgentData[] }): React.ReactElement {
 
 // ─── LeftRail ─────────────────────────────────────────────────────────────────
 
-export function LeftRail({ mission, agents, hypotheses, deliverables }: LeftRailProps): React.ReactElement {
+export function LeftRail({ mission, agents, hypotheses, deliverables, selectedHypothesisId, onSelectHypothesis }: LeftRailProps): React.ReactElement {
   const missionData: MissionCardData = {
     name: mission.name,
     client: mission.client,
@@ -238,7 +261,7 @@ export function LeftRail({ mission, agents, hypotheses, deliverables }: LeftRail
       flexShrink: 0,
     }}>
       <MissionCard mission={missionData} />
-      <HypothesesRail hypotheses={hypotheses} />
+      <HypothesesRail hypotheses={hypotheses} selectedHypothesisId={selectedHypothesisId} onSelectHypothesis={onSelectHypothesis} />
       <DeliverablesRail deliverables={deliverables} />
       <AgentsRail agents={agentData} />
     </aside>

@@ -223,6 +223,8 @@ interface MissionControlViewProps {
     headline: string;
   };
   onOpenDeliverable?: (deliverableId: string) => void;
+  selectedHypothesisId?: string | null;
+  onSelectHypothesis?: (id: string | null) => void;
 }
 
 const MissionControlView = RawMissionControlView as unknown as ComponentType<MissionControlViewProps>;
@@ -436,6 +438,7 @@ export default function MissionControl({
   // Chantier 4 CP3: deliverable inline preview modal state.
   const [previewDeliverableId, setPreviewDeliverableId] = useState<string | null>(null);
   const [clarificationSubmitting, setClarificationSubmitting] = useState(false);
+  const [selectedHypothesisId, setSelectedHypothesisId] = useState<string | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const announcedDeliverablesRef = useRef<Set<string>>(new Set());
 
@@ -2302,6 +2305,8 @@ export default function MissionControl({
         completedTitle={completedTitle}
         completedEmptyText={completedEmptyText}
         onOpenDeliverable={(id: string) => setPreviewDeliverableId(id)}
+        selectedHypothesisId={selectedHypothesisId}
+        onSelectHypothesis={(id: string | null) => setSelectedHypothesisId(prev => prev === id ? null : id)}
       />
 
       {/* Chantier 4 CP3: deliverable preview modal. */}

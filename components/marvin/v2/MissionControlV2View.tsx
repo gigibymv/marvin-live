@@ -108,6 +108,8 @@ export interface MissionControlV2ViewProps {
     headline: string;
   };
   onOpenDeliverable?: (deliverableId: string) => void;
+  selectedHypothesisId?: string | null;
+  onSelectHypothesis?: (id: string | null) => void;
 }
 
 const TAB_IDS: WorkspaceTab[] = ["brief", "ws1", "ws2", "ws3", "ws4", "final"];
@@ -168,6 +170,8 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
     onOpenDeliverable,
     onGateApprove,
     onGateReject,
+    selectedHypothesisId,
+    onSelectHypothesis,
   } = props;
 
   const visibleDeliverables = useMemo(
@@ -207,6 +211,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
         ts: f.ts ?? "",
         confidence: f.confidence ?? null,
         impact: f.impact ?? null,
+        hypothesis_id: f.hypothesis_id ?? null,
         hypothesis_label: f.hypothesis_label ?? null,
         source: f.source_id ?? null,
         onOpen: f.onOpen,
@@ -314,6 +319,8 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
         agents={agents}
         hypotheses={hypotheses}
         deliverables={visibleDeliverables}
+        selectedHypothesisId={selectedHypothesisId}
+        onSelectHypothesis={onSelectHypothesis}
       />
 
       <div style={{ position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
@@ -392,6 +399,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
           selectedTab={selectedTab}
           onSelectTab={onSelectTab}
           latestTrace={latestTrace ?? null}
+          highlightHypothesisId={selectedHypothesisId}
         />
       </div>
 
