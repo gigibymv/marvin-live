@@ -696,6 +696,31 @@ async def adversus_node(state: MarvinState) -> dict:
         _persist_transient_gate_failure(mission_id, failure, gate_type="manager_review")
         return {"phase": "llm_transient_failure", "failed_agent": "adversus"}
 
+    # Deterministic W4 milestone sweep — same pattern as research_join for W1/W2.
+    # Adversus runs once; pending W4 siblings won't be resolved by LLM tool
+    # selection alone (agents only call mark_milestone_delivered for the lead
+    # milestone). Use workstream-level finding count because adversus doesn't
+    # tag findings to specific milestone IDs.
+    w4_findings = sum(1 for f in store.list_findings(mission_id) if f.workstream_id == "W4")
+    for milestone in store.list_milestones(mission_id):
+        if milestone.workstream_id != "W4" or milestone.status != "pending":
+            continue
+        try:
+            if w4_findings >= 1:
+                store.mark_milestone_delivered(
+                    milestone.id,
+                    "covered by adversus research",
+                    mission_id=mission_id,
+                )
+            else:
+                store.mark_milestone_blocked(
+                    milestone.id,
+                    "adversus produced no findings",
+                    mission_id=mission_id,
+                )
+        except KeyError:
+            pass
+
     return {**result, "phase": "redteam_done"}
 
 
