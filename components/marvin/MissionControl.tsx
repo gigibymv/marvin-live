@@ -961,9 +961,13 @@ export default function MissionControl({
             break;
           case "milestone_done":
             if (event.milestoneId) {
+              const milestoneStatus =
+                typeof event.status === "string" && event.status.length > 0
+                  ? event.status
+                  : "delivered";
               setMilestoneStatusOverrides((current) => ({
                 ...current,
-                [event.milestoneId as string]: "delivered",
+                [event.milestoneId as string]: milestoneStatus,
               }));
             }
             setLiveFindings((current) =>
@@ -2029,6 +2033,14 @@ export default function MissionControl({
       }) === ws.id;
     });
     const allMilestonesDone = wsMilestones.length > 0 && wsTerminal === wsMilestones.length;
+    // A workstream where every milestone is `blocked` (e.g. Calculus with no
+    // EDGAR data for the target) cannot ever produce a deliverable. Treat
+    // it as terminally complete so the tab doesn't spin forever waiting for
+    // a deliverable that will never come.
+    const allMilestonesBlocked = wsMilestones.length > 0 && wsMilestones.every((m: any) => {
+      const liveStatus = milestoneStatusOverrides[m.id];
+      return (liveStatus ?? m.status) === "blocked";
+    });
     const synthesisDone = ws.id === "W3" && merlinVerdictPresent;
     // Bug 4: when the assigned agent is DONE and the workstream already has
     // a ready deliverable, treat the tab as completed even if individual
@@ -2044,7 +2056,8 @@ export default function MissionControl({
     const tabCompletedReady = missionCompleted
       || (allMilestonesDone && wsHasReadyDeliverable)
       || synthesisDone
-      || agentDoneWithDeliverable;
+      || agentDoneWithDeliverable
+      || allMilestonesBlocked;
     const status: WorkstreamViewStatus =
       tabCompletedReady
         ? "completed"

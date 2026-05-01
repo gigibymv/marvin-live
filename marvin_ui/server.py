@@ -435,7 +435,7 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                         break
                     if isinstance(event, dict):
                         sse_strings, current_agent, current_phase, _is_int = await _emit_for_update(
-                            event, current_agent, current_phase, throttle_state
+                            event, current_agent, current_phase, throttle_state, mission_id=mission_id
                         )
                         for s in sse_strings:
                             if s:
@@ -859,6 +859,30 @@ _MISSION_COMPLETE_TEXT = (
     "and persisted."
 )
 
+# Module-level dedup for the closing chat bubble. The text is reachable via
+# 5 independent paths (phase=done emit, AIMessage relay from papyrus_delivery,
+# defensive run-end emit, terminal-state /resume branch, and the relayed
+# broadcast from a detached driver). Without this set, the same mission could
+# show up to 3 "Mission complete" bubbles to the user. Cleared on mission
+# delete; otherwise persists for the process lifetime (acceptable for a
+# display-only signal).
+_MISSION_COMPLETE_EMITTED: set[str] = set()
+
+
+async def _emit_mission_complete_once(mission_id: str | None) -> str:
+    """Emit the closing chat bubble at most once per mission per process.
+
+    Returns the SSE string on first call, "" on subsequent calls. mission_id=
+    None falls back to unconditional emit (preserves behavior for paths that
+    don't have mission scope, e.g. error-handling fallbacks).
+    """
+    if mission_id is None:
+        return await _emit_text("papyrus_delivery", _MISSION_COMPLETE_TEXT)
+    if mission_id in _MISSION_COMPLETE_EMITTED:
+        return ""
+    _MISSION_COMPLETE_EMITTED.add(mission_id)
+    return await _emit_text("papyrus_delivery", _MISSION_COMPLETE_TEXT)
+
 
 async def _maybe_emit_mission_complete(mission_id: str) -> str:
     """Defensive emit: when papyrus_delivery flips status to complete but
@@ -874,7 +898,7 @@ async def _maybe_emit_mission_complete(mission_id: str) -> str:
         store = get_store()
         mission = store.get_mission(mission_id)
         if mission and mission.status == "complete":
-            return await _emit_text("papyrus_delivery", _MISSION_COMPLETE_TEXT)
+            return await _emit_mission_complete_once(mission_id)
     except Exception:  # noqa: BLE001 — never crash the SSE stream
         pass
     return ""
@@ -1037,6 +1061,7 @@ async def _emit_for_update(
     current_agent: str | None,
     current_phase: str | None,
     throttle_state: dict[tuple[str, str], float] | None = None,
+    mission_id: str | None = None,
 ) -> tuple[list[str], str | None, str | None, bool]:
     """Translate one graph.astream update into SSE strings.
 
@@ -1079,7 +1104,7 @@ async def _emit_for_update(
             # catch — this emit fires the moment the phase flips so the user
             # sees "Mission complete" without lag.
             if new_phase == "done":
-                out.append(await _emit_text("papyrus_delivery", _MISSION_COMPLETE_TEXT))
+                out.append(await _emit_mission_complete_once(mission_id))
             current_phase = new_phase
 
         if output.get("phase_blocked"):
@@ -1145,8 +1170,19 @@ async def _emit_for_update(
             if isinstance(msg, AIMessage):
                 if msg.content:
                     if node_name in _CHAT_VOICE_NODES:
-                        # Marvin's voice — host nodes speak to the user in chat.
-                        out.append(await _emit_text(node_name, msg.content))
+                        # papyrus_delivery's AIMessage carries the same closing
+                        # text that the phase=="done" branch already emitted via
+                        # _emit_mission_complete_once. Skip to avoid double-fire
+                        # within a single update.
+                        if (
+                            node_name == "papyrus_delivery"
+                            and isinstance(msg.content, str)
+                            and msg.content.strip().startswith("Mission complete.")
+                        ):
+                            pass
+                        else:
+                            # Marvin's voice — host nodes speak to the user in chat.
+                            out.append(await _emit_text(node_name, msg.content))
                     else:
                         # Working sub-agent reasoning — surface in rail only,
                         # keep chat clean. Mission events (findings/milestones)
@@ -1520,7 +1556,7 @@ async def _stream_chat(
                         continue
 
                     sse_strings, current_agent, current_phase, is_interrupt = await _emit_for_update(
-                        event, current_agent, current_phase, throttle_state
+                        event, current_agent, current_phase, throttle_state, mission_id=mission_id
                     )
                     agent_ref[0] = current_agent
                     for s in sse_strings:
@@ -1751,7 +1787,9 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         # log on a refresh ends mid-flow.
         if mission.status == "complete":
             yield await _emit_phase_changed("done")
-            yield await _emit_text("papyrus_delivery", _MISSION_COMPLETE_TEXT)
+            bubble = await _emit_mission_complete_once(mission_id)
+            if bubble:
+                yield bubble
         yield await _emit_run_end()
         return
 
@@ -1905,7 +1943,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                     if not isinstance(event, dict):
                         continue
                     sse_strings, current_agent, current_phase, is_interrupt = await _emit_for_update(
-                        event, current_agent, current_phase, throttle_state
+                        event, current_agent, current_phase, throttle_state, mission_id=mission_id
                     )
                     agent_ref[0] = current_agent
                     for s in sse_strings:
