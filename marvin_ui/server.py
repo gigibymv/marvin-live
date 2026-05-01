@@ -225,13 +225,22 @@ def _hypotheses_with_status(hypotheses, findings) -> list[dict]:
     by_hyp: dict[str | None, list] = {}
     for f in findings:
         by_hyp.setdefault(f.hypothesis_id, []).append(f)
+    # Adversus findings saved without a hypothesis_id represent mission-wide
+    # red-team challenges. Apply them to every hypothesis so a hypothesis
+    # that adversus challenged (but whose finding lacked hypothesis_id) still
+    # shows WEAKENED rather than staying TESTING forever.
+    unlinked_adversus = [
+        f for f in by_hyp.get(None, []) if getattr(f, "agent_id", None) == "adversus"
+    ]
     return [
         {
             "id": h.id,
             "label": h.label,
             "text": h.text,
             "status": h.status,
-            "computed": compute_hypothesis_status(by_hyp.get(h.id, [])),
+            "computed": compute_hypothesis_status(
+                by_hyp.get(h.id, []) + unlinked_adversus
+            ),
         }
         for h in hypotheses
     ]
@@ -1613,16 +1622,16 @@ async def _stream_chat(
                         event, current_agent, current_phase, throttle_state, mission_id=mission_id
                     )
                     agent_ref[0] = current_agent
-                    if is_interrupt:
-                        # Flush side-channel queues before gate_pending so the
-                        # sidebar (milestone reports, findings) is populated by
-                        # the time the gate banner appears to the user.
+                    if is_interrupt or current_phase == "done":
+                        # Flush side-channel queues before gate_pending (and
+                        # before mission-complete) so deliverable_ready events
+                        # reach the client before the completion message.
                         for s in _drain_events():
                             yield s
                     for s in sse_strings:
                         if s:
                             yield s
-                    if not is_interrupt:
+                    if not is_interrupt and current_phase != "done":
                         for s in _drain_events():
                             yield s
                     if is_interrupt:

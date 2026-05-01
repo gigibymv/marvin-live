@@ -685,13 +685,18 @@ export default function MissionControl({
         setIsStalled(false);
         switch (event.type) {
           case "text":
-            setMessages((current) =>
-              current.concat({
+            setMessages((current) => {
+              // Guard against the mission-complete message appearing twice when
+              // the server's in-memory dedup set is cleared by a process restart.
+              if (event.text && current.some((m) => m.from === "m" && m.text === event.text)) {
+                return current;
+              }
+              return current.concat({
                 id: makeMessageId(missionId, "stream"),
                 from: "m",
                 text: event.text,
-              }),
-            );
+              });
+            });
             break;
           case "tool_call":
             // Tool plumbing belongs in the rail (transparency on agent
