@@ -115,6 +115,15 @@ def _resolve_agent(mission_id: str, metadata: dict | None) -> str:
             mapped = _NODE_TO_AGENT.get(node)
             if mapped:
                 return mapped
+        # When tool runs inside a create_react_agent subgraph, langgraph_node
+        # is the inner node name (e.g. "tools") which won't match. Fall back to
+        # the outer node extracted from langgraph_checkpoint_ns (e.g. "dora:0").
+        ns = metadata.get("langgraph_checkpoint_ns") or ""
+        if ns:
+            outer = ns.split(":")[0]
+            mapped = _NODE_TO_AGENT.get(outer)
+            if mapped:
+                return mapped
     return _ACTIVE_AGENT.get(mission_id) or "MARVIN"
 
 
