@@ -753,17 +753,23 @@ export default function MissionControl({
             });
             setLatestNarration(narrationText);
             narrationAgentRef.current = event.agent ? String(event.agent).toLowerCase() : null;
-            setMessages((current) => {
-              const last = current[current.length - 1];
-              if (last?.from === "m" && last.text === narrationText) {
-                return current;
-              }
-              return current.concat({
-                id: makeMessageId(missionId, "narration-chat"),
-                from: "m",
-                text: narrationText,
+            // Trace-destined narrations (tool callbacks) go to the trace lane
+            // + activity feed only. Conversational narrations (framing,
+            // papyrus, merlin verdict) emit without `destination` and still
+            // surface as chat bubbles. Keeps chat as MARVIN's voice.
+            if (event.destination !== "trace") {
+              setMessages((current) => {
+                const last = current[current.length - 1];
+                if (last?.from === "m" && last.text === narrationText) {
+                  return current;
+                }
+                return current.concat({
+                  id: makeMessageId(missionId, "narration-chat"),
+                  from: "m",
+                  text: narrationText,
+                });
               });
-            });
+            }
             // Replace any existing narration entry from the same agent so only
             // the latest intent is visible in the in-progress block.
             setLiveFindings((current) => {

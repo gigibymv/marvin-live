@@ -200,7 +200,11 @@ class MarvinToolCallbacks(AsyncCallbackHandler):
     def _emit(mission_id: str, agent: str, intent: str) -> None:
         try:
             ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            payload = {"agent": agent, "intent": intent, "ts": ts}
+            # destination=trace → frontend routes to trace lane + activity feed
+            # only, never the conversational chat. Conceptual narrations
+            # (framing sub-steps, papyrus drafting, merlin verdict) emit
+            # without this field and continue to surface in chat.
+            payload = {"agent": agent, "intent": intent, "ts": ts, "destination": "trace"}
             sse = f"event: narration\ndata: {json.dumps(payload)}\n\n"
             emit_graph_event(mission_id, sse)
         except Exception:  # noqa: BLE001 — never crash the agent loop on a UX emission
