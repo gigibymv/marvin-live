@@ -780,7 +780,29 @@ class MissionStore:
         return cur.rowcount > 0
 
     def delete_mission(self, mission_id: str) -> bool:
-        for table in ("findings", "deliverables", "milestones", "gates", "hypotheses"):
+        # Explicit DELETE on every mission-scoped table. PRAGMA foreign_keys
+        # is on (see __init__) so the missions row delete would cascade, but
+        # the original implementation listed only 5 of the 13 child tables —
+        # which let stale rows from previous runs leak into a freshly-created
+        # mission with the same id. Concretely: a stale merlin_verdicts row
+        # caused gate G3 (final_review) to evaluate is_open=true at ~42%,
+        # while Adversus was still running, because gate_material.py treated
+        # the leftover verdict as if synthesis had already completed.
+        for table in (
+            "findings",
+            "deliverables",
+            "milestones",
+            "gates",
+            "hypotheses",
+            "merlin_verdicts",
+            "mission_briefs",
+            "workstreams",
+            "sources",
+            "data_room_files",
+            "transcripts",
+            "deal_terms",
+            "mission_steering",
+        ):
             self._execute(f"DELETE FROM {table} WHERE mission_id = ?", (mission_id,))
         cur = self._execute("DELETE FROM missions WHERE id = ?", (mission_id,))
         return cur.rowcount > 0

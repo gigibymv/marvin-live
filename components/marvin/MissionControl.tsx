@@ -932,6 +932,17 @@ export default function MissionControl({
             // re-fetch so the center pane reflects backend truth.
             void refreshProgress();
             void refreshMissionEvents();
+            // When the mission reaches "done", the backend flips
+            // mission.status from "active" to "complete". The mission
+            // object is loaded once on mount and never refreshed by
+            // /progress polling — without re-fetching, missionCompleted
+            // stays false in the UI even after the run is over, which
+            // pins progress at 99% and keeps tabs in non-terminal status.
+            if (event.phase === "done") {
+              void repository.getMission(missionId).then((next) => {
+                if (next) setMission(next);
+              }).catch(() => undefined);
+            }
             break;
           case "finding_added":
             // A finding implies the producing agent is alive even if no
@@ -2053,11 +2064,19 @@ export default function MissionControl({
     // 9-bug triage C: a tab must not flip ✓ while the workstream's report
     // deliverable is still generating. Require either a ready deliverable
     // for this ws OR a verdict (W3 special case) before marking complete.
+    // Race-condition guard: agent_done can fire before the workstream's
+    // deliverable is persisted with status="ready" (papyrus generates the
+    // report asynchronously after Calculus/Dora returns). When the agent
+    // is DONE and all its milestones are terminal, the workstream is
+    // logically complete regardless of whether the deliverable_ready event
+    // has landed yet — without this branch the tab spins forever.
+    const agentDoneAllMilestonesTerminal = liveStatus === "done" && allMilestonesDone;
     const tabCompletedReady = missionCompleted
       || (allMilestonesDone && wsHasReadyDeliverable)
       || synthesisDone
       || agentDoneWithDeliverable
-      || allMilestonesBlocked;
+      || allMilestonesBlocked
+      || agentDoneAllMilestonesTerminal;
     const status: WorkstreamViewStatus =
       tabCompletedReady
         ? "completed"
@@ -2090,7 +2109,16 @@ export default function MissionControl({
           gate_type: pendingGate.gate_type,
         })
       : null;
-  const briefStatus: "pending" | "now" | "completed" = progress?.framing ? "completed" : "now";
+  // Brief tab progression: stays "pending" until the user has actually
+  // submitted a brief (any user message OR the graph has progressed past
+  // setup). Avoids the spinner-at-0% on a freshly-created mission with
+  // no input yet. "now" only once framing is genuinely working.
+  const briefSubmitted = messages.some((m) => m.from === "u") || (currentPhase !== null && currentPhase !== "setup");
+  const briefStatus: "pending" | "now" | "completed" = progress?.framing
+    ? "completed"
+    : briefSubmitted
+      ? "now"
+      : "pending";
   const workstreamStatus = (workstreamId: string): WorkstreamViewStatus =>
     workstreamContent.find((ws) => ws.id === workstreamId)?.status ?? "pending";
   const hasFinalDeliverables = deliverableOutputs.some((d) => d.section_id === "final");

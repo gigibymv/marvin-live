@@ -104,7 +104,7 @@ const TYPE_FALLBACKS: Record<string, { title: string; summary: string }> = {
     summary: "Initial research is complete. Review the claims surfaced so far for soundness, sourcing, and confidence before red-team challenges them.",
   },
   final_review: {
-    title: "Final IC memo review",
+    title: "IC sign-off",
     summary: "Synthesis is complete. Review Merlin's verdict and the supporting deliverables before signing off.",
   },
 };
