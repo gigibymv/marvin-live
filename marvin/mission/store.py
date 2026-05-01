@@ -238,6 +238,9 @@ class MissionStore:
             # C-PER-MILESTONE — link findings + deliverables to a milestone row.
             ("findings", "milestone_id", "ALTER TABLE findings ADD COLUMN milestone_id TEXT"),
             ("deliverables", "milestone_id", "ALTER TABLE deliverables ADD COLUMN milestone_id TEXT"),
+            # workstream_id on deliverables — enables frontend tab routing for
+            # workstream_reports and milestone_reports without a separate lookup.
+            ("deliverables", "workstream_id", "ALTER TABLE deliverables ADD COLUMN workstream_id TEXT"),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
@@ -1042,8 +1045,8 @@ class MissionStore:
         self._execute(
             """
             INSERT OR REPLACE INTO deliverables
-            (id, mission_id, deliverable_type, status, file_path, file_size_bytes, created_at, milestone_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (id, mission_id, deliverable_type, status, file_path, file_size_bytes, created_at, milestone_id, workstream_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 deliverable.id,
@@ -1054,6 +1057,7 @@ class MissionStore:
                 deliverable.file_size_bytes,
                 deliverable.created_at,
                 deliverable.milestone_id,
+                deliverable.workstream_id,
             ),
         )
         return deliverable

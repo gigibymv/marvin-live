@@ -208,6 +208,7 @@ def _save_deliverable(
     deliverable_type: str,
     file_path: Path,
     milestone_id: str | None = None,
+    workstream_id: str | None = None,
 ) -> None:
     try:
         _assert_artifact_can_be_ready(file_path, deliverable_type)
@@ -228,6 +229,7 @@ def _save_deliverable(
             file_size_bytes=file_path.stat().st_size,
             created_at=utc_now_iso(),
             milestone_id=milestone_id,
+            workstream_id=workstream_id,
         )
     )
     emit_deliverable_persisted(
@@ -239,6 +241,7 @@ def _save_deliverable(
             "file_size_bytes": file_path.stat().st_size,
             "created_at": utc_now_iso(),
             "milestone_id": milestone_id,
+            "workstream_id": workstream_id,
         },
     )
     # 9-bug triage E: emit a closing Papyrus narration so the open
@@ -435,7 +438,7 @@ def _generate_workstream_report_impl(workstream_id: str, mission_id: str) -> dic
         extra={"workstream_id": workstream_id},
     )
     path.write_text(body, encoding="utf-8")
-    _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path)
+    _save_deliverable(store, mission_id, deliverable_id, deliverable_type, path, workstream_id=workstream_id)
     return {
         "mission_id": mission_id,
         "workstream_id": workstream_id,
@@ -549,6 +552,7 @@ def _generate_milestone_report_impl(milestone_id: str, mission_id: str) -> dict[
         deliverable_type,
         path,
         milestone_id=milestone_id,
+        workstream_id=milestone.workstream_id,
     )
     return {
         "mission_id": mission_id,

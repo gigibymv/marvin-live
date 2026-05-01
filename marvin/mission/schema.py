@@ -137,6 +137,7 @@ class Deliverable(MarvinModel):
     file_size_bytes: int | None = None
     created_at: str | None = None
     milestone_id: str | None = None  # C-PER-MILESTONE: pair a deliverable with a milestone row in the UI
+    workstream_id: str | None = None  # tab routing: W1/W2/W4 for workstream+milestone reports, null for global
 
     @field_validator("file_path")
     @classmethod
