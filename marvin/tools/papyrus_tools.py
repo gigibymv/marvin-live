@@ -241,6 +241,10 @@ def _save_deliverable(
             "milestone_id": milestone_id,
         },
     )
+    # 9-bug triage E: emit a closing Papyrus narration so the open
+    # "Drafting the {deliverable}" bubble is replaced rather than left
+    # stuck on screen after the deliverable is already persisted.
+    _emit_papyrus_narration(mission_id, f"Done · {deliverable_type}")
 
 
 def _generate_engagement_brief_impl(mission_id: str) -> dict[str, Any]:

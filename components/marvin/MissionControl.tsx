@@ -414,6 +414,10 @@ export default function MissionControl({
   const [activeAgentSince, setActiveAgentSince] = useState<number | null>(null);
   const [activeAgentElapsed, setActiveAgentElapsed] = useState(0);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, "idle" | "active" | "done">>({});
+  // 9-bug triage B: track latest backend phase so the status badge can show
+  // "Framing", "Synthesis" etc. instead of generic "Mission running" / 0%
+  // while the workstreams haven't started.
+  const [currentPhase, setCurrentPhase] = useState<string | null>(null);
   const [latestNarration, setLatestNarration] = useState<string | null>(null);
   // Bug #6a: track which agent owns the current narration so we can clear it
   // when that agent emits `agent_done` (otherwise stale "Calculus — still
@@ -888,6 +892,7 @@ export default function MissionControl({
             break;
           }
           case "phase_changed":
+            if (event.phase) setCurrentPhase(event.phase);
             if (event.phase && event.phase !== "awaiting_confirmation") {
               setResolvingGateIds(new Set());
             }
@@ -1078,21 +1083,26 @@ export default function MissionControl({
 
       // Set streaming state
       setRunState(mission.id, { isStreaming: true });
-      // Bug 8: only insert the "Mission starting…" placeholder on the very
-      // first send. Subsequent sends (continue, steering, post-completion
-      // chat) used to overwrite the existing phase row with this stale
-      // label and bury the real phase status in the activity feed.
-      setLiveFindings((current) => {
-        if (current.some((e) => e.id === "startup")) return current;
-        return upsertLiveEvent(current, {
-          id: "startup",
-          kind: "phase",
-          agent: "Workflow",
-          claim_text: "Mission starting…",
-          ts: String(Date.now()),
+      // Bug 8 + 9-bug triage A: only insert the startup placeholder + restart
+      // narration on the genuine first send (no persisted brief AND a real
+      // brief-length payload). Mirrors backend `is_initial_brief` at
+      // marvin_ui/server.py:1258. Without this guard, replies like "ok",
+      // "continue", "status?" overwrite the live phase row and re-narrate
+      // "Starting the mission run" while the mission is mid-synthesis.
+      const isInitialBrief = !progress?.framing && value.trim().length >= 50;
+      if (isInitialBrief) {
+        setLiveFindings((current) => {
+          if (current.some((e) => e.id === "startup")) return current;
+          return upsertLiveEvent(current, {
+            id: "startup",
+            kind: "phase",
+            agent: "MARVIN",
+            claim_text: "Mission starting…",
+            ts: String(Date.now()),
+          });
         });
-      });
-      setLatestNarration("MARVIN — Starting the mission run.");
+        setLatestNarration("MARVIN — Starting the mission run.");
+      }
       setStreamError(null);
 
       // For local repository, use mock response
@@ -1124,7 +1134,7 @@ export default function MissionControl({
         }
       }
     },
-    [mission, repository.kind, eventStream, setChatDraft, setRunState]
+    [mission, repository.kind, eventStream, setChatDraft, setRunState, progress?.framing]
   );
 
   // Per-gate, per-event-type dedup with a 2s window. Live missions surfaced
@@ -1189,17 +1199,17 @@ export default function MissionControl({
       const gatePayload = gatePayloads[gateId];
       const unlocks = gatePayload?.unlocksOnApprove?.trim();
       const approveNarration = unlocks
-        ? `Workflow — Gate approved. ${unlocks}`
+        ? `MARVIN — Gate approved. ${unlocks}`
         : (() => {
             switch (gateMeta?.gate_type) {
               case "hypothesis_confirmation":
-                return "Workflow — Gate approved. Starting the research workstreams.";
+                return "MARVIN —Gate approved. Starting the research workstreams.";
               case "manager_review":
-                return "Workflow — Gate approved. Synthesising the verdict.";
+                return "MARVIN —Gate approved. Synthesising the verdict.";
               case "final_review":
-                return "Workflow — Gate approved. Generating the final IC memo.";
+                return "MARVIN —Gate approved. Generating the final IC memo.";
               default:
-                return "Workflow — Gate approved. Continuing the mission.";
+                return "MARVIN —Gate approved. Continuing the mission.";
             }
           })();
       setLatestNarration(approveNarration);
@@ -1299,7 +1309,7 @@ export default function MissionControl({
       setGateModal(null);
       setPausedForGate(false);
       setRunState(mission.id, { isStreaming: true });
-      setLatestNarration("Workflow — Reworking the mission from your feedback.");
+      setLatestNarration("MARVIN —Reworking the mission from your feedback.");
 
       try {
         // For HTTP repository, call the API
@@ -1384,7 +1394,7 @@ export default function MissionControl({
       setGateModal(null);
       setPausedForGate(false);
       setRunState(mission.id, { isStreaming: true });
-      setLatestNarration("Workflow — Applying your gate decision.");
+      setLatestNarration("MARVIN —Applying your gate decision.");
       setMessages((current) =>
         current.concat({
           id: makeMessageId(mission.id, "decision"),
@@ -1441,7 +1451,7 @@ export default function MissionControl({
     const answers = questions.map((_, idx) => (clarificationAnswers[idx] ?? "").trim());
     setClarificationSubmitting(true);
     setRunState(mission.id, { isStreaming: true });
-    setLatestNarration("Workflow — Applying your clarification.");
+    setLatestNarration("MARVIN —Applying your clarification.");
     try {
       const result = await apiSubmitClarificationAnswers(
         mission.id,
@@ -1480,7 +1490,7 @@ export default function MissionControl({
       appendGateMessage(gateModal.gateId, "deferred", {
         id: `${gateModal.gateId}-deferred-${Date.now()}`,
         from: "m",
-        text: `Gate "${gateModal.title}" deferred. The mission is paused and your decision is preserved — reopen anytime to approve or reject.`,
+        text: `Gate "${gateModal.title}" still pending — reopen from the banner anytime to approve or reject.`,
       });
     }
     setGateModal(null);
@@ -1597,6 +1607,23 @@ export default function MissionControl({
   // "delivered", OR whose id has been flipped to "delivered" by a live
   // milestone_done SSE event captured in milestoneStatusOverrides.
   const allMilestones = progress?.milestones ?? [];
+  // 9-bug triage F: synthesize a Papyrus row for the agents panel. Papyrus
+  // has no workstream of its own — it writes deliverables across the run —
+  // so the workstream-derived map below would never surface it. We infer
+  // its state from (a) the most recent narration agent and (b) whether
+  // any deliverable exists yet.
+  const papyrusActive = (latestNarration ?? "").startsWith("Papyrus —")
+    || agentStatuses["papyrus"] === "active";
+  const anyDeliverableReady = (progress?.deliverables ?? []).some((d: any) => d.status === "ready");
+  const papyrusRow = {
+    id: "papyrus",
+    name: "Papyrus",
+    role: "Deliverable writer",
+    status: papyrusActive ? ("active" as const) : (anyDeliverableReady ? ("done" as const) : ("idle" as const)),
+    state: papyrusActive ? "running" : (anyDeliverableReady ? "done" : "idle"),
+    milestonesTotal: 0,
+    milestonesDelivered: 0,
+  };
   const agents = (progress?.workstreams ?? []).map(ws => {
     const wsMilestones = allMilestones.filter(m => m.workstream_id === ws.id);
     const delivered = wsMilestones.filter(m => {
@@ -1615,6 +1642,10 @@ export default function MissionControl({
       milestonesDelivered: delivered,
     };
   });
+  // Append Papyrus only when it has signalled activity or produced output.
+  if (papyrusActive || anyDeliverableReady) {
+    agents.push(papyrusRow as typeof agents[number]);
+  }
 
   // Compute checkpoints from gates
   const gateStatusToCheckpoint = (g: any) => {
@@ -1712,6 +1743,19 @@ export default function MissionControl({
   const rawProgressRatio = Math.min(1, phaseStageCount / 6);
   const progressRatio =
     mission.status === "completed" ? rawProgressRatio : Math.min(rawProgressRatio, 0.99);
+  // 9-bug triage B: phase-aware status badge. While the backend is in
+  // `framing` (no brief yet), show "Framing" instead of the generic
+  // "Mission running" that paired with 0% looked frozen. Same for
+  // `synthesis_done` -> "Synthesis" until the next gate or agent fires.
+  const phaseStatusLabel: string | null = (() => {
+    if (!progress?.framing && (currentPhase === "framing" || currentPhase === "setup")) {
+      return "Framing";
+    }
+    if (currentPhase === "synthesis_done" || currentPhase === "synthesis_retry") {
+      return "Synthesis";
+    }
+    return null;
+  })();
   const missionStatusLabel = resolvingGateIds.size > 0
     ? "Mission running"
     : hasPendingGate
@@ -1720,11 +1764,13 @@ export default function MissionControl({
       ? "Complete"
       : activeAgent
         ? `${activeAgent} running`
-        : runState.isStreaming
-          ? "Mission running"
-          : nextCheckpointLabel
-            ? `Next gate · ${nextCheckpointLabel}`
-            : "Ready";
+        : phaseStatusLabel
+          ? phaseStatusLabel
+          : runState.isStreaming
+            ? "Mission running"
+            : nextCheckpointLabel
+              ? `Next gate · ${nextCheckpointLabel}`
+              : "Ready";
   const missionForView = {
     ...mission,
     progress: progressRatio,
@@ -1972,14 +2018,23 @@ export default function MissionControl({
     // ✓ — leftover milestone bookkeeping should never keep a tab spinning
     // after the run is over.
     const missionCompleted = mission.status === "completed";
+    // 9-bug triage C: a tab must not flip ✓ while the workstream's report
+    // deliverable is still generating. Require either a ready deliverable
+    // for this ws OR a verdict (W3 special case) before marking complete.
+    const tabCompletedReady = missionCompleted
+      || (allMilestonesDone && wsHasReadyDeliverable)
+      || synthesisDone
+      || agentDoneWithDeliverable;
     const status: WorkstreamViewStatus =
-      missionCompleted || allMilestonesDone || synthesisDone || agentDoneWithDeliverable
+      tabCompletedReady
         ? "completed"
         : liveStatus === "active"
           ? "now"
           : wsDelivered > 0 || wsHasReadyDeliverable
             ? "in_progress"
-            : "pending";
+            : allMilestonesDone
+              ? "in_progress"
+              : "pending";
     return {
       id: ws.id,
       label: ws.label,
@@ -2056,7 +2111,7 @@ export default function MissionControl({
     latestNarration ??
     (activeAgent
       ? `${activeAgent} is working on the next mission step.`
-      : "Workflow — Starting the research workstreams.");
+      : "MARVIN —Starting the research workstreams.");
   const waitMessage = isStalled
     ? "Still working. No action needed — MARVIN will update this panel as soon as the next event arrives."
     : streamElapsedSeconds >= 8

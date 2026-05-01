@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 from langgraph.types import Command
 
-from marvin.events import emit_finding_persisted
+from marvin.events import emit_finding_persisted, emit_graph_event
 from marvin.mission.schema import Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.quality.corroboration import evaluate_corroboration
@@ -943,6 +943,21 @@ def ask_question(text: str, blocking: bool, state: InjectedStateArg = None) -> d
     return {"question": text, "blocking": blocking, "mission_id": mission_id, "status": "pending"}
 
 
+def _emit_merlin_narration(mission_id: str, intent: str) -> None:
+    """9-bug triage I: surface merlin's per-step work in the live SSE stream
+    so the Synthesis tab and chat aren't blank while merlin is iterating
+    over MECE checks and verdict drafting. Best-effort, never raises."""
+    try:
+        from datetime import UTC, datetime
+        import json as _json
+        ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        payload = {"agent": "Merlin", "intent": intent, "ts": ts}
+        sse_string = f"event: narration\ndata: {_json.dumps(payload)}\n\n"
+        emit_graph_event(mission_id, sse_string)
+    except Exception:  # noqa: BLE001 — defensive boundary
+        pass
+
+
 def set_merlin_verdict(
     verdict: str,
     notes: str,
@@ -950,6 +965,7 @@ def set_merlin_verdict(
 ) -> dict[str, Any]:
     """Record Merlin's final verdict (SHIP, MINOR_FIXES, or BACK_TO_DRAWING_BOARD) for the mission."""
     mission_id = require_mission_id(state)
+    _emit_merlin_narration(mission_id, f"Verdict · {verdict}")
     store = get_store(_STORE_FACTORY)
     g3_gate = next((gate for gate in store.list_gates(mission_id) if gate.scheduled_day == 10), None)
     verdict_row = MerlinVerdict(
@@ -961,6 +977,35 @@ def set_merlin_verdict(
         created_at=utc_now_iso(),
     )
     store.save_merlin_verdict(verdict_row)
+    # 9-bug triage I: also persist the verdict as a synthesis finding so the
+    # W3 (Synthesis) tab gets at least one row instead of staying on the
+    # "Agents are working" empty-state until the deliverable is generated.
+    try:
+        finding_id = short_id("f")
+        finding = Finding(
+            id=finding_id,
+            mission_id=mission_id,
+            workstream_id="W3",
+            agent_id="merlin",
+            claim_text=f"Synthesis verdict: {verdict}" + (f" — {notes}" if notes else ""),
+            confidence="REASONED",
+            source_id=None,
+            created_at=utc_now_iso(),
+        )
+        store.save_finding(finding)
+        emit_finding_persisted(
+            mission_id,
+            {
+                "finding_id": finding_id,
+                "workstream_id": "W3",
+                "agent_id": "merlin",
+                "claim_text": finding.claim_text,
+                "confidence": "REASONED",
+                "created_at": finding.created_at,
+            },
+        )
+    except Exception:  # noqa: BLE001 — defensive: verdict persistence is the contract; finding is UX only
+        pass
     return {"verdict": verdict_row.verdict, "verdict_id": verdict_row.id}
 
 

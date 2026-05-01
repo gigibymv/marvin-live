@@ -3,8 +3,22 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from marvin.events import emit_graph_event
 from marvin.mission.store import MissionStore
 from marvin.tools.common import InjectedStateArg, coerce_jsonish, get_store, require_mission_id, serialize_models
+
+
+def _emit_merlin_narration(mission_id: str, intent: str) -> None:
+    """9-bug triage I: surface merlin's per-step work in the live SSE stream."""
+    try:
+        from datetime import UTC, datetime
+        import json as _json
+        ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        payload = {"agent": "Merlin", "intent": intent, "ts": ts}
+        sse_string = f"event: narration\ndata: {_json.dumps(payload)}\n\n"
+        emit_graph_event(mission_id, sse_string)
+    except Exception:  # noqa: BLE001 — defensive boundary
+        pass
 
 _STORE_FACTORY = MissionStore
 
@@ -15,7 +29,8 @@ def check_mece(storyline_json: Any, state: InjectedStateArg = None) -> dict[str,
     Validates that sections have no duplicate titles and no empty claims.
     Returns dict with is_mece bool, duplicates list, and empty_sections list.
     """
-    require_mission_id(state)
+    mission_id = require_mission_id(state)
+    _emit_merlin_narration(mission_id, "Checking MECE on the storyline")
     payload = coerce_jsonish(storyline_json)
     # The LLM occasionally passes a literal null / empty string / non-dict
     # value when it is uncertain about the storyline shape. Treat that as
@@ -47,6 +62,7 @@ def update_action_title(slide_id: str, new_title: str, state: InjectedStateArg =
 def get_storyline_findings(state: InjectedStateArg = None) -> dict[str, Any]:
     """Retrieve all findings for the current mission grouped by workstream."""
     mission_id = require_mission_id(state)
+    _emit_merlin_narration(mission_id, "Reviewing findings for the storyline")
     store = get_store(_STORE_FACTORY)
     findings = store.list_findings(mission_id)
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)

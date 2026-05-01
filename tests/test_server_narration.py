@@ -37,7 +37,7 @@ async def test_emit_for_update_adds_workflow_and_agent_narration():
     assert ("phase_changed", {"phase": "confirmed", "label": "Research kickoff"}) in events
     assert any(
         event_type == "narration"
-        and payload["agent"] == "Workflow"
+        and payload["agent"] == "MARVIN"
         and payload["intent"] == "Starting the research workstreams"
         for event_type, payload in events
     )
@@ -81,7 +81,7 @@ async def test_emit_for_update_narrates_gate_interrupt():
     assert any(event_type == "gate_pending" and payload["gate_id"] == "gate-1" for event_type, payload in events)
     assert any(
         event_type == "narration"
-        and payload["agent"] == "Workflow"
+        and payload["agent"] == "MARVIN"
         and payload["intent"] == "Human review needed: Manager review of research claims"
         for event_type, payload in events
     )
@@ -113,7 +113,7 @@ async def test_emit_for_update_humanizes_gate_type_fallback():
 
     assert any(
         event_type == "narration"
-        and payload["agent"] == "Workflow"
+        and payload["agent"] == "MARVIN"
         and payload["intent"] == "Human review needed: manager review"
         for event_type, payload in events
     )
@@ -141,7 +141,7 @@ async def test_emit_for_update_narrates_phase_blocked():
     assert any(event_type == "phase_blocked" for event_type, _ in events)
     assert any(
         event_type == "narration"
-        and payload["agent"] == "Workflow"
+        and payload["agent"] == "MARVIN"
         and payload["intent"] == "Cannot open final review: missing merlin_verdict"
         for event_type, payload in events
     )

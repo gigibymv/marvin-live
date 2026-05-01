@@ -19,6 +19,7 @@ export const AGENT_DISPLAY_MAP: Record<string, string> = {
   orchestrator_qa: "MARVIN",
   framing: "MARVIN",
   framing_orchestrator: "MARVIN",
+  workflow: "MARVIN",
 };
 
 export function normalizeAgentName(raw: unknown): string {

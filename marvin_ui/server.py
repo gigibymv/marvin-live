@@ -106,6 +106,10 @@ _DISPLAY_NAME: dict[str, str | None] = {
     "orchestrator_qa": "MARVIN",
     "framing": "MARVIN",
     "framing_orchestrator": "MARVIN",
+    # 9-bug triage D: gate/phase narration is emitted with agent="workflow";
+    # surface it under the MARVIN brand instead of an unowned "Workflow"
+    # sender label that confused users about who is speaking.
+    "workflow": "MARVIN",
     # System / control-flow nodes — must NEVER appear in the rail
     "phase_router": None,
     "research_join": None,
@@ -1784,6 +1788,20 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                 yield await _emit_phase_changed(phase)
             yield await _emit_run_end()
             return
+
+        # 9-bug triage H: the graph is interrupted. If a gate is currently
+        # parked, the in-process notify-guard (`_GATE_PENDING_NOTIFIED`) may
+        # suppress re-emission of `gate_pending` on the astream(None) replay
+        # below — leaving a fresh client (page reload, second tab) without
+        # the gate banner the user expects. Clear the guard for the pending
+        # gate so the interrupt frame re-fires its SSE event.
+        try:
+            from marvin.graph.gates import _GATE_PENDING_NOTIFIED
+            pending_gate_id = (snapshot.values or {}).get("pending_gate_id")
+            if isinstance(pending_gate_id, str) and pending_gate_id:
+                _GATE_PENDING_NOTIFIED.discard(pending_gate_id)
+        except Exception:  # noqa: BLE001 — defensive boundary
+            pass
 
         yield await _emit_run_start()
         yield _sse_heartbeat()
