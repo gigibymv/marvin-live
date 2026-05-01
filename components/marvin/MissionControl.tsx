@@ -1687,6 +1687,34 @@ export default function MissionControl({
   );
   const hasPendingGate = visiblePendingGates.length > 0;
   const pendingGate = visiblePendingGates[0];
+
+  // On reconnect the SSE gate_pending event never re-fires, so the banner
+  // appears (from REST poll) but the chat message is missing. Synthesize it
+  // from the polled gate payload whenever a pending gate appears and no chat
+  // message exists for it yet.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!pendingGate) return;
+    const gateMsgId = `${pendingGate.id}-gate-pending`;
+    setMessages((current) => {
+      if (current.some((m) => m.id === gateMsgId)) return current;
+      const payload =
+        gatePayloads[pendingGate.id] ??
+        mapGateReviewPayloadToModal(pendingGate.review_payload, {
+          id: pendingGate.id,
+          gate_type: pendingGate.gate_type,
+        });
+      if (payload.format === "clarification_questions") return current;
+      return current.concat({
+        id: gateMsgId,
+        from: "m",
+        text: formatGatePendingChatMessage(payload),
+        gateId: pendingGate.id,
+        gateAction: "pending",
+      });
+    });
+  }, [pendingGate?.id]); // intentionally narrow: only re-run when gate ID changes
+
   const nextCheckpointLabel =
     visiblePendingGates[0]?.gate_type?.replace(/_/g, " ") ??
     checkpoints.find((cp) => cp.status === "now")?.label ??
