@@ -1979,6 +1979,63 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         current_phase: str | None = (snapshot.values or {}).get("phase") if isinstance((snapshot.values or {}).get("phase"), str) else None
         throttle_state: dict[tuple[str, str], float] = {}
         heartbeat_counter = 0
+
+        # Replay persistence-owned events from the store before driving the
+        # graph. If the SSE socket died during a long-running phase (e.g.
+        # research_join's 3-5 min synchronous report compilation), the
+        # corresponding finding/deliverable/milestone events that fired
+        # during that window are gone — they were drained from the dead
+        # stream's queue, never reached the client, and the LangGraph
+        # checkpoint replay below only re-fires the parked gate_pending.
+        # Without this, a reconnecting client sees gate_pending without the
+        # outputs it's supposed to validate. We emit the store's current
+        # rows so the UI rehydrates findings/deliverables/milestones before
+        # the gate banner appears.
+        try:
+            for f in store.list_findings(mission_id):
+                payload = {
+                    "claim_text": f.claim_text,
+                    "confidence": f.confidence,
+                    "finding_id": f.id,
+                    "agent_id": f.agent_id,
+                    "workstream_id": f.workstream_id,
+                    "hypothesis_id": f.hypothesis_id,
+                    "source_id": f.source_id,
+                    "source_type": f.source_type,
+                    "created_at": f.created_at,
+                }
+                yield _sse_event("finding_added", _build_finding_added_from_emit(payload))
+            for d in store.list_deliverables(mission_id):
+                if d.status != "ready":
+                    continue
+                payload = {
+                    "deliverable_id": d.id,
+                    "deliverable_type": d.deliverable_type,
+                    "file_path": d.file_path,
+                    "file_size_bytes": d.file_size_bytes,
+                    "created_at": d.created_at,
+                }
+                yield _sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload))
+                chat_event = _build_papyrus_chat_event(payload)
+                if chat_event:
+                    yield chat_event
+                    papyrus_chat_emitted.add(d.id)
+            for m in store.list_milestones(mission_id):
+                if m.status not in ("delivered", "blocked"):
+                    continue
+                payload = {
+                    "milestone_id": m.id,
+                    "label": m.label,
+                    "workstream_id": m.workstream_id,
+                    "status": m.status,
+                    "result_summary": m.result_summary,
+                }
+                yield _sse_event("milestone_done", _build_milestone_done_from_emit(payload))
+        except Exception as exc:  # noqa: BLE001 — replay best-effort
+            logger.warning(
+                "Store replay failed for mission=%s: %s", mission_id, exc
+            )
+
         # First iteration: None drives astream from the existing checkpoint.
         # Subsequent iterations use Command(resume=payload) after a gate decision.
         next_input: Any = None
