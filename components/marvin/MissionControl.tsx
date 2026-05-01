@@ -1921,13 +1921,24 @@ export default function MissionControl({
   const milestoneOutputs = allMilestones
     .filter((m) => {
       const liveStatus = milestoneStatusOverrides[m.id];
-      return (liveStatus ?? m.status) === "delivered";
+      return ["delivered", "blocked"].includes(liveStatus ?? m.status);
     })
     .map((m) => {
-      const tied = seedDeliverables.find(
-        (d) => d.status === "ready" && d.milestone_id === m.id,
-      );
-      const wsFallback = !tied
+      const liveStatus = milestoneStatusOverrides[m.id];
+      const status = liveStatus ?? m.status;
+      const isBlocked = status === "blocked";
+      // Blocked milestones surface their result_summary (the block reason)
+      // so a workstream with no deliverable still tells the user WHY —
+      // e.g. "EDGAR returned no usable filings for AcmeFin Holdings".
+      // Without this the tab flips ✓ but the body says "no outputs",
+      // which reads like a regression.
+      const blockReason = (m as any).result_summary?.toString().trim();
+      const tied = isBlocked
+        ? undefined
+        : seedDeliverables.find(
+            (d) => d.status === "ready" && d.milestone_id === m.id,
+          );
+      const wsFallback = !tied && !isBlocked
         ? seedDeliverables.find(
             (d) =>
               d.status === "ready" &&
@@ -1938,13 +1949,16 @@ export default function MissionControl({
           )
         : undefined;
       const linked = tied ?? wsFallback;
+      const text = isBlocked
+        ? `Milestone blocked · ${m.label}${blockReason ? ` — ${blockReason}` : ""}`
+        : `Milestone complete · ${m.label}`;
       return {
         id: m.id,
         kind: "milestone" as const,
         ag: "MARVIN",
-        text: `Milestone complete · ${m.label}`,
-        claim_text: `Milestone complete · ${m.label}`,
-        confidence: "DONE",
+        text,
+        claim_text: text,
+        confidence: isBlocked ? "BLOCKED" : "DONE",
         section_id: null,
         workstream_id: m.workstream_id,
         ts: "",
