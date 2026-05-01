@@ -1934,7 +1934,13 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             from marvin.graph.gates import _GATE_PENDING_NOTIFIED
             pending_gate_id = (snapshot.values or {}).get("pending_gate_id")
             if isinstance(pending_gate_id, str) and pending_gate_id:
-                _GATE_PENDING_NOTIFIED.discard(pending_gate_id)
+                # Do not clear the guard if an approval is already in-flight
+                # for this gate — clearing it would cause gate_node to re-emit
+                # gate_pending on the astream(None) replay, surfacing a stale
+                # gate banner to the reconnecting client and requiring a second
+                # click to advance the graph.
+                if pending_gate_id not in _gate_decisions_in_flight:
+                    _GATE_PENDING_NOTIFIED.discard(pending_gate_id)
         except Exception:  # noqa: BLE001 — defensive boundary
             pass
 
