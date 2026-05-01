@@ -201,6 +201,7 @@ def test_gate_node_completes_gate_when_approved(monkeypatch: pytest.MonkeyPatch,
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    graph_store.mark_milestone_delivered("W1.1", "Market research complete", "m-test")
     monkeypatch.setattr(gates, "interrupt", lambda payload: {"approved": True, "notes": "Approved"})
     result = asyncio.run(gates.gate_node({"mission_id": "m-test", "pending_gate_id": "gate-m-test-G1"}))
     updated_gate = next(gate for gate in graph_store.list_gates("m-test") if gate.id == "gate-m-test-G1")

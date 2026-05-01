@@ -12,7 +12,7 @@ def test_llm_factory_uses_openrouter_role_mapping():
     assert OPENROUTER_BASE_URL == "https://openrouter.ai/api/v1"
     for role in ("dora", "calculus", "merlin", "adversus", "orchestrator"):
         assert role in MODEL_BY_ROLE
-        assert MODEL_BY_ROLE[role].startswith(("openai/", "deepseek/"))
+        assert MODEL_BY_ROLE[role].startswith(("openai/", "deepseek/", "google/"))
 
 
 def test_agent_tool_registries_non_empty():

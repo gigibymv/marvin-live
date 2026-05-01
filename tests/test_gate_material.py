@@ -106,6 +106,7 @@ def test_manager_gate_findings_total_counts_only_research_findings(store: Missio
             created_at=now,
         )
     )
+    store.mark_milestone_delivered("W1.1", "Market research complete", "m-gate")
     gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G1")
 
     material = evaluate_gate_material(store, "m-gate", gate)

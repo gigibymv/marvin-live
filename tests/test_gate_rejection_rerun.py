@@ -67,6 +67,7 @@ def test_g1_reject_seeds_retry_gate_and_routes_to_confirmed(
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    graph_store.mark_milestone_delivered("W1.1", "Market research complete", "m-test")
     result = asyncio.run(
         gates.gate_node({"mission_id": "m-test", "pending_gate_id": "gate-m-test-G1"})
     )
@@ -112,6 +113,8 @@ def test_g3_reject_routes_to_redteam_done_and_seeds_retry(
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    g1_id = next(g.id for g in graph_store.list_gates("m-test") if g.gate_type == "manager_review")
+    graph_store.update_gate_status(g1_id, "completed", "approved-for-test")
     g3_id = next(g.id for g in graph_store.list_gates("m-test") if g.scheduled_day == 10)
     result = asyncio.run(
         gates.gate_node({"mission_id": "m-test", "pending_gate_id": g3_id})

@@ -156,6 +156,7 @@ def test_manager_review_opens_after_research_finding(store: MissionStore):
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    store.mark_milestone_delivered("W1.1", "Market research complete", "m-progress")
 
     payload = asyncio.run(srv.get_mission_progress("m-progress"))
     gates = {gate["gate_type"]: gate for gate in payload["gates"]}
@@ -187,6 +188,8 @@ def test_final_review_opens_after_merlin_verdict_and_redteam_finding(store: Miss
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    g2 = next(g for g in store.list_gates("m-progress") if g.gate_type == "manager_review")
+    store.update_gate_status(g2.id, "completed", "approved-for-test")
 
     payload = asyncio.run(srv.get_mission_progress("m-progress"))
     gates = {gate["gate_type"]: gate for gate in payload["gates"]}
