@@ -121,7 +121,7 @@ export function RightRail({
               <div style={{
                 maxWidth: "82%", padding: "10px 14px",
                 fontSize: 13, lineHeight: 1.6, letterSpacing: "0.01em",
-                fontFamily: !isUser && m.deliverableId ? "var(--m)" : undefined,
+                fontFamily: "var(--d)",
                 color: isUser
                   ? "var(--paper)"
                   : m.deliverableId
