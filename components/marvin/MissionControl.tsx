@@ -639,14 +639,13 @@ export default function MissionControl({
           return;
         }
 
-        if (isBackendOfflineError(error)) {
-          setIsOffline(true);
-          setBackendState("offline");
-          setMission(null);
-          setMessages([]);
-        } else {
-          throw error;
+        if (!isBackendOfflineError(error)) {
+          console.error("Unexpected error loading mission:", error);
         }
+        setIsOffline(true);
+        setBackendState("offline");
+        setMission(null);
+        setMessages([]);
       } finally {
         if (!cancelled) {
           setHasLoaded(true);

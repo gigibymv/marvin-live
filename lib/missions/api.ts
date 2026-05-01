@@ -106,7 +106,7 @@ export async function getMission(missionId: string): Promise<{
   const response = await fetch(`${API_BASE}/missions/${missionId}`);
 
   if (!response.ok) {
-    if (response.status === 0) {
+    if (response.status === 0 || response.status >= 500) {
       throw new BackendOfflineError();
     }
     if (response.status === 404) {
