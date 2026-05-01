@@ -135,8 +135,14 @@ function FindingRow({ f }: { f: CenterFinding }): React.ReactElement {
 // ─── MilestoneRow ─────────────────────────────────────────────────────────────
 
 function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolean }): React.ReactElement | null {
-  // Fix B: suppress "Report generating…" row when milestone is terminal but has no paired deliverable
+  // Suppress entirely when the parent tab is completed but no per-milestone
+  // artifact landed (terminal milestone, no deliverable to open).
   if (isTerminal && !f.onOpen) return null;
+  // Only show "Report generating…" while the milestone is genuinely live —
+  // i.e. the parent tab hasn't reached a terminal state. Once isTerminal,
+  // the workstream-level report is the one being opened, no per-milestone
+  // generation is in flight.
+  const showGenerating = !isTerminal;
   return (
     <div style={{
       padding: "14px 24px",
@@ -151,7 +157,9 @@ function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolea
         {f.agent ?? "MARVIN"}
       </Mono>
       <span style={{ flex: 1, fontSize: 13, fontWeight: 600, lineHeight: 1.6 }}>{humanizeText(f.text ?? "")}</span>
-      <Mono size={9} color="rgba(244,240,234,.45)" style={{ fontStyle: "italic" }}>Report generating…</Mono>
+      {showGenerating && (
+        <Mono size={9} color="rgba(244,240,234,.45)" style={{ fontStyle: "italic" }}>Report generating…</Mono>
+      )}
       <Mono size={9} color="rgba(244,240,234,.3)">{formatRowTime(f.ts)}</Mono>
     </div>
   );

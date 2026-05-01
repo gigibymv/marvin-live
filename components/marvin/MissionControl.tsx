@@ -2255,17 +2255,15 @@ export default function MissionControl({
         activeAgent={activeAgent}
         currentNarration={waitState.message}
         latestTrace={(() => {
-          // Trace lane = "what's happening right now". Skip terminal/
-          // archival events (deliverable_ready, milestone_done, gate
-          // events, phase markers) — those belong in the activity feed.
-          // Keep narration / finding / agent_active so the user always
-          // sees a live signal, not a stale "Deliverable ready · …".
+          // Trace lane = "what's happening right now". Keep it tight:
+          // only narration and agent_active (short, live, present-tense).
+          // Skip findings (long claim text overflows the strip),
+          // milestones / deliverables / gates / phase markers (archival).
+          // Anything filtered out still lands in the activity feed below.
           const traceableKinds = new Set([
             "narration",
-            "finding",
             "agent_active",
             "tool_call",
-            "agent_message",
           ]);
           const latest = activity.find((e: any) => {
             const kind = String(e?.kind ?? "");
