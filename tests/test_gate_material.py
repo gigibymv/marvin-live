@@ -156,6 +156,10 @@ def test_final_gate_findings_total_counts_all_findings(store: MissionStore):
             created_at=now,
         )
     )
+    # G3 only opens once G2 (manager_review) is completed; without this
+    # gate ordering, an interim merlin verdict would open G3 mid-Adversus.
+    g2 = next(g for g in store.list_gates("m-gate") if g.gate_type == "manager_review")
+    store.update_gate_status(g2.id, "completed", "approved-for-test")
     gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G3")
 
     material = evaluate_gate_material(store, "m-gate", gate, arbiter_flags=["Check margin bridge"])
@@ -164,3 +168,31 @@ def test_final_gate_findings_total_counts_all_findings(store: MissionStore):
     assert material.review_payload["findings_total"] == 2
     assert material.review_payload["open_risks"] == ["Red-team challenge"]
     assert material.review_payload["arbiter_flags"] == ["Check margin bridge"]
+
+
+def test_final_gate_blocked_while_manager_gate_pending(store: MissionStore):
+    """G3 must NOT open until G2 is completed, even when Merlin has saved
+    an interim verdict and Adversus has produced findings (synthesis_retry
+    loop). Regression for #3 — IC sign-off banner appearing at ~42% during
+    Adversus."""
+    now = datetime.now(UTC).isoformat()
+    store.save_merlin_verdict(
+        MerlinVerdict(id="mv-interim", mission_id="m-gate", verdict="MINOR_FIXES", created_at=now)
+    )
+    store.save_finding(
+        Finding(
+            id="f-redteam-interim",
+            mission_id="m-gate",
+            workstream_id="W4",
+            claim_text="Red-team interim claim",
+            confidence="REASONED",
+            agent_id="adversus",
+            created_at=now,
+        )
+    )
+    g3 = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G3")
+
+    material = evaluate_gate_material(store, "m-gate", g3)
+
+    assert material.is_open is False
+    assert "prior_gate_pending" in material.missing_material

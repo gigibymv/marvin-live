@@ -212,6 +212,18 @@ def evaluate_gate_material(
         )
 
     elif gate.gate_type == "final_review":
+        # G3 must wait for G2 (manager_review) to be completed. Without this
+        # check, G3 evaluates is_open=True the moment Merlin saves an interim
+        # verdict during synthesis_retry — even though the mission is still
+        # looping back through Adversus and the final synthesis hasn't run.
+        # Symptom: "IC sign-off" banner appears at ~42% while Adversus is
+        # still RUNNING.
+        manager_gate = next(
+            (g for g in store.list_gates(mission_id) if g.gate_type == "manager_review"),
+            None,
+        )
+        if manager_gate is None or manager_gate.status != "completed":
+            missing_material.append("prior_gate_pending")
         if merlin_verdict is None:
             missing_material.append("merlin_verdict")
         if not redteam_findings:
