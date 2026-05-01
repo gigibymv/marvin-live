@@ -1310,6 +1310,8 @@ export default function MissionControl({
           if (!shouldResume || !scheduleResumeStream()) {
             setRunState(mission.id, { isStreaming: false });
             setGateActionInFlight(null);
+            clearGateResolving(gateId);
+            void refreshProgress();
           }
         }
       } catch (error) {
@@ -1320,7 +1322,7 @@ export default function MissionControl({
         setStreamError(error instanceof Error ? error.message : "Failed to validate gate");
       }
     },
-    [clearGateResolving, gateActionInFlight, markGateResolving, mission, repository.kind, setRunState, appendGateMessage, scheduleResumeStream]
+    [clearGateResolving, gateActionInFlight, markGateResolving, mission, repository.kind, setRunState, appendGateMessage, scheduleResumeStream, refreshProgress]
   );
 
   // Handle gate rejection
@@ -1539,11 +1541,10 @@ export default function MissionControl({
     );
   }, [gatePayloads, progress]);
 
-  useEffect(() => {
-    if (!runState.isStreaming && gateActionInFlight) {
-      setGateActionInFlight(null);
-    }
-  }, [gateActionInFlight, runState.isStreaming]);
+  // Note: gateActionInFlight is cleared explicitly by every code path that
+  // sets isStreaming=false (run_end handler, scheduleResumeStream.finally,
+  // error path, idempotent path, the !shouldResume branch). A useEffect that
+  // races with those paths was the root cause of the double-click gate bug.
 
   useEffect(() => {
     if (!runState.isStreaming || pausedForGate) {
