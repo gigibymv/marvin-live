@@ -1489,6 +1489,15 @@ async def _stream_chat(
             next_input = initial_state
             resume_payload_to_clear = None
 
+        # Recovery payload — set whenever we're mid-flight through a
+        # Command(resume=...) astream pass. If the SSE socket dies and our
+        # task is cancelled before astream finishes, the outer finally spawns
+        # a detached driver with this payload so the graph still advances.
+        # Without this, gate is "approved" in DB but graph stalls until the
+        # user manually clicks /resume — the "stop after approve / reprend
+        # out of nowhere" symptom.
+        pending_recovery_payload: dict[str, Any] | None = chat_resume_payload
+
         # Side channel for finding_added events. The listener fires from
         # whichever thread the persistence call runs on (LangGraph tools run
         # in run_in_executor), so we use a thread-safe queue.Queue and drain
@@ -1559,6 +1568,7 @@ async def _stream_chat(
             interrupted = False
             clearing_resume_payload = resume_payload_to_clear
             resume_payload_to_clear = None
+            pending_recovery_payload = clearing_resume_payload
             agent_ref: list[str | None] = [current_agent]
             try:
                 async for kind, payload in _astream_with_heartbeat(
@@ -1589,6 +1599,10 @@ async def _stream_chat(
             finally:
                 if clearing_resume_payload is not None:
                     _clear_gate_decision_in_flight(clearing_resume_payload.get("gate_id"))
+
+            # astream pass returned cleanly — no recovery needed for that
+            # payload anymore.
+            pending_recovery_payload = None
 
             for s in _drain_events():
                 yield s
@@ -1651,6 +1665,32 @@ async def _stream_chat(
         except (NameError, UnboundLocalError):
             pass
         mission_lock.release()
+        # Recovery: if our task is dying (cancellation / SSE socket dead /
+        # unhandled exception) while a Command(resume=payload) astream pass
+        # was in flight, spawn a detached driver to advance the graph from
+        # the parked checkpoint. Without this, gate is "approved" in the DB
+        # but the graph stalls — the "stop after approve / reprend out of
+        # nowhere" symptom (validate_gate's fast path returned status=resumed
+        # because we were parked, but the resume never reached the next
+        # interrupt or completion before our task got cut off).
+        try:
+            recovery_payload = pending_recovery_payload  # type: ignore[name-defined]
+        except NameError:
+            recovery_payload = None
+        if recovery_payload is not None:
+            try:
+                _spawn_detached_resume(mission_id, recovery_payload)
+                logger.warning(
+                    "Spawned recovery detached driver after _stream_chat exit: "
+                    "mission=%s gate=%s",
+                    mission_id,
+                    recovery_payload.get("gate_id"),
+                )
+            except Exception:  # noqa: BLE001 — best-effort recovery
+                logger.exception(
+                    "Recovery detached driver spawn failed: mission=%s",
+                    mission_id,
+                )
 
 
 async def _stream_resume_passive(
@@ -1943,11 +1983,16 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         # Subsequent iterations use Command(resume=payload) after a gate decision.
         next_input: Any = None
         resume_payload_to_clear: dict[str, Any] | None = None
+        # Recovery payload — see _stream_chat for rationale. If a post-resume
+        # astream pass crashes/cancels, the outer finally spawns a detached
+        # driver with this payload so the graph still advances.
+        pending_recovery_payload: dict[str, Any] | None = None
 
         while True:
             interrupted = False
             clearing_resume_payload = resume_payload_to_clear
             resume_payload_to_clear = None
+            pending_recovery_payload = clearing_resume_payload
             agent_ref: list[str | None] = [current_agent]
             try:
                 async for kind, payload in _astream_with_heartbeat(
@@ -1976,6 +2021,9 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             finally:
                 if clearing_resume_payload is not None:
                     _clear_gate_decision_in_flight(clearing_resume_payload.get("gate_id"))
+
+            # astream pass returned cleanly — no recovery needed.
+            pending_recovery_payload = None
 
             for s in _drain_events():
                 yield s
@@ -2032,6 +2080,27 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         except (NameError, UnboundLocalError):
             pass
         mission_lock.release()
+        # Recovery: see _stream_chat. If a /resume client consumes a gate
+        # verdict but its socket dies before astream reaches the next
+        # interrupt, spawn a detached driver so the graph advances.
+        try:
+            recovery_payload = pending_recovery_payload  # type: ignore[name-defined]
+        except NameError:
+            recovery_payload = None
+        if recovery_payload is not None:
+            try:
+                _spawn_detached_resume(mission_id, recovery_payload)
+                logger.warning(
+                    "Spawned recovery detached driver after _stream_resume exit: "
+                    "mission=%s gate=%s",
+                    mission_id,
+                    recovery_payload.get("gate_id"),
+                )
+            except Exception:  # noqa: BLE001 — best-effort recovery
+                logger.exception(
+                    "Recovery detached driver spawn failed: mission=%s",
+                    mission_id,
+                )
 
 
 # =============================================================================
