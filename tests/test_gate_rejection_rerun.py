@@ -55,7 +55,7 @@ def test_g1_reject_seeds_retry_gate_and_routes_to_confirmed(
 ):
     monkeypatch.setattr(gates, "interrupt", lambda payload: {"approved": False, "notes": "claims weak"})
     # Seed a finding so material is "ready" for the manager_review gate.
-    from marvin.mission.schema import Finding
+    from marvin.mission.schema import Deliverable, Finding
 
     graph_store.save_finding(
         Finding(
@@ -72,6 +72,18 @@ def test_g1_reject_seeds_retry_gate_and_routes_to_confirmed(
     # gate as truly pending and runs the reject path.
     for mid in ("W1.1", "W1.2", "W1.3", "W2.1", "W2.2", "W2.3"):
         graph_store.mark_milestone_delivered(mid, "Research complete", "m-test")
+    # P16 fix: gate also requires a `ready` deliverable per research workstream.
+    for ws_id, d_id in (("W1", "d-w1-reject"), ("W2", "d-w2-reject")):
+        graph_store.save_deliverable(
+            Deliverable(
+                id=d_id,
+                mission_id="m-test",
+                deliverable_type="workstream_report",
+                status="ready",
+                workstream_id=ws_id,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
     result = asyncio.run(
         gates.gate_node({"mission_id": "m-test", "pending_gate_id": "gate-m-test-G1"})
     )

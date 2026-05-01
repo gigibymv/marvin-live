@@ -8,7 +8,7 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from marvin.graph import gates, runner
-from marvin.mission.schema import Finding, MerlinVerdict, Mission
+from marvin.mission.schema import Deliverable, Finding, MerlinVerdict, Mission
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools import arbiter_tools, mission_tools, papyrus_tools
 
@@ -205,6 +205,18 @@ def test_gate_node_completes_gate_when_approved(monkeypatch: pytest.MonkeyPatch,
     # terminal state before opening.
     for mid in ("W1.1", "W1.2", "W1.3", "W2.1", "W2.2", "W2.3"):
         graph_store.mark_milestone_delivered(mid, "Research complete", "m-test")
+    # P16 fix: gate also requires a `ready` deliverable per research workstream.
+    for ws_id, d_id in (("W1", "d-w1-phase-router"), ("W2", "d-w2-phase-router")):
+        graph_store.save_deliverable(
+            Deliverable(
+                id=d_id,
+                mission_id="m-test",
+                deliverable_type="workstream_report",
+                status="ready",
+                workstream_id=ws_id,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
     monkeypatch.setattr(gates, "interrupt", lambda payload: {"approved": True, "notes": "Approved"})
     result = asyncio.run(gates.gate_node({"mission_id": "m-test", "pending_gate_id": "gate-m-test-G1"}))
     updated_gate = next(gate for gate in graph_store.list_gates("m-test") if gate.id == "gate-m-test-G1")

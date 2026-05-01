@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import Link from "next/link";
 import { MissionControlV2View as RawMissionControlView } from "./v2/MissionControlV2View";
@@ -493,6 +493,43 @@ export default function MissionControl({
   useEffect(() => {
     void refreshProgress();
   }, [refreshProgress]);
+
+  // P15: Bootstrap currentPhase from REST on mount so a page-reload mid-mission
+  // does not show "Mission starting…" while waiting for the first phase_changed SSE.
+  // TODO(backend): add `current_phase: string | null` to GET /progress response so
+  // this can be a direct field read instead of a derivation. For now we infer the
+  // most-recent completed phase from the progress snapshot.
+  useEffect(() => {
+    if (currentPhase !== null) return; // SSE already set it — don't clobber
+    if (!progress) return;
+    // Derive the latest phase from persisted state: gates, milestones, and
+    // deliverables act as breadcrumbs. We pick the furthest phase we can confirm.
+    const resolvedGates = (progress.gates ?? []).filter(
+      (g) => g.status === "approved" || g.status === "deferred",
+    );
+    const hasG3Passed = resolvedGates.some((g) => g.gate_type === "G3");
+    const hasG1Passed = resolvedGates.some((g) => g.gate_type === "G1");
+    const hasMerlinVerdict = Boolean((progress as any)?.merlin_verdict?.verdict);
+    const hasDeliverables = (progress.deliverables ?? []).some(
+      (d) => d.status === "ready" && d.file_path,
+    );
+    const hasMilestones = (progress.milestones ?? []).some(
+      (m) => m.status === "delivered",
+    );
+    const derivedPhase = hasDeliverables && hasG3Passed
+      ? "done"
+      : hasMerlinVerdict
+      ? "synthesis_done"
+      : hasMilestones
+      ? "research_done"
+      : hasG1Passed
+      ? "gate_g1_passed"
+      : progress.framing
+      ? "confirmed"
+      : null;
+    if (derivedPhase) setCurrentPhase(derivedPhase);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress]);
 
   // Tick elapsed seconds while an agent is active so the wait headline shows
   // how long the agent has been running.
@@ -1964,22 +2001,35 @@ export default function MissionControl({
   // Untagged findings are intentionally excluded so per-tab content stays
   // distinct rather than every untagged finding bleeding into all tabs.
 
+  // P14: memoize seedDeliverables so the array reference is stable between renders
+  // that don't involve a progress change. Previously a new array (with fresh arrow
+  // function references for onOpen) was created on every render, causing
+  // MissionControlV2View's useMemo([deliverables]) to recompute on every render
+  // cycle triggered by unrelated state setters (e.g. setRunState(isStreaming:true)).
+  // This reference instability caused brief render windows where LeftRail received
+  // a deliverables array whose items appeared new, producing the "all greyed"
+  // visual flicker reported as P14.
   // Compute deliverables (snapshot + live SSE additions, deduped by id)
-  const seedDeliverables = (progress?.deliverables ?? []).map((d) => ({
-    id: d.id,
-    label: formatDeliverableDisplayName(d),
-    deliverable_type: d.deliverable_type,
-    file_path: d.file_path,
-    milestone_id: (d as any).milestone_id ?? null,
-    status: d.status === "ready" && d.file_path ? "ready" : "pending",
-    href: d.status === "ready" && d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
-    // Chantier 4 CP3: ready deliverables open the preview modal instead of
-    // forcing a download. The download link is still available inside.
-    onOpen:
-      d.status === "ready" && d.file_path
-        ? () => setPreviewDeliverableId(d.id)
-        : undefined,
-  }));
+  const seedDeliverables = useMemo(
+    () =>
+      (progress?.deliverables ?? []).map((d) => ({
+        id: d.id,
+        label: formatDeliverableDisplayName(d),
+        deliverable_type: d.deliverable_type,
+        file_path: d.file_path,
+        milestone_id: (d as any).milestone_id ?? null,
+        status: d.status === "ready" && d.file_path ? "ready" : "pending",
+        href: d.status === "ready" && d.file_path ? getDeliverableDownloadUrl(d.file_path) : undefined,
+        // Chantier 4 CP3: ready deliverables open the preview modal instead of
+        // forcing a download. The download link is still available inside.
+        onOpen:
+          d.status === "ready" && d.file_path
+            ? () => setPreviewDeliverableId(d.id)
+            : undefined,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [progress?.deliverables],
+  );
   const deliverables = seedDeliverables;
   const deliverableOutputs = seedDeliverables
     .filter((d) => d.status === "ready")

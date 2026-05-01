@@ -695,6 +695,18 @@ async def adversus_node(state: MarvinState) -> dict:
     except LLMTransientFailure as failure:
         _persist_transient_gate_failure(mission_id, failure, gate_type="manager_review")
         return {"phase": "llm_transient_failure", "failed_agent": "adversus"}
+    except Exception as exc:  # P13: any non-transient failure must not leave
+        # the mission stuck at phase="synthesis_retry". Surface as a gate
+        # failure so the UI can render a recovery card and the graph advances
+        # to a terminal phase instead of silently parking the coroutine.
+        synthetic = LLMTransientFailure(
+            agent="adversus",
+            cause="unexpected",
+            attempts=1,
+            error=repr(exc),
+        )
+        _persist_transient_gate_failure(mission_id, synthetic, gate_type="manager_review")
+        return {"phase": "llm_transient_failure", "failed_agent": "adversus"}
 
     # Deterministic W4 milestone sweep — same pattern as research_join for W1/W2.
     # Adversus runs once; pending W4 siblings won't be resolved by LLM tool

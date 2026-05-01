@@ -7,7 +7,7 @@ import pytest
 
 from marvin.graph import gates as gate_module
 from marvin.graph.gate_material import evaluate_gate_material
-from marvin.mission.schema import Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief
+from marvin.mission.schema import Deliverable, Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 
 
@@ -114,6 +114,27 @@ def test_manager_gate_findings_total_counts_only_research_findings(store: Missio
     store.mark_milestone_delivered("W2.1", "Unit economics complete", "m-gate")
     store.mark_milestone_delivered("W2.2", "Public filings review complete", "m-gate")
     store.mark_milestone_delivered("W2.3", "Anomaly detection complete", "m-gate")
+    # Gate also requires a `ready` deliverable per research workstream (P16 fix).
+    store.save_deliverable(
+        Deliverable(
+            id="d-w1",
+            mission_id="m-gate",
+            deliverable_type="workstream_report",
+            status="ready",
+            workstream_id="W1",
+            created_at=now,
+        )
+    )
+    store.save_deliverable(
+        Deliverable(
+            id="d-w2",
+            mission_id="m-gate",
+            deliverable_type="workstream_report",
+            status="ready",
+            workstream_id="W2",
+            created_at=now,
+        )
+    )
     gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G1")
 
     material = evaluate_gate_material(store, "m-gate", gate)

@@ -157,6 +157,33 @@ def evaluate_gate_material(
             )
         if not research_complete:
             missing_material.append("research_in_progress")
+
+        # Gate also requires Papyrus to have compiled at least one deliverable
+        # in `ready` status for each research workstream (W1 and W2). This
+        # prevents the gate from opening while synthesis/report writing is still
+        # in progress. Edge case: if ALL milestones for a workstream are
+        # `skipped` (e.g. Calculus skipped via data_availability gate), that
+        # workstream's deliverable requirement is considered satisfied — there is
+        # nothing to compile.
+        deliverables = store.list_deliverables(mission_id)
+        for ws_id in _RESEARCH_WORKSTREAMS:
+            ws_milestones = [
+                m for m in (milestones or [])
+                if (m.workstream_id or "").upper() == ws_id
+            ]
+            all_skipped = ws_milestones and all(
+                (m.status or "").lower() == "skipped" for m in ws_milestones
+            )
+            if all_skipped:
+                # Workstream was entirely skipped — no deliverable expected
+                continue
+            has_ready_deliverable = any(
+                (d.workstream_id or "").upper() == ws_id and (d.status or "").lower() == "ready"
+                for d in deliverables
+            )
+            if not has_ready_deliverable:
+                missing_material.append("deliverable_writing_in_progress")
+                break
         payload.update(
             {
                 "research_findings": research_findings[-12:],

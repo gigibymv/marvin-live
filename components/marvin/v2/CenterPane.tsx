@@ -143,10 +143,32 @@ function FindingRow({ f, isHighlighted }: { f: CenterFinding; isHighlighted?: bo
 // visually dominate over substantive findings. No more full-bleed black bg.
 
 function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolean }): React.ReactElement | null {
-  // Suppress entirely when the parent tab is completed but no per-milestone
-  // artifact landed (terminal milestone, no deliverable to open).
-  if (isTerminal && !f.onOpen) return null;
   const agentLabel = (f.agent ?? "MARVIN").toUpperCase();
+  // P17: when the tab is completed but no backing file has landed yet, show an
+  // inline "IN PROGRESS" status label rather than hiding the row entirely.
+  // This surfaces that the report is still generating vs. silently absent.
+  const hasFile = !!f.onOpen;
+  if (isTerminal && !hasFile) {
+    return (
+      <div style={{
+        padding: "7px 24px",
+        background: "var(--bone)",
+        borderBottom: "1px solid var(--ruleh)",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}>
+        <Mono size={8} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 52, flexShrink: 0 }}>
+          {agentLabel}
+        </Mono>
+        <span style={{ flex: 1, fontSize: 11, fontWeight: 500, color: "var(--ink2)", lineHeight: 1.5 }}>
+          {humanizeText(f.text ?? "")}
+        </span>
+        <Mono size={8} color="var(--muted)" spacing=".06em">IN PROGRESS</Mono>
+        <Mono size={8} color="var(--muted)">{formatRowTime(f.ts)}</Mono>
+      </div>
+    );
+  }
   return (
     <div style={{
       padding: "7px 24px",
@@ -162,7 +184,7 @@ function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolea
       <span style={{ flex: 1, fontSize: 11, fontWeight: 500, color: "var(--ink2)", lineHeight: 1.5 }}>
         {humanizeText(f.text ?? "")}
       </span>
-      {f.onOpen && (
+      {hasFile && (
         <button
           style={{
             fontFamily: "var(--m)", fontSize: 8, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase",

@@ -144,7 +144,7 @@ def test_progress_never_marks_short_artifact_ready(store: MissionStore, tmp_path
     assert payload["deliverables"][0]["file_path"] is None
 
 
-def test_manager_review_opens_after_research_finding(store: MissionStore):
+def test_manager_review_opens_after_research_finding(store: MissionStore, tmp_path: Path):
     store.save_finding(
         Finding(
             id="f-research",
@@ -164,6 +164,36 @@ def test_manager_review_opens_after_research_finding(store: MissionStore):
     store.mark_milestone_delivered("W2.1", "Unit economics complete", "m-progress")
     store.mark_milestone_delivered("W2.2", "Public filings review complete", "m-progress")
     store.mark_milestone_delivered("W2.3", "Anomaly detection complete", "m-progress")
+    # Gate also requires at least one `ready` deliverable per research workstream
+    # (W1 and W2) — Papyrus must have finished compiling before the gate opens.
+    w1_report = tmp_path / "w1_report.md"
+    w1_report.write_text("W1 workstream report content — market and competitive analysis.\n" * 20, encoding="utf-8")
+    store.save_deliverable(
+        Deliverable(
+            id="d-w1-report",
+            mission_id="m-progress",
+            deliverable_type="workstream_report",
+            status="ready",
+            workstream_id="W1",
+            file_path=str(w1_report.resolve()),
+            file_size_bytes=w1_report.stat().st_size,
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    w2_report = tmp_path / "w2_report.md"
+    w2_report.write_text("W2 workstream report content — financial analysis.\n" * 20, encoding="utf-8")
+    store.save_deliverable(
+        Deliverable(
+            id="d-w2-report",
+            mission_id="m-progress",
+            deliverable_type="workstream_report",
+            status="ready",
+            workstream_id="W2",
+            file_path=str(w2_report.resolve()),
+            file_size_bytes=w2_report.stat().st_size,
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
 
     payload = asyncio.run(srv.get_mission_progress("m-progress"))
     gates = {gate["gate_type"]: gate for gate in payload["gates"]}
