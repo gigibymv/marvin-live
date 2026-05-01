@@ -1763,8 +1763,13 @@ export default function MissionControl({
   // completion so the UI never claims "done" while the closing message
   // and final deliverable are still in flight.
   const rawProgressRatio = Math.min(1, phaseStageCount / 6);
+  // Once mission.status flips to "complete" (backend persists this in
+  // papyrus_delivery_node), the run is definitively over — clamp to 100%
+  // even if phaseStageCount under-reports. On Render's ephemeral disk,
+  // deliverable files can read as status!=ready post-deploy, which used
+  // to leave the bar stuck at 75–92% on missions the user knew were done.
   const progressRatio =
-    mission.status === "completed" ? rawProgressRatio : Math.min(rawProgressRatio, 0.99);
+    mission.status === "completed" ? 1 : Math.min(rawProgressRatio, 0.99);
   // 9-bug triage B: phase-aware status badge. While the backend is in
   // `framing` (no brief yet), show "Framing" instead of the generic
   // "Mission running" that paired with 0% looked frozen. Same for
