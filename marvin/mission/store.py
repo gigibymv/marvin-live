@@ -241,6 +241,9 @@ class MissionStore:
             # workstream_id on deliverables — enables frontend tab routing for
             # workstream_reports and milestone_reports without a separate lookup.
             ("deliverables", "workstream_id", "ALTER TABLE deliverables ADD COLUMN workstream_id TEXT"),
+            # gate timestamps — enable timing diagnostics on gate open/close.
+            ("gates", "opened_at", "ALTER TABLE gates ADD COLUMN opened_at TEXT"),
+            ("gates", "closed_at", "ALTER TABLE gates ADD COLUMN closed_at TEXT"),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:

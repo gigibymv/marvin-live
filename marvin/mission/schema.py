@@ -126,6 +126,8 @@ class Gate(MarvinModel):
     # can render a precise "Adversus failed — OpenRouter unavailable" card and
     # offer a targeted Rerun button. Shape: {agent, error, cause, retries_exhausted}.
     failure_reason: dict | None = None
+    opened_at: str | None = None
+    closed_at: str | None = None
 
 
 class Deliverable(MarvinModel):
