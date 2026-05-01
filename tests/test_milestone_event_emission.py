@@ -97,9 +97,13 @@ def test_runner_research_join_triggers_listener_twice(store: MissionStore):
         runner.research_join({"mission_id": "m-mile", "phase": "confirmed"})
     finally:
         events.unregister_milestone_listener("m-mile", listener)
-    milestone_ids = sorted(p["milestone_id"] for p in seen)
-    assert milestone_ids == ["W1.1", "W2.1"]
-    assert all(p["status"] == "delivered" for p in seen)
+    by_id = {p["milestone_id"]: p["status"] for p in seen}
+    assert by_id["W1.1"] == "delivered"
+    assert by_id["W2.1"] == "delivered"
+    # Sibling milestones (W1.2/W1.3/W2.2/W2.3) resolve to a terminal status
+    # (blocked when no finding was tagged to them) so the UI tab can flip ✓.
+    for sibling in ("W1.2", "W1.3", "W2.2", "W2.3"):
+        assert by_id.get(sibling) in ("delivered", "blocked")
 
 
 def test_research_join_blocks_when_no_findings(store: MissionStore):

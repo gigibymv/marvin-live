@@ -312,9 +312,12 @@ def research_join(state: MarvinState) -> dict:
     _join_narrate("Marking research milestones")
     findings = store.list_findings(mission_id)
     findings_by_workstream: dict[str, int] = {}
+    findings_by_milestone: dict[str, int] = {}
     for f in findings:
         if f.workstream_id:
             findings_by_workstream[f.workstream_id] = findings_by_workstream.get(f.workstream_id, 0) + 1
+        if f.milestone_id:
+            findings_by_milestone[f.milestone_id] = findings_by_milestone.get(f.milestone_id, 0) + 1
 
     for milestone_id, workstream_id in (("W1.1", "W1"), ("W2.1", "W2")):
         count = findings_by_workstream.get(workstream_id, 0)
@@ -333,6 +336,35 @@ def research_join(state: MarvinState) -> dict:
                 )
         except KeyError:
             # Milestone not seeded for this mission — defensive boundary only.
+            pass
+
+    # Resolve remaining pending W1/W2 milestones (W1.2, W1.3, W2.2, W2.3, ...).
+    # Calculus/Dora prompts only force statuer on the lead milestone (W1.1/W2.1)
+    # and exit DONE, leaving sibling milestones perpetually `pending`. The UI
+    # tab can never flip to ✓ in that state. Per CLAUDE.md rule #6, terminal
+    # workflow state belongs in deterministic Python, not LLM tool selection.
+    # If the agent tagged findings to the milestone via milestone_id → delivered.
+    # Otherwise → blocked, with a reason that says so honestly.
+    for milestone in store.list_milestones(mission_id):
+        if milestone.workstream_id not in ("W1", "W2"):
+            continue
+        if milestone.status != "pending":
+            continue
+        tagged = findings_by_milestone.get(milestone.id, 0)
+        try:
+            if tagged >= 1:
+                store.mark_milestone_delivered(
+                    milestone.id,
+                    "covered by tagged findings",
+                    mission_id=mission_id,
+                )
+            else:
+                store.mark_milestone_blocked(
+                    milestone.id,
+                    "agent did not tag findings to this milestone",
+                    mission_id=mission_id,
+                )
+        except KeyError:
             pass
 
     from marvin.tools.papyrus_tools import (

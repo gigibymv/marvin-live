@@ -401,54 +401,6 @@ export function CenterPane({
         </div>
       </div>
 
-      {/* Trace lane — single-line "what's happening right now" bar. The
-          per-tab activity feed is sparse (filtered by section); the trace
-          lane is global so the user always sees motion even when the
-          selected tab is silent. */}
-      {latestTrace && (latestTrace.text || latestTrace.agent) && (
-        <div
-          aria-label="Latest activity"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "6px 24px",
-            background: "var(--bone)",
-            borderBottom: "1px solid var(--ruleh)",
-            flexShrink: 0,
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-          }}
-        >
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: "var(--green)",
-              animation: "blink 1.4s ease-in-out infinite",
-              flexShrink: 0,
-            }}
-          />
-          <Mono size={9} weight={700} spacing=".10em" color="var(--ink3)">
-            {latestTrace.agent || "MARVIN"}
-          </Mono>
-          <span
-            style={{
-              fontFamily: "var(--m)",
-              fontSize: 10,
-              color: "var(--ink2)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              flex: 1,
-            }}
-            title={latestTrace.text}
-          >
-            {humanizeText(latestTrace.text)}
-          </span>
-        </div>
-      )}
-
       {/* Split pane: outputs (top) vs activity (bottom) — static 50/50 */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
 
@@ -525,7 +477,48 @@ export function CenterPane({
             <Mono size={9} color="var(--muted)">{activity.length}</Mono>
           </div>
           <div style={{ padding: "4px 24px 14px" }}>
-            {activity.length === 0 ? (
+            {latestTrace && (latestTrace.text || latestTrace.agent) && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "4px 0 6px",
+                  borderBottom: activity.length > 0 ? "1px solid var(--ruleh)" : "none",
+                  marginBottom: activity.length > 0 ? 4 : 0,
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "var(--green)",
+                    animation: "blink 1.4s ease-in-out infinite",
+                    flexShrink: 0,
+                  }}
+                />
+                <Mono size={9} weight={700} spacing=".10em" color="var(--ink3)">
+                  {latestTrace.agent || "MARVIN"}
+                </Mono>
+                <span
+                  style={{
+                    fontFamily: "var(--m)",
+                    fontSize: 10,
+                    color: "var(--ink2)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    flex: 1,
+                  }}
+                  title={latestTrace.text}
+                >
+                  {humanizeText(latestTrace.text)}
+                </span>
+              </div>
+            )}
+            {activity.length === 0 && !latestTrace ? (
               <Mono size={9} color="var(--muted)">No activity yet.</Mono>
             ) : (
               activity.map((e, i) => (
