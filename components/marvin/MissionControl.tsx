@@ -484,7 +484,22 @@ export default function MissionControl({
     try {
       const data = await getMissionProgress(missionId);
       assertGateLifecycleContract(data);
-      setProgress(data);
+      // P14-bis: preserve file_path for deliverables already known to have one.
+      // refreshProgress can race with file-write on Render's ephemeral disk,
+      // returning a deliverable with file_path=null transiently and causing the
+      // LeftRail to grey them out. Merge: if previous snapshot had file_path,
+      // keep it when the new snapshot omits it.
+      setProgress((prev) => {
+        if (!prev?.deliverables || !data?.deliverables) return data;
+        const prevMap = new Map(prev.deliverables.map((d: any) => [d.id, d]));
+        const merged = data.deliverables.map((d: any) => {
+          if (d.file_path) return d;
+          const prevD = prevMap.get(d.id);
+          if (prevD?.file_path) return { ...d, file_path: prevD.file_path, status: prevD.status };
+          return d;
+        });
+        return { ...data, deliverables: merged };
+      });
     } catch (error) {
       console.error("Failed to load mission progress:", error);
     }
@@ -1865,12 +1880,21 @@ export default function MissionControl({
     const finalDone = allDels.some(
       (d) => /^(final|ic_memo|exec_summary|final_deliverable|investment_memo|data_book)/i.test(d.deliverable_type ?? ""),
     ) ? 1 : 0;
+    // P21: when we're past redteam_done, workstreams are definitively done even
+    // if synthesis is in a retry cycle and wsDone() returns 0 transiently.
+    // Force each W1–W4 to contribute at least 1.0 to prevent under-reporting.
+    const pastRedteam = ["redteam_done", "synthesis_retry", "synthesis_done",
+      "gate_g3_passed", "done"].includes(currentPhase ?? "");
+    const wsScore = (id: string): number => {
+      if (pastRedteam) return 1;
+      return wsDone(id) + wsActive(id);
+    };
     return (
       briefDone +
-      wsDone("W1") + wsActive("W1") +
-      wsDone("W2") + wsActive("W2") +
-      wsDone("W3") + wsActive("W3") +
-      wsDone("W4") + wsActive("W4") +
+      wsScore("W1") +
+      wsScore("W2") +
+      wsScore("W3") +
+      wsScore("W4") +
       finalDone
     );
   })();
@@ -2205,6 +2229,15 @@ export default function MissionControl({
         file_path: d.file_path,
       }) === ws.id;
     });
+    // P19b: ALL expected deliverables for this workstream must be ready (not just ≥1).
+    const wsDeliverableItems = seedDeliverables.filter((d) =>
+      routeDeliverableToSectionId({
+        deliverable_type: d.deliverable_type,
+        file_path: d.file_path,
+      }) === ws.id,
+    );
+    const wsAllDeliverablesReady = wsDeliverableItems.length > 0 &&
+      wsDeliverableItems.every((d) => d.status === "ready");
     const allMilestonesDone = wsMilestones.length > 0 && wsTerminal === wsMilestones.length;
     // A workstream where every milestone is `blocked` (e.g. Calculus with no
     // EDGAR data for the target) cannot ever produce a deliverable. Treat
@@ -2233,8 +2266,9 @@ export default function MissionControl({
     });
     const agentDoneAllMilestonesTerminal =
       liveStatus === "done" && allMilestonesDone && allMilestoneDeliverablesMaterialized;
+    // P19b: require ALL deliverables ready (not just ≥1) before marking ✓.
     const tabCompletedReady = missionCompleted
-      || (allMilestonesDone && wsHasReadyDeliverable)
+      || (allMilestonesDone && wsAllDeliverablesReady)
       || synthesisDone
       || agentDoneWithDeliverable
       || allMilestonesBlocked
@@ -2402,26 +2436,15 @@ export default function MissionControl({
         activeAgent={activeAgent}
         currentNarration={waitState.message}
         latestTrace={(() => {
-          // Trace lane = "what's happening right now". Keep it tight:
-          // only narration and agent_active (short, live, present-tense).
-          // Skip findings (long claim text overflows the strip),
-          // milestones / deliverables / gates / phase markers (archival).
-          // Anything filtered out still lands in the activity feed below.
-          const traceableKinds = new Set([
-            "narration",
-            "agent_active",
-            "tool_call",
-          ]);
-          const latest = activity.find((e: any) => {
-            const kind = String(e?.kind ?? "");
-            return traceableKinds.has(kind);
-          });
-          if (!latest) return null;
-          return {
-            agent: String(latest.ag ?? latest.agent_id ?? "MARVIN"),
-            text: String(latest.text ?? latest.claim_text ?? ""),
-            ts: latest.ts,
-          };
+          // P18b: derive live bar from latestNarration (already cleared on phase
+          // advance, gate_pending, and run_end) instead of activity.find() which
+          // returns the oldest stale traceable item and never clears on phase change.
+          if (!latestNarration) return null;
+          // latestNarration format: "AGENT — intent text" or plain text
+          const dashIdx = latestNarration.indexOf(" — ");
+          const agent = dashIdx > 0 ? latestNarration.slice(0, dashIdx) : (activeAgent ?? "MARVIN");
+          const text = dashIdx > 0 ? latestNarration.slice(dashIdx + 3) : latestNarration;
+          return { agent, text };
         })()}
         sectionTabs={sectionTabs}
         workstreamContent={workstreamContent}
