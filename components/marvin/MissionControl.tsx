@@ -2160,7 +2160,10 @@ export default function MissionControl({
     { id: "final", label: "Final deliverables", status: hasFinalDeliverables ? "completed" : "pending" },
   ];
   const hasLiveStep = baseSectionTabs.some((tab) => tab.status === "now" || tab.status === "in_progress");
-  const nextPendingStepIndex = baseSectionTabs.findIndex((tab) => tab.status === "pending");
+  // Exclude "final" from the pending-step heuristic — Papyrus deliverables
+  // are not a user-navigable "next step" and the tab should not auto-advance
+  // there while workstreams are completing.
+  const nextPendingStepIndex = baseSectionTabs.findIndex((tab) => tab.status === "pending" && tab.id !== "final");
   // Fix C: find the tab whose workstream's assigned_agent matches the active agent
   const activeAgentTabId: string | null = (() => {
     if (!activeAgent) return null;
