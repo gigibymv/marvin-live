@@ -105,15 +105,16 @@ export function RightRail({
         style={{ flex: 1, overflow: "auto", padding: "16px 16px", display: "flex", flexDirection: "column", gap: 10, background: "var(--bone)" }}
       >
         {[...messages].sort((a, b) => {
-          // Stable sort by seq when both messages have it; fall back to
-          // array index (i.e. insertion order) otherwise. This ensures
-          // deliverable bubbles always appear before their companion
-          // narrations even if React batches the state updates in a
-          // different order than SSE arrival (Issue C fix).
-          if (a.seq != null && b.seq != null) return a.seq - b.seq;
-          if (a.seq != null) return -1;
-          if (b.seq != null) return 1;
-          return 0;
+          // Stable sort by seq. Historical messages hydrated from the store
+          // have no seq — treating undefined as -1 keeps them ahead of live
+          // messages and preserves their insertion order via Array.sort
+          // stability (V8/modern browsers). Live messages get a monotonic
+          // seq stamped in MissionControl so deliverable bubbles always
+          // appear before their companion narrations even if React batches
+          // state updates in a different order than SSE arrival (Issue C).
+          const sa = a.seq ?? -1;
+          const sb = b.seq ?? -1;
+          return sa - sb;
         }).map(m => {
           const isUser = m.from === "u";
           return (
