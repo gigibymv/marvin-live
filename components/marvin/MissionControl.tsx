@@ -573,13 +573,16 @@ export default function MissionControl({
         deliverable_type: deliverable.deliverableType ?? deliverable.label,
         file_path: deliverable.filePath,
       });
+      const deliverableMsgId = makeMessageId(missionId, "deliverable-chat");
+      const deliverableSeq = _msgCounter;
       setMessages((current) =>
         current.concat({
-          id: makeMessageId(missionId, "deliverable-chat"),
+          id: deliverableMsgId,
           from: "m",
           text: formatDeliverableReadyChatMessage(label),
           deliverableId: deliverableId,
           deliverableLabel: label,
+          seq: deliverableSeq,
         }),
       );
     },
@@ -827,15 +830,20 @@ export default function MissionControl({
             // papyrus, merlin verdict) emit without `destination` and still
             // surface as chat bubbles. Keeps chat as MARVIN's voice.
             if (event.destination !== "trace") {
+              // Capture seq BEFORE setMessages so it reflects SSE arrival
+              // order rather than React reconciliation order (Issue C fix).
+              const narrationMsgId = makeMessageId(missionId, "narration-chat");
+              const narrationSeq = _msgCounter;
               setMessages((current) => {
                 const last = current[current.length - 1];
                 if (last?.from === "m" && last.text === narrationText) {
                   return current;
                 }
                 return current.concat({
-                  id: makeMessageId(missionId, "narration-chat"),
+                  id: narrationMsgId,
                   from: "m",
                   text: narrationText,
+                  seq: narrationSeq,
                 });
               });
             }
@@ -893,6 +901,9 @@ export default function MissionControl({
             }));
             const gateMsgId = `${modalPayload.gateId}-gate-pending`;
             const gateFeedId = `${modalPayload.gateId}-gate-signal`;
+            // Capture seq outside the updater to stamp arrival order (Issue C fix).
+            _msgCounter += 1;
+            const gateSeq = _msgCounter;
             setMessages((current) => {
               if (current.some((m) => m.id === gateMsgId)) return current;
               return current.concat({
@@ -901,6 +912,7 @@ export default function MissionControl({
                 text: formatGatePendingChatMessage(event),
                 gateId: modalPayload.gateId,
                 gateAction: "pending",
+                seq: gateSeq,
               });
             });
             setLiveFindings((current) => {
@@ -2244,8 +2256,9 @@ export default function MissionControl({
     const synthesisDone = ws.id === "W3" && merlinVerdictPresent;
     // Bug 4: when the assigned agent is DONE and the workstream already has
     // a ready deliverable, treat the tab as completed even if individual
-    // milestone rows did not fire their terminal SSE event.
-    const agentDoneWithDeliverable = liveStatus === "done" && wsHasReadyDeliverable;
+    // milestone rows did not fire their terminal SSE event. Require ALL
+    // milestone deliverables materialized (P19b) so a tab does not flip ✓
+    // while Papyrus is still drafting a per-milestone report.
     // Bug 8: once the mission itself is completed, every tab must read as
     // ✓ — leftover milestone bookkeeping should never keep a tab spinning
     // after the run is over.
@@ -2258,6 +2271,13 @@ export default function MissionControl({
       if (["blocked", "skipped"].includes(mStatus)) return false;
       return !seedDeliverables.some((d) => d.status === "ready" && d.milestone_id === m.id);
     });
+    // Bug 4: when the assigned agent is DONE and the workstream already has
+    // a ready deliverable, treat the tab as completed even if individual
+    // milestone rows did not fire their terminal SSE event. Require ALL
+    // milestone deliverables materialized (P19b) so a tab does not flip ✓
+    // while Papyrus is still drafting a per-milestone report.
+    const agentDoneWithDeliverable =
+      liveStatus === "done" && wsHasReadyDeliverable && allMilestoneDeliverablesMaterialized;
     const agentDoneAllMilestonesTerminal =
       liveStatus === "done" && allMilestonesDone && allMilestoneDeliverablesMaterialized;
     // P19b: require ALL deliverables ready (not just ≥1) before marking ✓.

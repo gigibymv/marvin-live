@@ -158,30 +158,61 @@ def evaluate_gate_material(
         if not research_complete:
             missing_material.append("research_in_progress")
 
-        # Gate also requires Papyrus to have compiled at least one deliverable
-        # in `ready` status for each research workstream (W1 and W2). This
-        # prevents the gate from opening while synthesis/report writing is still
-        # in progress. Edge case: if ALL milestones for a workstream are
-        # `skipped` (e.g. Calculus skipped via data_availability gate), that
-        # workstream's deliverable requirement is considered satisfied — there is
-        # nothing to compile.
+        # Gate requires ALL expected deliverables for each non-skipped research
+        # workstream (W1 and W2) to be status='ready'. "Expected" means:
+        #   1. The workstream-level report (deliverable_type='workstream_report')
+        #   2. A milestone report for every DELIVERED milestone in that workstream
+        # This prevents the gate from opening while Papyrus is still drafting
+        # any per-milestone deliverable.
+        # Edge case: if ALL milestones for a workstream are `skipped`/`blocked`
+        # (e.g. Calculus skipped via data_availability gate), that workstream's
+        # deliverable requirement is considered satisfied — there is nothing to
+        # compile.
         deliverables = store.list_deliverables(mission_id)
+        ready_deliverable_ids = {
+            (d.workstream_id or "").upper()
+            for d in deliverables
+            if (d.status or "").lower() == "ready"
+        }
+        # Index ready milestone-report deliverables by milestone_id for fast lookup.
+        ready_milestone_report_ids: set[str] = {
+            d.milestone_id
+            for d in deliverables
+            if (d.status or "").lower() == "ready"
+            and (d.deliverable_type or "").lower() == "milestone_report"
+            and d.milestone_id
+        }
         for ws_id in _RESEARCH_WORKSTREAMS:
             ws_milestones = [
                 m for m in (milestones or [])
                 if (m.workstream_id or "").upper() == ws_id
             ]
             all_skipped = ws_milestones and all(
-                (m.status or "").lower() == "skipped" for m in ws_milestones
+                (m.status or "").lower() in ("skipped", "blocked") for m in ws_milestones
             )
             if all_skipped:
-                # Workstream was entirely skipped — no deliverable expected
+                # Workstream was entirely skipped/blocked — no deliverable expected
                 continue
-            has_ready_deliverable = any(
-                (d.workstream_id or "").upper() == ws_id and (d.status or "").lower() == "ready"
+            # Require the workstream-level report to be ready.
+            has_ready_ws_report = any(
+                (d.workstream_id or "").upper() == ws_id
+                and (d.status or "").lower() == "ready"
+                and (d.deliverable_type or "").lower() == "workstream_report"
                 for d in deliverables
             )
-            if not has_ready_deliverable:
+            if not has_ready_ws_report:
+                missing_material.append("deliverable_writing_in_progress")
+                break
+            # Require a milestone report for every DELIVERED milestone.
+            delivered_milestones = [
+                m for m in ws_milestones
+                if (m.status or "").lower() == "delivered"
+            ]
+            missing_milestone_report = any(
+                m.id not in ready_milestone_report_ids
+                for m in delivered_milestones
+            )
+            if missing_milestone_report:
                 missing_material.append("deliverable_writing_in_progress")
                 break
         payload.update(

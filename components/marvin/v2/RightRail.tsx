@@ -104,7 +104,17 @@ export function RightRail({
         ref={chatRef}
         style={{ flex: 1, overflow: "auto", padding: "16px 16px", display: "flex", flexDirection: "column", gap: 10, background: "var(--bone)" }}
       >
-        {messages.map(m => {
+        {[...messages].sort((a, b) => {
+          // Stable sort by seq when both messages have it; fall back to
+          // array index (i.e. insertion order) otherwise. This ensures
+          // deliverable bubbles always appear before their companion
+          // narrations even if React batches the state updates in a
+          // different order than SSE arrival (Issue C fix).
+          if (a.seq != null && b.seq != null) return a.seq - b.seq;
+          if (a.seq != null) return -1;
+          if (b.seq != null) return 1;
+          return 0;
+        }).map(m => {
           const isUser = m.from === "u";
           return (
             <div key={m.id} style={{ display: "flex", flexDirection: isUser ? "row-reverse" : "row", gap: 8, alignItems: "flex-end" }}>

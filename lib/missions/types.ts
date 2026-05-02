@@ -39,6 +39,8 @@ export interface MissionChatMessage {
   deliverableLabel?: string;
   gateId?: string;
   gateAction?: "pending";
+  // Monotonic insertion counter for stable sort. Added by makeMessageId.
+  seq?: number;
 }
 
 export interface MissionRunState {
