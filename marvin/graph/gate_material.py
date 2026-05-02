@@ -45,10 +45,10 @@ GATE_COPY = {
         "summary": (
             "Synthesis is complete after the red-team pass. "
             "Approve to finalize the IC memo and deliverables. "
-            "Reject to send Merlin back through another synthesis pass."
+            "Reject to run targeted follow-up diligence before finalization."
         ),
         "unlocks_on_approve": "Papyrus produces the final memo and deliverable set.",
-        "unlocks_on_reject": "Merlin re-runs synthesis incorporating remaining concerns.",
+        "unlocks_on_reject": "The team revisits the unresolved evidence gaps.",
     },
 }
 
@@ -167,10 +167,12 @@ def evaluate_gate_material(
         #   2. A milestone report for every DELIVERED milestone in that workstream
         # This prevents the gate from opening while Papyrus is still drafting
         # any per-milestone deliverable.
-        # Edge case: if ALL milestones for a workstream are `skipped`/`blocked`
+        # Edge case: if ALL milestones for a workstream are `skipped`
         # (e.g. Calculus skipped via data_availability gate), that workstream's
         # deliverable requirement is considered satisfied — there is nothing to
-        # compile.
+        # compile. A blocked visible milestone is different: it means work was
+        # attempted but failed, so the manager gate must wait for an explicit
+        # report/caveat rather than silently treating the branch as complete.
         deliverables = store.list_deliverables(mission_id)
         ready_deliverable_ids = {
             (d.workstream_id or "").upper()
@@ -192,7 +194,7 @@ def evaluate_gate_material(
                 and (m.id or "").upper() not in _INTERNAL_OPTIONAL_MILESTONES
             ]
             all_skipped = ws_milestones and all(
-                (m.status or "").lower() in ("skipped", "blocked") for m in ws_milestones
+                (m.status or "").lower() == "skipped" for m in ws_milestones
             )
             if all_skipped:
                 # Workstream was entirely skipped/blocked — no deliverable expected

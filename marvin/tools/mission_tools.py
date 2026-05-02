@@ -268,8 +268,8 @@ def consultant_verdict_label(verdict: str | None) -> str:
 def consultant_verdict_action(verdict: str | None) -> str:
     actions = {
         "SHIP": "Approve to finalize the IC memo and deliverables.",
-        "MINOR_FIXES": "Approve with caveats or send back for targeted revision.",
-        "BACK_TO_DRAWING_BOARD": "Send back for targeted revision before the IC memo is finalized.",
+        "MINOR_FIXES": "Approve with caveats after targeted diligence on the open points.",
+        "BACK_TO_DRAWING_BOARD": "Run targeted follow-up diligence on the evidence gaps before finalizing the IC memo.",
     }
     return actions.get(str(verdict or "").strip(), "Review the synthesis before deciding.")
 
@@ -1043,7 +1043,7 @@ def set_merlin_verdict(
     ):
         return {"verdict": latest.verdict, "verdict_id": latest.id, "deduped": True}
 
-    _emit_merlin_narration(mission_id, f"Verdict · {normalized_verdict}")
+    _emit_merlin_narration(mission_id, f"Verdict · {consultant_verdict_label(normalized_verdict)}")
     verdict_row = MerlinVerdict(
         id=short_id("mv"),
         mission_id=mission_id,

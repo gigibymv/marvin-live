@@ -279,6 +279,57 @@ def test_manager_gate_ignores_internal_optional_financial_milestones(store: Miss
     assert material.is_open is True
 
 
+def test_manager_gate_does_not_treat_blocked_visible_workstream_as_complete(store: MissionStore):
+    now = datetime.now(UTC).isoformat()
+    store.save_finding(
+        Finding(
+            id="f-research",
+            mission_id="m-gate",
+            workstream_id="W1",
+            claim_text="Research claim",
+            confidence="REASONED",
+            agent_id="dora",
+            created_at=now,
+        )
+    )
+    for milestone_id, label in (
+        ("W1.1", "Market research complete"),
+        ("W1.2", "Competitive mapping complete"),
+        ("W1.3", "Moat assessment complete"),
+    ):
+        store.mark_milestone_delivered(milestone_id, label, "m-gate")
+    store.mark_milestone_blocked("W2.1", "Financial analysis could not complete", "m-gate")
+    for ws_id in ("W1",):
+        store.save_deliverable(
+            Deliverable(
+                id=f"d-{ws_id}",
+                mission_id="m-gate",
+                deliverable_type="workstream_report",
+                status="ready",
+                workstream_id=ws_id,
+                created_at=now,
+            )
+        )
+    for milestone_id in ("W1.1", "W1.2", "W1.3"):
+        store.save_deliverable(
+            Deliverable(
+                id=f"d-{milestone_id}",
+                mission_id="m-gate",
+                deliverable_type="milestone_report",
+                status="ready",
+                milestone_id=milestone_id,
+                workstream_id="W1",
+                created_at=now,
+            )
+        )
+    gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G1")
+
+    material = evaluate_gate_material(store, "m-gate", gate)
+
+    assert material.is_open is False
+    assert "deliverable_writing_in_progress" in material.missing_material
+
+
 def test_missing_material_lists_are_not_aliased(store: MissionStore):
     gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-hyp-confirm")
 

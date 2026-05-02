@@ -36,6 +36,42 @@ logger = logging.getLogger(__name__)
 
 _OPTIONAL_INTERNAL_RESEARCH_MILESTONES = {"W2.2", "W2.3"}
 
+_CANONICAL_CDD_DELIVERABLES: tuple[tuple[str, str | None, str], ...] = (
+    ("engagement_brief", None, "Engagement brief"),
+    ("workstream_report", "W1", "Market report"),
+    ("workstream_report", "W2", "Financial report"),
+    ("workstream_report", "W4", "Stress testing report"),
+    ("exec_summary", None, "Executive summary"),
+    ("data_book", None, "Data book"),
+)
+
+
+def _missing_canonical_cdd_deliverables(store: MissionStore, mission_id: str) -> list[str]:
+    """Return canonical CDD deliverables that are not ready and openable.
+
+    Mission completion is a product contract, not just a graph phase. A CDD
+    mission can only become complete after the six user-facing documents exist.
+    """
+    deliverables = store.list_deliverables(mission_id)
+    missing: list[str] = []
+    for deliverable_type, workstream_id, label in _CANONICAL_CDD_DELIVERABLES:
+        found = False
+        for deliverable in deliverables:
+            if (deliverable.deliverable_type or "").lower() != deliverable_type:
+                continue
+            if workstream_id and (deliverable.workstream_id or "").upper() != workstream_id:
+                continue
+            if (deliverable.status or "").lower() != "ready":
+                continue
+            path = str(deliverable.file_path or "").strip()
+            if not path or not os.path.isfile(path):
+                continue
+            found = True
+            break
+        if not found:
+            missing.append(label)
+    return missing
+
 _MILESTONE_COVERAGE_PATTERNS: dict[str, tuple[str, ...]] = {
     "W1.2": (
         r"\bcompet",
@@ -962,13 +998,33 @@ async def papyrus_delivery_node(state: MarvinState) -> dict:
     _generate_data_book_impl(mission_id)
     _generate_workstream_report_impl("W4", mission_id)
 
-    # Persist mission completion so reconnects and API calls see the final state.
+    missing_deliverables: list[str] = []
+    store = MissionStore()
     try:
-        store = MissionStore()
-        store.update_mission_status(mission_id, "complete")
+        missing_deliverables = _missing_canonical_cdd_deliverables(store, mission_id)
+        if not missing_deliverables:
+            # Persist mission completion so reconnects and API calls see the final state.
+            store.update_mission_status(mission_id, "complete")
+        else:
+            store.update_mission_status(mission_id, "active")
+    except Exception as exc:  # noqa: BLE001 - status update is best-effort; don't crash delivery
+        logger.warning("papyrus_delivery_node completion check failed for %s: %s", mission_id, exc)
+    finally:
         store.close()
-    except Exception:  # noqa: BLE001 - status update is best-effort; don't crash delivery
-        pass
+
+    if missing_deliverables:
+        missing = ", ".join(missing_deliverables)
+        return {
+            "phase": "orchestrator",
+            "messages": [
+                AIMessage(
+                    content=(
+                        f"Final package is not complete yet. Missing deliverables: {missing}. "
+                        "MARVIN will keep the mission open until those documents are ready."
+                    )
+                )
+            ],
+        }
 
     completion_msg = AIMessage(
         content=(

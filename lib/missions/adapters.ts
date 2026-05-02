@@ -265,6 +265,35 @@ export function routeDeliverableToWorkstreamId(deliverable: {
   return sectionId?.match(/^W\d+$/) ? sectionId : null;
 }
 
+export function routeWorkstreamToSectionId(workstreamId?: unknown): string | null {
+  const id = String(workstreamId ?? "").trim().toUpperCase();
+  if (/^W[1-4]$/.test(id)) return id;
+  return null;
+}
+
+export function routeOutputToSectionId(output: {
+  section_id?: unknown;
+  sectionId?: unknown;
+  workstream_id?: unknown;
+  workstreamId?: unknown;
+  agent_id?: unknown;
+  agent?: unknown;
+  ag?: unknown;
+}): string | null {
+  const explicitSection = String(output.section_id ?? output.sectionId ?? "").trim();
+  if (explicitSection) return explicitSection;
+  const workstreamSection = routeWorkstreamToSectionId(output.workstream_id ?? output.workstreamId);
+  if (workstreamSection) return workstreamSection;
+  const agent = String(output.agent_id ?? output.agent ?? output.ag ?? "").trim().toLowerCase();
+  const agentRoutes: Record<string, string> = {
+    dora: "W1",
+    calculus: "W2",
+    merlin: "W3",
+    adversus: "W4",
+  };
+  return agentRoutes[agent] ?? null;
+}
+
 function formatMissionDate(createdAt: string): string {
   const date = new Date(createdAt);
 

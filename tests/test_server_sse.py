@@ -8,7 +8,15 @@ from __future__ import annotations
 
 import json
 
-from marvin_ui.server import map_tool_to_sse_event
+import pytest
+from langchain_core.messages import AIMessage, ToolMessage
+
+from marvin_ui.server import (
+    _emit_for_update,
+    _is_trace_only_tool,
+    _is_user_facing_tool_text,
+    map_tool_to_sse_event,
+)
 
 
 # --- happy path ----------------------------------------------------------------
@@ -98,6 +106,90 @@ def test_plain_string_content_returns_none():
     assert map_tool_to_sse_event("add_finding_to_mission", "Finding added · f-12345abc") is None
 
 
+def test_internal_tool_results_are_not_user_facing_text():
+    assert _is_trace_only_tool("search_company") is True
+    assert _is_trace_only_tool("persist_source_for_mission") is True
+    assert _is_trace_only_tool("get_recent_filings") is True
+    assert _is_user_facing_tool_text('{"result": "raw payload"}') is False
+    assert _is_user_facing_tool_text("Finding added · f-12345abc") is False
+    assert _is_user_facing_tool_text("Cannot open Manager review: missing material") is False
+    assert _is_user_facing_tool_text("BACK_TO_DRAWING_BOARD") is False
+    assert _is_user_facing_tool_text("Review material is ready for the consultant.") is True
+
+
+@pytest.mark.asyncio
+async def test_raw_tool_calls_and_trace_results_do_not_reach_user_stream(monkeypatch):
+    monkeypatch.delenv("MARVIN_SHOW_RAW_TOOL_EVENTS", raising=False)
+    event = {
+        "dora": {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "get_recent_filings",
+                            "args": {"company_name": "Uber"},
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                ToolMessage(
+                    content='{"filings": []}',
+                    tool_call_id="call-1",
+                    name="get_recent_filings",
+                ),
+            ]
+        }
+    }
+
+    sse, _agent, _phase, _interrupt = await _emit_for_update(
+        event,
+        None,
+        None,
+        {},
+        mission_id="m-test",
+    )
+
+    combined = "\n".join(sse)
+    assert "tool_call" not in combined
+    assert "tool_result" not in combined
+    assert "get_recent_filings" not in combined
+    assert "Fetching filings" not in combined
+
+
+@pytest.mark.asyncio
+async def test_worker_agent_stream_only_surfaces_latest_ai_message():
+    event = {
+        "adversus": {
+            "messages": [
+                AIMessage(content="Dora old research summary."),
+                AIMessage(content="Calculus old financial summary."),
+                ToolMessage(
+                    content='{"findings": []}',
+                    tool_call_id="call-old",
+                    name="get_storyline_findings",
+                ),
+                AIMessage(content="Adversus current counter-finding summary."),
+            ]
+        }
+    }
+
+    sse, _agent, _phase, _interrupt = await _emit_for_update(
+        event,
+        None,
+        None,
+        {},
+        mission_id="m-test",
+    )
+
+    combined = "\n".join(sse)
+    assert "Adversus current counter-finding summary." in combined
+    assert "Dora old research summary." not in combined
+    assert "Calculus old financial summary." not in combined
+    assert "get_storyline_findings" not in combined
+
+
 def test_json_array_returns_none():
     """Tool returns a list — not a dict — must not crash."""
     assert map_tool_to_sse_event("add_finding_to_mission", json.dumps([1, 2, 3])) is None
@@ -106,7 +198,4 @@ def test_json_array_returns_none():
 def test_finding_added_missing_claim_returns_none():
     content = json.dumps({"finding_id": "f-1", "confidence": "REASONED"})
     assert map_tool_to_sse_event("add_finding_to_mission", content) is None
-
-
-
 

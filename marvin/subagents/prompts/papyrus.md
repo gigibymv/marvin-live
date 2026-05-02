@@ -49,10 +49,11 @@ consulting documents — never database dumps.
    - Use ONLY the findings, hypotheses, and verdict provided in the
      context. Never fabricate a claim, statistic, source, or number
      that is not in the input.
-   - When a verdict is provided, quote its label EXACTLY
-     (`SHIP` / `MINOR_FIXES` / `BACK_TO_DRAWING_BOARD`) and paraphrase
-     the verdict notes faithfully — do not invent reasoning Merlin did
-     not state.
+   - When a verdict is provided, use the consultant-facing `label`
+     exactly as provided (for example `Ready to present`,
+     `Additional diligence needed`, `Evidence gaps — not ready`) and
+     paraphrase the verdict notes faithfully — do not invent reasoning
+     Merlin did not state.
    - If the input is thin (few findings, no verdict, missing fields),
      say so explicitly in a "Coverage gap" or equivalent paragraph.
      Do not pad with invented evidence.
@@ -111,7 +112,7 @@ Required structure:
 # Executive Summary — {target} {short subject, e.g., "Exit Readiness"}
 
 **Mission:** {client} — {target}
-**Verdict:** {SHIP | MINOR_FIXES | BACK_TO_DRAWING_BOARD}
+**Verdict:** {consultant-facing verdict label}
 **Date:** {today}
 
 ## Headline
@@ -138,8 +139,8 @@ load-bearing claims, weakest link, why the verdict was chosen.}
 
 ## What's Needed to Reach SHIP
 
-ONLY include this section when the verdict is `MINOR_FIXES` or
-`BACK_TO_DRAWING_BOARD`. Omit entirely when verdict is `SHIP`.
+ONLY include this section when the verdict is not `Ready to present`.
+Omit entirely when the verdict is `Ready to present`.
 
 {Per-hypothesis paragraph naming the specific primary evidence
 required.}

@@ -179,7 +179,10 @@ _TRACE_ONLY_TOOLS = {
     "get_hypotheses",
     "search_sec_filings",
     "fetch_filing_section",
+    "get_recent_filings",
+    "search_company",
     "tavily_search",
+    "persist_source_for_mission",
     "generate_workstream_report",
     "generate_exec_summary",
     "generate_data_book",
@@ -259,6 +262,33 @@ def _get_tool_summary(tool_name: str, result: dict | None) -> str | None:
 
 def _is_trace_only_tool(tool_name: str | None) -> bool:
     return str(tool_name or "").strip() in _TRACE_ONLY_TOOLS
+
+
+def _show_raw_tool_events() -> bool:
+    return os.environ.get("MARVIN_SHOW_RAW_TOOL_EVENTS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _is_user_facing_tool_text(text: str | None) -> bool:
+    clean = str(text or "").strip()
+    if not clean:
+        return False
+    if clean.startswith(("{", "[", "ToolMessage(", "content=")):
+        return False
+    lower = clean.lower()
+    blocked_fragments = (
+        "finding added",
+        "get_hypotheses",
+        "search_sec_filings",
+        "fetch_filing_section",
+        "cannot open",
+        "back_to_drawing_board",
+        "minor_fixes",
+    )
+    return not any(fragment in lower for fragment in blocked_fragments)
 
 
 def _mission_exists(store: MissionStore, mission_id: str) -> bool:
@@ -453,6 +483,7 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
             "callbacks": [MarvinToolCallbacks(mission_id)],
         }
         target_gate_id = resume_payload.get("gate_id")
+        has_target_gate = isinstance(target_gate_id, str) and bool(target_gate_id)
         # If the graph already has a parked interrupt waiting for us, feed the
         # resume payload immediately. Otherwise drive forward with no input
         # until we *see* our target gate park, then feed the resume. This
@@ -463,8 +494,19 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
             _has_parked = any(getattr(t, "interrupts", None) for t in _state0.tasks)
         except Exception:  # noqa: BLE001 - defensive: aget_state shouldn't fail
             _has_parked = False
-        next_input: Any = Command(resume=resume_payload) if _has_parked else None
-        fed_resume = _has_parked
+        # A detached driver has two modes:
+        #   1. gate resume: consume the specific gate interrupt.
+        #   2. continuation recovery: keep a routable/cancelled checkpoint
+        #      moving after a client disconnect.
+        # Mode 2 must never feed Command(resume=...) into an already-open gate,
+        # otherwise a passive reconnect can accidentally consume a human
+        # checkpoint with a synthetic no-op payload.
+        next_input: Any = (
+            Command(resume=resume_payload)
+            if has_target_gate and _has_parked
+            else None
+        )
+        fed_resume = bool(has_target_gate and _has_parked)
         # F1-A: broadcast SSE strings as the graph runs so a passively-attached
         # /resume client (which cannot run its own astream while we hold the
         # lock) can relay agent_active / narration / phase_changed / agent_done
@@ -480,7 +522,7 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
             # turn (when the parked frame wasn't ready), then re-enter with
             # Command(resume=...) to consume our gate's interrupt, then run
             # forward to the next gate or completion.
-            for _step in range(4):
+            for _step in range(8):
                 interrupted_for_target = False
                 interrupted_other = False
                 async for event in graph.astream(
@@ -492,7 +534,7 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                             if not isinstance(ipayload, dict) and isinstance(it, dict):
                                 ipayload = it
                             gid = ipayload.get("gate_id") if isinstance(ipayload, dict) else None
-                            if gid == target_gate_id and not fed_resume:
+                            if has_target_gate and gid == target_gate_id and not fed_resume:
                                 interrupted_for_target = True
                             else:
                                 interrupted_other = True
@@ -505,7 +547,7 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                                 if isinstance(ipayload, dict):
                                     emit_graph_event(
                                         mission_id,
-                                        await _emit_gate_pending(ipayload),
+                                        await _emit_gate_pending(ipayload, mission_id=mission_id),
                                     )
                                     emit_graph_event(
                                         mission_id,
@@ -551,6 +593,15 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                             continuation_phase,
                         )
                         next_input = continuation_input
+                        continue
+                    if snapshot is not None and getattr(snapshot, "next", None):
+                        logger.warning(
+                            "Detached resume continuing from runnable checkpoint: "
+                            "mission=%s next=%s",
+                            mission_id,
+                            getattr(snapshot, "next", None),
+                        )
+                        next_input = None
                         continue
                 # Either no interrupt (graph completed) or interrupt on a
                 # different gate (next workflow checkpoint) — exit and let
@@ -803,7 +854,28 @@ async def _emit_tool_result(agent: str, text: str) -> str:
     return _sse_event("tool_result", {"agent": display, "text": text})
 
 
-async def _emit_gate_pending(payload: dict) -> str:
+def _gate_chat_text(payload: dict) -> str:
+    title = str(payload.get("title") or payload.get("gate_type") or "Validation requested").strip()
+    summary = str(payload.get("summary") or "").strip()
+    parts = [title]
+    if summary:
+        parts.append(summary)
+    parts.append("Use the actions below to continue.")
+    return "\n\n".join(parts)
+
+
+async def _emit_gate_pending(payload: dict, *, mission_id: str | None = None) -> str:
+    if mission_id:
+        gate_id = str(payload.get("gate_id") or "").strip()
+        if gate_id:
+            _persist_chat_message(
+                mission_id,
+                "marvin",
+                _gate_chat_text(payload),
+                message_id=f"{gate_id}-gate-pending",
+                gate_id=gate_id,
+                gate_action="pending",
+            )
     return _sse_event("gate_pending", payload)
 
 
@@ -927,7 +999,7 @@ def _build_deliverable_ready_from_emit(payload: dict) -> dict:
     return out
 
 
-def _build_papyrus_chat_event(payload: dict) -> str | None:
+def _build_papyrus_chat_event(payload: dict, *, mission_id: str | None = None) -> str | None:
     """Build a Papyrus chat bubble SSE string for a freshly persisted deliverable.
 
     Bug 6: deliverable_ready hydrates the sidebar but produced no chat
@@ -941,9 +1013,19 @@ def _build_papyrus_chat_event(payload: dict) -> str | None:
     raw_type = str(payload.get("deliverable_type") or "deliverable").strip()
     label = raw_type.replace("_", " ").strip().capitalize() or "Deliverable"
     display = get_display_name("papyrus_delivery") or "Papyrus"
+    text = f"{display} — {label} ready. OPEN \u2192"
+    if mission_id:
+        _persist_chat_message(
+            mission_id,
+            "marvin",
+            text,
+            message_id=f"{deliverable_id}-chat",
+            deliverable_id=deliverable_id,
+            deliverable_label=label,
+        )
     return _sse_event("text", {
         "agent": display,
-        "text": f"{display} — {label} ready. OPEN \u2192",
+        "text": text,
         "deliverableId": deliverable_id,
     })
 
@@ -1302,7 +1384,7 @@ async def _emit_for_update(
         if isinstance(interrupts, tuple) and interrupts:
             interrupt_value = getattr(interrupts[0], "value", None)
             if isinstance(interrupt_value, dict):
-                out.append(await _emit_gate_pending(interrupt_value))
+                out.append(await _emit_gate_pending(interrupt_value, mission_id=mission_id))
                 out.append(await _emit_narration("workflow", _gate_narration(interrupt_value)))
         return out, current_agent, current_phase, True
 
@@ -1386,7 +1468,12 @@ async def _emit_for_update(
                     if throttle_state is not None:
                         throttle_state[_chat_key] = time.monotonic()
 
-        for msg in output.get("messages", []):
+        messages = list(output.get("messages", []) or [])
+        if node_name not in _CHAT_VOICE_NODES:
+            last_ai = next((msg for msg in reversed(messages) if isinstance(msg, AIMessage)), None)
+            messages = [last_ai] if last_ai is not None else []
+
+        for msg in messages:
             if isinstance(msg, AIMessage):
                 if msg.content:
                     if node_name in _CHAT_VOICE_NODES:
@@ -1415,7 +1502,11 @@ async def _emit_for_update(
                 tool_calls = getattr(msg, "tool_calls", None) or []
                 for call in tool_calls:
                     name = call.get("name") if isinstance(call, dict) else getattr(call, "name", None)
-                    if name and not _is_trace_only_tool(str(name)):
+                    if (
+                        name
+                        and _show_raw_tool_events()
+                        and not _is_trace_only_tool(str(name))
+                    ):
                         _throttle_key_tc = ("tool_call", node_name)
                         _now_tc = time.monotonic()
                         _last_tc = (throttle_state or {}).get(_throttle_key_tc, 0.0)
@@ -1430,7 +1521,7 @@ async def _emit_for_update(
                     pass
                 elif summary:
                     out.append(await _emit_tool_result(node_name, summary))
-                elif msg.content:
+                elif msg.content and _is_user_facing_tool_text(str(msg.content)[:200]):
                     out.append(await _emit_tool_result(node_name, str(msg.content)[:200]))
 
                 mapped = map_tool_to_sse_event(tool_name, msg.content)
@@ -1743,6 +1834,7 @@ async def _stream_chat(
         # user manually clicks /resume — the "stop after approve / reprend
         # out of nowhere" symptom.
         pending_recovery_payload: dict[str, Any] | None = chat_resume_payload
+        graph_pass_in_flight = False
 
         # Side channel for finding_added events. The listener fires from
         # whichever thread the persistence call runs on (LangGraph tools run
@@ -1788,7 +1880,7 @@ async def _stream_chat(
                 out.append(_sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload)))
                 deliverable_id = str(payload.get("deliverable_id") or "").strip()
                 if deliverable_id and deliverable_id not in papyrus_chat_emitted:
-                    chat_event = _build_papyrus_chat_event(payload)
+                    chat_event = _build_papyrus_chat_event(payload, mission_id=mission_id)
                     if chat_event:
                         out.append(chat_event)
                         papyrus_chat_emitted.add(deliverable_id)
@@ -1817,6 +1909,7 @@ async def _stream_chat(
             pending_recovery_payload = clearing_resume_payload
             agent_ref: list[str | None] = [current_agent]
             try:
+                graph_pass_in_flight = True
                 async for kind, payload in _astream_with_heartbeat(
                     graph, next_input, config, current_agent_ref=agent_ref,
                 ):
@@ -1849,6 +1942,7 @@ async def _stream_chat(
                             yield s
                     if is_interrupt:
                         interrupted = True
+                graph_pass_in_flight = False
             finally:
                 if clearing_resume_payload is not None:
                     _clear_gate_decision_in_flight(clearing_resume_payload.get("gate_id"))
@@ -1930,6 +2024,15 @@ async def _stream_chat(
             recovery_payload = pending_recovery_payload  # type: ignore[name-defined]
         except NameError:
             recovery_payload = None
+        try:
+            unfinished_graph_pass = bool(graph_pass_in_flight)  # type: ignore[name-defined]
+        except NameError:
+            unfinished_graph_pass = False
+        if recovery_payload is None and unfinished_graph_pass:
+            recovery_payload = {
+                "gate_id": None,
+                "reason": "stream_cancelled_during_graph_pass",
+            }
         if recovery_payload is not None:
             try:
                 _spawn_detached_resume(mission_id, recovery_payload)
@@ -2015,7 +2118,7 @@ async def _stream_resume_passive(
                 yield _sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload))
                 deliverable_id = str(payload.get("deliverable_id") or "").strip()
                 if deliverable_id and deliverable_id not in papyrus_chat_emitted:
-                    chat_event = _build_papyrus_chat_event(payload)
+                    chat_event = _build_papyrus_chat_event(payload, mission_id=mission_id)
                     if chat_event:
                         yield chat_event
                         papyrus_chat_emitted.add(deliverable_id)
@@ -2058,7 +2161,7 @@ async def _stream_resume_passive(
             yield _sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload))
             deliverable_id = str(payload.get("deliverable_id") or "").strip()
             if deliverable_id and deliverable_id not in papyrus_chat_emitted:
-                chat_event = _build_papyrus_chat_event(payload)
+                chat_event = _build_papyrus_chat_event(payload, mission_id=mission_id)
                 if chat_event:
                     yield chat_event
                     papyrus_chat_emitted.add(deliverable_id)
@@ -2231,7 +2334,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                 out.append(_sse_event("deliverable_ready", _build_deliverable_ready_from_emit(payload)))
                 deliverable_id = str(payload.get("deliverable_id") or "").strip()
                 if deliverable_id and deliverable_id not in papyrus_chat_emitted:
-                    chat_event = _build_papyrus_chat_event(payload)
+                    chat_event = _build_papyrus_chat_event(payload, mission_id=mission_id)
                     if chat_event:
                         out.append(chat_event)
                         papyrus_chat_emitted.add(deliverable_id)
@@ -2311,7 +2414,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             )
 
         if open_gate_payload is not None:
-            yield await _emit_gate_pending(open_gate_payload)
+            yield await _emit_gate_pending(open_gate_payload, mission_id=mission_id)
             yield await _emit_narration("workflow", _gate_narration(open_gate_payload))
             yield await _emit_run_end()
             return
@@ -2326,6 +2429,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         # astream pass crashes/cancels, the outer finally spawns a detached
         # driver with this payload so the graph still advances.
         pending_recovery_payload: dict[str, Any] | None = None
+        graph_pass_in_flight = False
 
         while True:
             interrupted = False
@@ -2334,6 +2438,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             pending_recovery_payload = clearing_resume_payload
             agent_ref: list[str | None] = [current_agent]
             try:
+                graph_pass_in_flight = True
                 async for kind, payload in _astream_with_heartbeat(
                     graph, next_input, config, current_agent_ref=agent_ref,
                 ):
@@ -2361,6 +2466,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                             yield s
                     if is_interrupt:
                         interrupted = True
+                graph_pass_in_flight = False
             finally:
                 if clearing_resume_payload is not None:
                     _clear_gate_decision_in_flight(clearing_resume_payload.get("gate_id"))
@@ -2430,6 +2536,15 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             recovery_payload = pending_recovery_payload  # type: ignore[name-defined]
         except NameError:
             recovery_payload = None
+        try:
+            unfinished_graph_pass = bool(graph_pass_in_flight)  # type: ignore[name-defined]
+        except NameError:
+            unfinished_graph_pass = False
+        if recovery_payload is None and unfinished_graph_pass:
+            recovery_payload = {
+                "gate_id": None,
+                "reason": "stream_cancelled_during_graph_pass",
+            }
         if recovery_payload is not None:
             try:
                 _spawn_detached_resume(mission_id, recovery_payload)

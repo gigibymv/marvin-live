@@ -9,6 +9,28 @@ from marvin.tools.mission_tools import add_finding_to_mission, persist_source_fo
 _STORE_FACTORY = MissionStore
 
 
+def _filing_matches_requested_year(filing: dict[str, Any], year: int) -> bool:
+    """Match filings by fiscal/report year, not only SEC filing year.
+
+    Public-company annual reports are commonly filed in the year after the
+    fiscal period they describe. A FY2024 10-K filed in 2025 is therefore
+    valid material for a 2024 diligence request.
+    """
+    if not year:
+        return True
+    target = str(year)
+    filing_year = str(filing.get("filing_date") or "")[:4]
+    report_year = str(filing.get("report_date") or "")[:4]
+    if report_year:
+        return report_year == target
+    if filing_year == target:
+        return True
+    form = str(filing.get("form") or "").upper()
+    if form in {"10-K", "20-F"} and filing_year == str(year + 1):
+        return True
+    return False
+
+
 def parse_data_room(file_path: str, state: InjectedStateArg = None) -> dict[str, Any]:
     """Parse a data room file and report what's actually on disk.
 
@@ -296,7 +318,7 @@ def search_sec_filings(
     year: int | str = 2024,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
-    """Search SEC EDGAR for a company's filings filed in a given calendar year.
+    """Search SEC EDGAR for a company's filings for a requested fiscal year.
 
     Resolves ticker or company name via EDGAR's company_tickers.json, then
     pulls the recent submissions feed and filters by year. Returns real
@@ -329,7 +351,7 @@ def search_sec_filings(
         limit=20,
     )
     if year_int:
-        filings = [f for f in filings if (f.get("filing_date") or "").startswith(str(year_int))]
+        filings = [f for f in filings if _filing_matches_requested_year(f, year_int)]
     return {
         "company_name": resolved["title"],
         "ticker": resolved["ticker"],
@@ -384,7 +406,7 @@ def fetch_filing_section(
         resolved["cik"], forms=(form,), since_year=year_int or None, limit=10
     )
     if year_int:
-        filings = [f for f in filings if (f.get("filing_date") or "").startswith(str(year_int))]
+        filings = [f for f in filings if _filing_matches_requested_year(f, year_int)]
     if not filings:
         return {
             "company_name": resolved["title"],

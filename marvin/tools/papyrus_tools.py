@@ -10,10 +10,17 @@ from marvin.events import emit_deliverable_persisted, emit_graph_event
 from marvin.mission.schema import Deliverable, Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore
 from marvin.tools.common import InjectedStateArg, ensure_output_dir, get_store, require_mission_id, utc_now_iso
+from marvin.tools.mission_tools import consultant_verdict_action, consultant_verdict_label
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _STORE_FACTORY = MissionStore
 _PAPYRUS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "subagents" / "prompts" / "papyrus.md"
+
+_VERDICT_ENUM_REPLACEMENTS = {
+    "BACK_TO_DRAWING_BOARD": "Evidence gaps — not ready",
+    "MINOR_FIXES": "Additional diligence needed",
+    "SHIP": "Ready to present",
+}
 
 
 def _hypothesis_label(h: Hypothesis, index: int) -> str:
@@ -90,7 +97,7 @@ def _build_papyrus_context(
         "mission": {
             "client": mission.client,
             "target": mission.target,
-            "mission_type": mission.mission_type,
+            "mission_type": mission.mission_type.upper(),
             "ic_question": mission.ic_question or "",
         },
         "hypotheses": [
@@ -117,7 +124,8 @@ def _build_papyrus_context(
         verdict = extra.pop("verdict", None) if isinstance(extra, dict) else None
         if isinstance(verdict, MerlinVerdict):
             payload["verdict"] = {
-                "outcome": verdict.verdict,
+                "label": consultant_verdict_label(verdict.verdict),
+                "recommended_action": consultant_verdict_action(verdict.verdict),
                 "notes": verdict.notes or "",
             }
         if extra:
@@ -128,6 +136,15 @@ def _build_papyrus_context(
         f"Do not invent findings or confidence levels.\n\n"
         f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
     )
+
+
+def _sanitize_user_facing_markdown(body: str) -> str:
+    """Remove workflow enums from generated markdown before persistence."""
+    out = str(body or "")
+    for raw, replacement in _VERDICT_ENUM_REPLACEMENTS.items():
+        out = out.replace(raw, replacement)
+    out = out.replace("CDD cdd", "CDD")
+    return out
 
 
 def _papyrus_llm_generate(
@@ -158,7 +175,7 @@ def _papyrus_llm_generate(
         SystemMessage(content=system_prompt),
         HumanMessage(content=human_prompt),
     ])
-    body = (response.content or "").strip()
+    body = _sanitize_user_facing_markdown((response.content or "").strip())
     # Strip accidental code fences around the whole document.
     if body.startswith("```"):
         lines = body.splitlines()

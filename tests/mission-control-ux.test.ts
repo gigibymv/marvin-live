@@ -21,6 +21,7 @@ import {
   markGateChatMessageResolved,
   routeDeliverableToSectionId,
   routeDeliverableToWorkstreamId,
+  routeOutputToSectionId,
 } from "@/lib/missions/adapters";
 import { shouldAttachResumeStream } from "@/lib/missions/gate-resume";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
@@ -380,6 +381,14 @@ describe("MissionControl UX slice", () => {
     expect(routeDeliverableToSectionId({ deliverable_type: "risk_register" })).toBe("W4");
     expect(routeDeliverableToSectionId({ deliverable_type: "unknown" })).toBeNull();
     expect(routeDeliverableToWorkstreamId({ deliverable_type: "exec_summary" })).toBeNull();
+  });
+
+  it("routes live and replayed findings to the same output sections as workstream deliverables", () => {
+    expect(routeOutputToSectionId({ workstreamId: "W1", agent: "Dora" })).toBe("W1");
+    expect(routeOutputToSectionId({ workstream_id: "W2", agent_id: "calculus" })).toBe("W2");
+    expect(routeOutputToSectionId({ agent_id: "adversus" })).toBe("W4");
+    expect(routeOutputToSectionId({ section_id: "final", workstream_id: "W1" })).toBe("final");
+    expect(routeOutputToSectionId({ workstreamId: "unknown" })).toBeNull();
   });
 
   it("labels workstream reports by section", () => {

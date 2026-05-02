@@ -14,6 +14,7 @@ import {
   formatNarrationChatMessage,
   markGateChatMessageResolved,
   routeDeliverableToSectionId,
+  routeOutputToSectionId,
 } from "@/lib/missions/adapters";
 import {
   type MissionEventStream,
@@ -922,13 +923,13 @@ export default function MissionControl({
               agent: normalizeAgentName(event.agent),
               intent: event.intent,
             });
-            setLatestNarration(narrationText);
-            narrationAgentRef.current = event.agent ? String(event.agent).toLowerCase() : null;
-            // Trace-destined narrations (tool callbacks) go to the trace lane
-            // + activity feed only. Conversational narrations (framing,
-            // papyrus, merlin verdict) emit without `destination` and still
-            // surface as chat bubbles. Keeps chat as MARVIN's voice.
+            // Trace-destined narrations (tool callbacks) stay out of the
+            // consultant-facing chat/activity surfaces. Conversational
+            // narrations (framing, papyrus, merlin verdict) emit without
+            // `destination` and still surface as chat bubbles.
             if (event.destination !== "trace") {
+              setLatestNarration(narrationText);
+              narrationAgentRef.current = event.agent ? String(event.agent).toLowerCase() : null;
               // Capture seq BEFORE setMessages so it reflects SSE arrival
               // order rather than React reconciliation order (Issue C fix).
               const narrationMsgId = makeMessageId(missionId, "narration-chat");
@@ -946,20 +947,22 @@ export default function MissionControl({
                 });
               });
             }
-            // Replace any existing narration entry from the same agent so only
-            // the latest intent is visible in the in-progress block.
-            setLiveFindings((current) => {
-              const filtered = current.filter(
-                (e) => !(e.kind === "narration" && e.agent === event.agent),
-              );
-              return filtered.concat({
-                id: makeMessageId(missionId, "narration"),
-                kind: "narration",
-                claim_text: event.intent,
-                agent: event.agent,
-                ts: event.ts,
+            if (event.destination !== "trace") {
+              // Replace any existing narration entry from the same agent so only
+              // the latest intent is visible in the in-progress block.
+              setLiveFindings((current) => {
+                const filtered = current.filter(
+                  (e) => !(e.kind === "narration" && e.agent === event.agent),
+                );
+                return filtered.concat({
+                  id: makeMessageId(missionId, "narration"),
+                  kind: "narration",
+                  claim_text: event.intent,
+                  agent: event.agent,
+                  ts: event.ts,
+                });
               });
-            });
+            }
             break;
           }
           case "gate_pending": {
@@ -2335,7 +2338,7 @@ export default function MissionControl({
     ...milestoneOutputs,
   ], (output) => `${output.kind}:${output.id}`);
   const findings = allSectionOutputs.filter((output) => {
-    const sectionId = output.section_id ?? output.workstream_id;
+    const sectionId = routeOutputToSectionId(output);
     return sectionMatches(sectionId, selectedSectionId);
   });
   const completedTitle = `${workstreamLabel} outputs`;

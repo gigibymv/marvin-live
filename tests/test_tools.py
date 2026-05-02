@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from marvin.mission.schema import Finding, Gate, Hypothesis, Mission, MissionBrief, Source
+from marvin.mission.schema import Finding, Gate, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools import adversus_tools, arbiter_tools, calculus_tools, dora_tools, merlin_tools, mission_tools, papyrus_tools
 
@@ -682,6 +682,51 @@ def test_generate_exec_summary_and_data_book_write_non_empty_files(store: Missio
     data_book = papyrus_tools.generate_data_book(state)
     assert Path(summary["file_path"]).stat().st_size > 0
     assert Path(data_book["file_path"]).stat().st_size > 0
+
+
+def test_papyrus_context_uses_consultant_verdict_labels(store: MissionStore):
+    mission = store.get_mission("m-test")
+    hypotheses = store.list_hypotheses("m-test")
+    brief = store.get_mission_brief("m-test")
+    verdict = MerlinVerdict(
+        id="mv-test",
+        mission_id="m-test",
+        verdict="BACK_TO_DRAWING_BOARD",
+        notes="Primary financial evidence is missing.",
+        created_at=datetime.now(UTC).isoformat(),
+    )
+
+    prompt = papyrus_tools._build_papyrus_context(
+        "exec_summary",
+        mission,
+        hypotheses,
+        [],
+        brief,
+        extra={"verdict": verdict},
+    )
+
+    assert "Evidence gaps" in prompt
+    assert "Run targeted follow-up diligence" in prompt
+    assert "BACK_TO_DRAWING_BOARD" not in prompt
+
+
+def test_papyrus_markdown_sanitizer_removes_internal_verdict_enums():
+    body = (
+        "# Executive Summary — Uber\n\n"
+        "**Verdict:** BACK_TO_DRAWING_BOARD\n\n"
+        "The alternative is MINOR_FIXES, not SHIP.\n"
+        "# Data Book — CDD cdd\n"
+    )
+
+    sanitized = papyrus_tools._sanitize_user_facing_markdown(body)
+
+    assert "BACK_TO_DRAWING_BOARD" not in sanitized
+    assert "MINOR_FIXES" not in sanitized
+    assert "SHIP" not in sanitized
+    assert "Evidence gaps" in sanitized
+    assert "Additional diligence needed" in sanitized
+    assert "Ready to present" in sanitized
+    assert "CDD cdd" not in sanitized
 
 
 def test_check_internal_consistency_flags_missing_source_and_stale_source(store: MissionStore):

@@ -43,6 +43,18 @@ SAMPLE_SUBMISSIONS = {
     }
 }
 
+UBER_FY2024_FILED_2025_SUBMISSIONS = {
+    "filings": {
+        "recent": {
+            "accessionNumber": ["0001543151-25-000012", "0001543151-24-000010"],
+            "form": ["10-K", "10-K"],
+            "filingDate": ["2025-02-14", "2024-02-15"],
+            "reportDate": ["2024-12-31", "2023-12-31"],
+            "primaryDocument": ["uber-20241231.htm", "uber-20231231.htm"],
+        }
+    }
+}
+
 SAMPLE_10K_HTML = """
 <html><body>
 <h1>Apple Inc. Annual Report</h1>
@@ -175,6 +187,29 @@ def test_search_sec_filings_returns_real_metadata(monkeypatch):
     assert "sec.gov" in out["filings"][0]["url"]
 
 
+def test_search_sec_filings_matches_fiscal_year_when_10k_filed_next_year(monkeypatch):
+    import marvin.tools.edgar_client as ec
+    from marvin.tools.calculus_tools import search_sec_filings
+
+    tickers = {
+        **SAMPLE_TICKERS,
+        "4": {"cik_str": 1543151, "ticker": "UBER", "title": "Uber Technologies, Inc."},
+    }
+    handler = _make_handler({
+        "https://www.sec.gov/files/company_tickers.json": tickers,
+        "https://data.sec.gov/submissions/CIK0001543151.json": UBER_FY2024_FILED_2025_SUBMISSIONS,
+    })
+    monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
+
+    out = search_sec_filings("Uber", year=2024)
+
+    assert out.get("error") in (None, "")
+    assert out["ticker"] == "UBER"
+    assert len(out["filings"]) == 1
+    assert out["filings"][0]["filing_date"] == "2025-02-14"
+    assert out["filings"][0]["report_date"] == "2024-12-31"
+
+
 def test_search_sec_filings_unknown_company_returns_error(monkeypatch):
     import marvin.tools.edgar_client as ec
     from marvin.tools.calculus_tools import search_sec_filings
@@ -201,6 +236,31 @@ def test_fetch_filing_section_returns_quotable_text(monkeypatch):
     assert "factors" in out["text"].lower()
     assert out["url"].startswith(archive_prefix)
     assert out["accession"] == "0000320193-24-000123"
+
+
+def test_fetch_filing_section_matches_fiscal_year_when_10k_filed_next_year(monkeypatch):
+    import marvin.tools.edgar_client as ec
+    from marvin.tools.calculus_tools import fetch_filing_section
+
+    tickers = {
+        **SAMPLE_TICKERS,
+        "4": {"cik_str": 1543151, "ticker": "UBER", "title": "Uber Technologies, Inc."},
+    }
+    archive_prefix = "https://www.sec.gov/Archives/edgar/data/1543151/"
+    handler = _make_handler({
+        "https://www.sec.gov/files/company_tickers.json": tickers,
+        "https://data.sec.gov/submissions/CIK0001543151.json": UBER_FY2024_FILED_2025_SUBMISSIONS,
+        archive_prefix: SAMPLE_10K_HTML,
+    })
+    monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
+
+    out = fetch_filing_section("Uber", form="10-K", year=2024, section="mdna")
+
+    assert out["error"] is None
+    assert out["ticker"] == "UBER"
+    assert out["filing_date"] == "2025-02-14"
+    assert out["report_date"] == "2024-12-31"
+    assert out["text"] is not None
 
 
 def test_fetch_filing_section_unknown_company_returns_no_quote(monkeypatch):
