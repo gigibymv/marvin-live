@@ -2096,17 +2096,12 @@ export default function MissionControl({
         : seedDeliverables.find(
             (d) => d.status === "ready" && d.milestone_id === m.id,
           );
-      const wsFallback = !tied && !isBlocked
-        ? seedDeliverables.find(
-            (d) =>
-              d.status === "ready" &&
-              routeDeliverableToSectionId({
-                deliverable_type: d.deliverable_type,
-                file_path: d.file_path,
-              }) === m.workstream_id,
-          )
-        : undefined;
-      const linked = tied ?? wsFallback;
+      // P20 fix: only offer the OPEN button when a per-milestone deliverable
+      // (tied) exists. The workstream-level fallback report is NOT the same
+      // artifact as the milestone report — showing OPEN → workstream report
+      // on a "Moat assessment" row is misleading and causes phantom buttons
+      // when the per-milestone file was never generated.
+      const linked = tied;
       const text = isBlocked
         ? `Milestone blocked · ${m.label}${blockReason ? ` — ${blockReason}` : ""}`
         : `Milestone complete · ${m.label}`;

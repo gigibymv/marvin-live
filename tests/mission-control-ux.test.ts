@@ -129,8 +129,8 @@ describe("MissionControl UX slice", () => {
       expect(text).toContain("Initial research is complete");
       expect(text).toContain("Approve → Adversus runs the red-team.");
       expect(text).toContain("Reject → Workstreams loop back for revision.");
-      // Must direct the user to the persistent reopen affordance, not a popup.
-      expect(text).toMatch(/Review now/);
+      // Must direct the user to the actions available in the chat bubble.
+      expect(text).toContain("Use the actions below");
       // Must NOT contain raw JSON or system jargon like the gate id.
       expect(text).not.toMatch(/\{|\}|\[|\]|gate-/);
     });
@@ -138,7 +138,7 @@ describe("MissionControl UX slice", () => {
     it("formatGatePendingChatMessage degrades gracefully on missing optional fields", () => {
       const text = formatGatePendingChatMessage({ title: "", summary: "" });
       expect(text).toContain("Validation requested");
-      expect(text).toMatch(/Review now/);
+      expect(text).toContain("Use the actions below");
       // No "Stage:" line when stage is absent.
       expect(text).not.toMatch(/Stage:/);
       expect(text).not.toMatch(/Approve →/);

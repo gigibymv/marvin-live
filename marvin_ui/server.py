@@ -441,6 +441,24 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                                 interrupted_for_target = True
                             else:
                                 interrupted_other = True
+                                # P18a fix: emit gate_pending + narration for the
+                                # new (non-target) interrupt so passive listeners
+                                # attached via _stream_resume_passive receive the
+                                # gate CTA bubble. Without this, the gate_pending
+                                # SSE is never broadcast and the chat bubble with
+                                # Approve/Reject buttons never appears.
+                                if isinstance(ipayload, dict):
+                                    emit_graph_event(
+                                        mission_id,
+                                        await _emit_gate_pending(ipayload),
+                                    )
+                                    emit_graph_event(
+                                        mission_id,
+                                        await _emit_narration(
+                                            "workflow",
+                                            _gate_narration(ipayload),
+                                        ),
+                                    )
                         break
                     if isinstance(event, dict):
                         sse_strings, current_agent, current_phase, _is_int = await _emit_for_update(
