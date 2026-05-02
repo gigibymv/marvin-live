@@ -66,6 +66,7 @@ def _summarize_state(
         pending_gates = [g for g in gates if g.status == "pending"]
     verdict = store.get_latest_merlin_verdict(mission_id)
     deliverables = store.list_deliverables(mission_id)
+    milestones = store.list_milestones(mission_id)
 
     # Bug 5 (chantier 2.6): Q&A must read findings, not just count them.
     # Surface claim_text + correct agent attribution so MARVIN never says
@@ -109,6 +110,16 @@ def _summarize_state(
         "deliverables": [
             {"type": d.deliverable_type, "status": d.status} for d in deliverables
         ],
+        "milestones": [
+            {
+                "id": m.id,
+                "workstream_id": m.workstream_id,
+                "label": m.label,
+                "status": m.status,
+                "result_summary": m.result_summary,
+            }
+            for m in milestones
+        ],
     }
 
 
@@ -141,6 +152,24 @@ def _deterministic_response(state: dict, user_text: str) -> str:
         if verdict:
             return f"Merlin's verdict: {verdict['verdict']}."
         return "No verdict yet."
+
+    # Agent / workstream status question.
+    if any(token in text_lower for token in ("blocked", "block", "agent", "calculus", "dora", "papyrus")):
+        milestones = state.get("milestones") or []
+        blocked = [m for m in milestones if m.get("status") == "blocked"]
+        if "calculus" in text_lower or "financial" in text_lower:
+            blocked_w2 = [m for m in blocked if m.get("workstream_id") == "W2"]
+            if blocked_w2:
+                reasons = {
+                    str(m.get("result_summary") or "missing supporting evidence")
+                    for m in blocked_w2
+                }
+                reason_text = "; ".join(sorted(reasons))
+                return f"Calculus is blocked because the financial workstream did not produce usable persisted findings yet: {reason_text}."
+            return "Calculus is not blocked in the persisted milestone state."
+        if blocked:
+            labels = ", ".join(str(m.get("label") or m.get("id")) for m in blocked[:3])
+            return f"{len(blocked)} milestone(s) are blocked: {labels}."
 
     # Findings question — Bug 5: cite actual content + correct attribution.
     if "finding" in text_lower or "claim" in text_lower or "poor" in text_lower or "weak" in text_lower:
@@ -247,11 +276,21 @@ async def respond_qa(
     ]
     hypotheses_block = "\n".join(hypotheses_block_lines) or "(none active)"
 
+    milestone_block_lines = [
+        (
+            f"- {m['id']} {m['label']} [{m['status']}]"
+            + (f": {m['result_summary']}" if m.get("result_summary") else "")
+        )
+        for m in (state.get("milestones") or [])
+    ]
+    milestones_block = "\n".join(milestone_block_lines) or "(none persisted)"
+
     context = (
         f"Mission: {state['mission'].get('client', '')} - {state['mission'].get('target', '')}\n"
         f"Pending gate: {pending_label}\n"
         f"Verdict: {verdict_str}\n"
         f"Deliverables ready: {sum(1 for d in state['deliverables'] if d['status'] == 'ready')}\n"
+        f"\nMilestones:\n{milestones_block}\n"
         f"\nActive hypotheses ({state['hypotheses_count']}):\n{hypotheses_block}\n"
         f"\nPersisted findings ({state['findings_count']}):\n{findings_block}\n"
         f"\nAgent attribution rule: Dora/Calculus/Adversus log findings; "

@@ -203,6 +203,36 @@ def test_persist_framing_from_brief_records_brief_and_ic_question(monkeypatch: p
     store.close()
 
 
+def test_structured_brief_uses_investment_question_section(monkeypatch: pytest.MonkeyPatch):
+    store = MissionStore(":memory:")
+    store.save_mission(Mission(id="m-structured", client="CDD", target="Nvidia", ic_question=""))
+    monkeypatch.setattr(mission_tools, "_STORE_FACTORY", lambda: store)
+
+    brief = mission_tools.persist_framing_from_brief(
+        "m-structured",
+        """
+        [1] CLIENT AND CONTEXT
+        "CDD"
+        [2] TARGET
+        "Target: Nvidia, semiconductors / AI infrastructure, global"
+        [3] DEAL ECONOMICS
+        "EUR1.5-2Tn implied valuation, ~$60Bn revenue FY2024, ~45-50% net margin"
+        [4] COMPETITIVE LANDSCAPE
+        "Main competitors: AMD, Intel, Google (TPUs), custom AI chips"
+        [5] INVESTMENT QUESTION
+        "IC question: Is Nvidia's dominance in AI infrastructure sustainable, or will hyperscalers vertically integrate and erode its moat?"
+        """,
+    )
+
+    assert brief.ic_question == (
+        "Is Nvidia's dominance in AI infrastructure sustainable, or will "
+        "hyperscalers vertically integrate and erode its moat?"
+    )
+    assert "Main competitors" not in brief.ic_question
+    assert store.get_mission("m-structured").ic_question == brief.ic_question
+    store.close()
+
+
 def test_get_hypotheses_returns_current_hypotheses(store: MissionStore, state: dict[str, str]):
     result = mission_tools.get_hypotheses(state)
     assert len(result["hypotheses"]) == 2
@@ -369,6 +399,21 @@ def test_set_and_check_merlin_verdict(store: MissionStore, state: dict[str, str]
     assert saved["verdict"] == "SHIP"
     checked = mission_tools.check_merlin_verdict(state)
     assert checked["verdict"] == "SHIP"
+
+
+def test_set_merlin_verdict_is_idempotent_for_same_pass(store: MissionStore, state: dict[str, str]):
+    first = mission_tools.set_merlin_verdict("BACK_TO_DRAWING_BOARD", "Need stronger sourcing.", state)
+    second = mission_tools.set_merlin_verdict("BACK_TO_DRAWING_BOARD", "Need stronger sourcing.", state)
+
+    assert second["verdict_id"] == first["verdict_id"]
+    assert second["deduped"] is True
+    verdict_rows = store._execute(  # noqa: SLF001 - test asserts persistence contract
+        "SELECT COUNT(*) AS count FROM merlin_verdicts WHERE mission_id = ?",
+        ("m-test",),
+    ).fetchone()
+    assert verdict_rows["count"] == 1
+    merlin_findings = [f for f in store.list_findings("m-test") if f.agent_id == "merlin"]
+    assert len(merlin_findings) == 1
 
 
 def test_generate_interview_guides_returns_hypothesis_guides(store: MissionStore, state: dict[str, str]):

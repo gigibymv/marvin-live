@@ -12,6 +12,7 @@ import {
   formatGatePendingChatMessage,
   formatGatePendingFeedSignal,
   formatNarrationChatMessage,
+  markGateChatMessageResolved,
   routeDeliverableToSectionId,
 } from "@/lib/missions/adapters";
 import {
@@ -44,6 +45,7 @@ import {
   submitClarificationAnswers as apiSubmitClarificationAnswers,
   getMissionProgress,
   getMissionEvents,
+  getMissionChatMessages,
   getDeliverableDownloadUrl,
   rerunAgent as apiRerunAgent,
 } from "@/lib/missions/api";
@@ -71,8 +73,10 @@ const NOISY_TOOL_NAMES = new Set([
   "generate_engagement_brief",
   "generate_workstream_report",
   "generate_exec_summary",
-  // tavily_search, search_sec_filings, fetch_filing_section, query_data_room,
-  // query_transcripts intentionally NOT here — they show real work in the feed.
+  "get_hypotheses",
+  "search_sec_filings",
+  "fetch_filing_section",
+  "tavily_search",
 ]);
 
 function isNoisyTool(raw: unknown): boolean {
@@ -106,6 +110,24 @@ function humanizeToolName(raw: unknown): string {
   return name.replace(/_/g, " ");
 }
 
+function missionStepLabel(phase: string | undefined, fallback?: string): string {
+  const labels: Record<string, string> = {
+    setup: "Mission setup",
+    framing: "Framing the deal",
+    awaiting_confirmation: "Framing ready for review",
+    confirmed: "Research workstreams started",
+    research_done: "Research ready for review",
+    gate_g1_passed: "Red-team work started",
+    redteam_done: "Red-team pass complete",
+    synthesis_retry: "Synthesis is being revised",
+    synthesis_done: "Synthesis ready for review",
+    gate_g3_passed: "Final deliverables started",
+    done: "Mission complete",
+  };
+  if (phase && labels[phase]) return labels[phase];
+  return String(fallback ?? phase ?? "Mission update").replace(/_/g, " ");
+}
+
 // Cap the live event feed so a long mission doesn't accumulate thousands of
 // rows in memory or scroll the rail forever.
 const MAX_LIVE_TAPE_ENTRIES = 60;
@@ -120,6 +142,14 @@ function agentForWorkstream(wsId: string | null | undefined): string | null {
   return WS_TO_AGENT[wsId.toUpperCase()] ?? null;
 }
 
+// W2.2/W2.3 were useful implementation probes while the financial workstream
+// was hardening, but they create confusing user-visible rows. The canonical
+// financial tab is the W2 report plus Unit economics/QoE output.
+const HIDDEN_MILESTONE_IDS = new Set(["W2.2", "W2.3"]);
+function isVisibleMilestone(milestone: { id?: string | null }): boolean {
+  return !HIDDEN_MILESTONE_IDS.has(String(milestone.id ?? ""));
+}
+
 // Verdict labelling and prose sanitisation moved to lib/missions/humanize.ts
 // (single source of truth used by every rendering boundary).
 import { humanizeText, humanizeVerdict } from "@/lib/missions/humanize";
@@ -129,8 +159,8 @@ const stripVerdictScaffolding = humanizeText;
 
 function humanizeToolResultText(raw: unknown): string {
   const text = String(raw ?? "").trim();
-  if (!text) return "step complete";
-  if (text.startsWith("{") || text.startsWith("[")) return "step complete";
+  if (!text) return "";
+  if (text.startsWith("{") || text.startsWith("[")) return "";
   return text.length > 200 ? text.slice(0, 200).trimEnd() + "…" : text;
 }
 
@@ -620,13 +650,15 @@ export default function MissionControl({
           };
         }
         if (evt.type === "milestone_done") {
+          const isBlocked = evt.status === "blocked";
+          const reason = evt.resultSummary ? ` — ${evt.resultSummary}` : "";
           return {
             id: evt.milestoneId ?? `${missionId}-${evt.ts ?? ""}-milestone`,
             kind: "milestone" as const,
             claim_text: evt.label
-              ? `Milestone complete · ${evt.label}`
-              : `Milestone complete · ${evt.milestoneId ?? "step"}`,
-            confidence: "done",
+              ? `${isBlocked ? "Milestone blocked" : "Milestone complete"} · ${evt.label}${isBlocked ? reason : ""}`
+              : `${isBlocked ? "Milestone blocked" : "Milestone complete"} · ${evt.milestoneId ?? "step"}${isBlocked ? reason : ""}`,
+            confidence: isBlocked ? "BLOCKED" : "done",
             workstreamId: evt.workstreamId ?? undefined,
             ts: evt.ts,
           };
@@ -659,6 +691,44 @@ export default function MissionControl({
       if (replace) {
         // Replace rather than append: this is the source-of-truth snapshot.
         setLiveFindings(dedupeByKey(hydrated, liveEventKey));
+        setMessages((current) => {
+          const opening = current.find((m) => m.id === `${missionId}-opening`);
+          const rebuilt: MissionChatMessage[] = opening ? [opening] : [];
+          let seq = 0;
+          for (const evt of events) {
+            if (evt.type === "deliverable_ready") {
+              const label = formatDeliverableDisplayName({
+                deliverable_type: evt.deliverableType ?? evt.label,
+                file_path: evt.filePath,
+              });
+              rebuilt.push({
+                id: `${evt.deliverableId ?? `${missionId}-${evt.ts ?? seq}-deliverable`}-chat`,
+                from: "m",
+                text: formatDeliverableReadyChatMessage(label),
+                deliverableId: evt.deliverableId,
+                deliverableLabel: label,
+                seq: seq++,
+              });
+            } else if (evt.type === "gate_resolved") {
+              rebuilt.push({
+                id: `${evt.gateId ?? `${missionId}-${evt.ts ?? seq}-gate`}-chat`,
+                from: "m",
+                text: `Gate ${evt.status === "rejected" ? "rejected" : "approved"}. The mission is continuing.`,
+                seq: seq++,
+              });
+            }
+          }
+          // Preserve any live user/assistant messages from the current session.
+          const rebuiltIds = new Set(rebuilt.map((m) => m.id));
+          for (const msg of current) {
+            if (msg.id === `${missionId}-opening`) continue;
+            if (rebuiltIds.has(msg.id)) continue;
+            if (msg.from === "u" || msg.id.includes("-stream") || msg.gateAction === "pending") {
+              rebuilt.push({ ...msg, seq: msg.seq ?? seq++ });
+            }
+          }
+          return rebuilt.length > 0 ? rebuilt : current;
+        });
         return;
       }
 
@@ -694,9 +764,34 @@ export default function MissionControl({
         }
 
         setMission(nextMission);
-        setMessages((current) =>
-          current.length > 0 ? current : nextMission ? buildInitialMessages(nextMission) : [],
-        );
+        setMessages((current) => {
+          if (!nextMission) return current;
+          const opening = buildInitialMessages(nextMission)[0];
+          if (current.length === 0) return [opening];
+          if (current.some((m) => m.id === opening.id)) return current;
+          return [opening, ...current];
+        });
+        if (repository.kind === "http") {
+          try {
+            const { messages: persistedMessages } = await getMissionChatMessages(missionId);
+            if (!cancelled && persistedMessages.length > 0) {
+              setMessages((current) => {
+                const opening = nextMission ? buildInitialMessages(nextMission)[0] : null;
+                const byId = new Map<string, MissionChatMessage>();
+                if (opening) byId.set(opening.id, opening);
+                for (const msg of persistedMessages) byId.set(msg.id, msg);
+                for (const msg of current) {
+                  if (!byId.has(msg.id) && (msg.from === "u" || msg.id.includes("-stream") || msg.gateAction === "pending")) {
+                    byId.set(msg.id, msg);
+                  }
+                }
+                return Array.from(byId.values());
+              });
+            }
+          } catch (error) {
+            console.error("Failed to hydrate chat messages:", error);
+          }
+        }
         setBackendState(repository.kind === "local" ? "local" : "ready");
         setIsOffline(false);
       } catch (error) {
@@ -755,10 +850,12 @@ export default function MissionControl({
               if (event.text && current.some((m) => m.from === "m" && m.text === event.text)) {
                 return current;
               }
+              _msgCounter += 1;
               return current.concat({
                 id: makeMessageId(missionId, "stream"),
                 from: "m",
                 text: event.text,
+                seq: _msgCounter,
               });
             });
             break;
@@ -791,10 +888,12 @@ export default function MissionControl({
           case "tool_result":
             if (isNoisyTool(event.text)) break;
             setLiveFindings((current) => {
+              const resultText = humanizeToolResultText(event.text);
+              if (!resultText) return current;
               const next = upsertLiveEvent(current, {
                 id: makeMessageId(missionId, "result"),
                 kind: "tool_result",
-                claim_text: humanizeToolResultText(event.text),
+                claim_text: resultText,
                 agent: event.agent,
               });
               return next.length > MAX_LIVE_TAPE_ENTRIES
@@ -905,8 +1004,10 @@ export default function MissionControl({
             _msgCounter += 1;
             const gateSeq = _msgCounter;
             setMessages((current) => {
-              if (current.some((m) => m.id === gateMsgId)) return current;
-              return current.concat({
+              const existing = current.find((m) => m.id === gateMsgId);
+              const withoutGate = current.filter((m) => m.id !== gateMsgId);
+              return withoutGate.concat({
+                ...existing,
                 id: gateMsgId,
                 from: "m",
                 text: formatGatePendingChatMessage(event),
@@ -992,7 +1093,7 @@ export default function MissionControl({
               upsertLiveEvent(current, {
                 id: "startup",
                 kind: "phase",
-                claim_text: `Phase · ${event.label ?? event.phase}`,
+                claim_text: missionStepLabel(event.phase, event.label),
                 confidence: "phase",
               }),
             );
@@ -1189,6 +1290,7 @@ export default function MissionControl({
           id: makeMessageId(mission.id, "user"),
           from: "u",
           text: value,
+          seq: ++_msgCounter,
         }),
       );
 
@@ -1202,16 +1304,6 @@ export default function MissionControl({
       // "Starting the mission run" while the mission is mid-synthesis.
       const isInitialBrief = !progress?.framing && value.trim().length >= 50;
       if (isInitialBrief) {
-        setLiveFindings((current) => {
-          if (current.some((e) => e.id === "startup")) return current;
-          return upsertLiveEvent(current, {
-            id: "startup",
-            kind: "phase",
-            agent: "MARVIN",
-            claim_text: "Mission starting…",
-            ts: String(Date.now()),
-          });
-        });
         setLatestNarration("MARVIN — Starting the mission run.");
       }
       setStreamError(null);
@@ -1314,13 +1406,13 @@ export default function MissionControl({
         : (() => {
             switch (gateMeta?.gate_type) {
               case "hypothesis_confirmation":
-                return "MARVIN —Gate approved. Starting the research workstreams.";
+                return "MARVIN — Gate approved. Starting the research workstreams.";
               case "manager_review":
-                return "MARVIN —Gate approved. Synthesising the verdict.";
+                return "MARVIN — Gate approved. Synthesising the verdict.";
               case "final_review":
-                return "MARVIN —Gate approved. Generating the final IC memo.";
+                return "MARVIN — Gate approved. Generating the final IC memo.";
               default:
-                return "MARVIN —Gate approved. Continuing the mission.";
+                return "MARVIN — Gate approved. Continuing the mission.";
             }
           })();
       setLatestNarration(approveNarration);
@@ -1370,7 +1462,7 @@ export default function MissionControl({
           // Clear the Approve/Reject buttons from the gate's chat bubble.
           setMessages((current) =>
             current.map((msg) =>
-              msg.gateId === gateId ? { ...msg, gateAction: undefined } : msg
+              markGateChatMessageResolved(msg, gateId, "approved")
             )
           );
 
@@ -1463,7 +1555,7 @@ export default function MissionControl({
           // Clear the Approve/Reject buttons from the gate's chat bubble.
           setMessages((current) =>
             current.map((msg) =>
-              msg.gateId === gateId ? { ...msg, gateAction: undefined } : msg
+              markGateChatMessageResolved(msg, gateId, "rejected")
             )
           );
 
@@ -1771,6 +1863,7 @@ export default function MissionControl({
   // "delivered", OR whose id has been flipped to "delivered" by a live
   // milestone_done SSE event captured in milestoneStatusOverrides.
   const allMilestones = progress?.milestones ?? [];
+  const visibleMilestones = allMilestones.filter(isVisibleMilestone);
   // 9-bug triage F: synthesize a Papyrus row for the agents panel. Papyrus
   // has no workstream of its own — it writes deliverables across the run —
   // so the workstream-derived map below would never surface it. We infer
@@ -1789,19 +1882,43 @@ export default function MissionControl({
     milestonesDelivered: 0,
   };
   const agents = (progress?.workstreams ?? []).map(ws => {
-    const wsMilestones = allMilestones.filter(m => m.workstream_id === ws.id);
+    const wsMilestones = visibleMilestones.filter(m => m.workstream_id === ws.id);
     const delivered = wsMilestones.filter(m => {
       const liveStatus = milestoneStatusOverrides[m.id];
       return (liveStatus ?? m.status) === "delivered";
     }).length;
     const agentKey = ws.assigned_agent?.toLowerCase() ?? ws.id;
     const liveStatus = agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
+    const hasBlockedMilestone = wsMilestones.some(m => {
+      const live = milestoneStatusOverrides[m.id];
+      return (live ?? m.status) === "blocked";
+    });
+    const hasReadyWorkstreamReport = (progress?.deliverables ?? []).some((d: any) => {
+      if (d.status !== "ready") return false;
+      return routeDeliverableToSectionId({
+        deliverable_type: d.deliverable_type,
+        file_path: d.file_path,
+      }) === ws.id;
+    });
+    const displayStatus =
+      liveStatus === "active"
+        ? liveStatus
+        : hasBlockedMilestone && !hasReadyWorkstreamReport
+          ? "blocked"
+          : liveStatus;
     return {
       id: agentKey,
       name: ws.assigned_agent ?? ws.id,
       role: ws.label,
-      status: liveStatus,
-      state: liveStatus === "active" ? "running" : liveStatus === "done" ? "done" : "idle",
+      status: displayStatus,
+      state:
+        displayStatus === "active"
+          ? "running"
+          : displayStatus === "done"
+            ? "done"
+            : displayStatus === "blocked"
+              ? "blocked"
+              : "idle",
       milestonesTotal: wsMilestones.length,
       milestonesDelivered: delivered,
     };
@@ -1831,7 +1948,7 @@ export default function MissionControl({
     visiblePendingGates[0]?.gate_type?.replace(/_/g, " ") ??
     checkpoints.find((cp) => cp.status === "now")?.label ??
     null;
-  const deliveredMilestones = allMilestones.filter((m) => {
+  const deliveredMilestones = visibleMilestones.filter((m) => {
     const liveStatus = milestoneStatusOverrides[m.id];
     return (liveStatus ?? m.status) === "delivered";
   }).length;
@@ -1846,7 +1963,7 @@ export default function MissionControl({
   // same UI signals used by `workstreamContent` (terminal milestones, ready
   // deliverable, or merlin verdict for W3).
   const phaseStageCount = (() => {
-    const allMs = progress?.milestones ?? [];
+    const allMs = visibleMilestones;
     const allDels = progress?.deliverables ?? [];
     const merlinDone = Boolean((progress as any)?.merlin_verdict?.verdict);
     const wsHasReadyDeliverable = (wsId: string): boolean =>
@@ -1876,7 +1993,7 @@ export default function MissionControl({
     // prevent premature ✓. W3 special-cases merlin verdict + deliverable.
     // Defensive: a workstream with zero milestones never auto-completes.
     const wsDone = (id: string): number => {
-      const hasMilestones = (progress?.milestones ?? []).some((m: any) => m.workstream_id === id);
+      const hasMilestones = visibleMilestones.some((m: any) => m.workstream_id === id);
       if (!hasMilestones) return 0;
       if (id === "W3") return (merlinDone && wsHasReadyDeliverable(id)) ? 1 : 0;
       return (wsAllMilestonesTerminal(id) && wsHasReadyDeliverable(id)) ? 1 : 0;
@@ -1960,7 +2077,7 @@ export default function MissionControl({
     ? currentPhaseLabel ? `M Running — ${currentPhaseLabel}` : "Mission running"
     : hasPendingGate
     ? `Gate pending · ${nextCheckpointLabel ?? "Review"}`
-    : progressRatio >= 1 && allMilestones.length > 0
+    : progressRatio >= 1 && visibleMilestones.length > 0
       ? "Complete"
       : activeAgent
         ? currentPhaseLabel
@@ -2037,7 +2154,7 @@ export default function MissionControl({
       section_id: f.section_id ?? f.sectionId ?? null,
       workstream_id: explicitWs ?? AGENT_TO_WS[agentRaw] ?? null,
       agent_id: f.agent ?? f.agent_id,
-      claim_text: f.claim_text,
+      claim_text: f.claim_text ?? f.text ?? "",
       href: f.href,
       // Chantier 4 CP2: enrich for FindingCard.
       hypothesis_id: f.hypothesis_id ?? f.hypothesisId ?? null,
@@ -2087,7 +2204,7 @@ export default function MissionControl({
   // Fall back to the parent workstream report when no per-milestone
   // artifact exists yet (older missions, or milestones with too few
   // findings to render a per-milestone report).
-  const milestoneOutputs = allMilestones
+  const milestoneOutputs = visibleMilestones
     .filter((m) => {
       const liveStatus = milestoneStatusOverrides[m.id];
       return ["delivered", "blocked"].includes(liveStatus ?? m.status);
@@ -2152,7 +2269,7 @@ export default function MissionControl({
       return stripVerdictScaffolding(out);
     };
     const prose = sanitizeVerdictNotes(v.notes ?? "");
-    const verdictLabel = humanizeVerdict(v.verdict);
+    const verdictLabel = v.label || humanizeVerdict(v.verdict);
     // Single dark deliverable row carrying the verdict label as title and
     // the prose as a multi-line body. Stuffed into `source_id` because
     // CenterFinding already exposes it as a body block on expand; doubles
@@ -2166,7 +2283,7 @@ export default function MissionControl({
       confidence: verdictLabel,
       agent_id: "merlin",
       ts: v.created_at ?? "",
-      source_id: prose || null,
+      source_id: stripVerdictScaffolding([v.recommended_action, prose].filter(Boolean).join(" ")) || null,
     };
     // Surface the verdict on BOTH Synthesis (W3) and Final deliverables (final)
     // so the final tab isn't just a bare file list — the user sees the
@@ -2192,8 +2309,26 @@ export default function MissionControl({
       const derivedWs = AGENT_TO_WS[agentRaw] ?? null;
       return derivedWs ? { ...a, workstream_id: derivedWs } : a;
     });
+  const agentMessageOutputs = activity
+    .filter((a: any) => {
+      if (a.kind !== "agent_message") return false;
+      const text = String(a.claim_text ?? a.text ?? "").trim();
+      if (text.length < 80) return false;
+      const agentRaw = String(a.agent_id ?? a.agent ?? a.ag ?? "").toLowerCase();
+      return Boolean(AGENT_TO_WS[agentRaw]);
+    })
+    .map((a: any) => {
+      const agentRaw = String(a.agent_id ?? a.agent ?? a.ag ?? "").toLowerCase();
+      return {
+        ...a,
+        kind: "finding" as const,
+        id: `agent-output-${a.id}`,
+        workstream_id: a.workstream_id ?? AGENT_TO_WS[agentRaw] ?? null,
+      };
+    });
   const allSectionOutputs = dedupeByKey([
     ...liveFindingOutputs,
+    ...agentMessageOutputs,
     ...allFindings,
     ...synthesisOutputs,
     ...deliverableOutputs,
@@ -2214,7 +2349,7 @@ export default function MissionControl({
   // has issued a verdict the tab is complete regardless of milestone count.
   const merlinVerdictPresent = Boolean((progress as any)?.merlin_verdict?.verdict);
   const workstreamContent = (progress?.workstreams ?? []).map((ws) => {
-    const wsMilestones = (progress?.milestones ?? []).filter((m: any) => m.workstream_id === ws.id);
+    const wsMilestones = visibleMilestones.filter((m: any) => m.workstream_id === ws.id);
     // Count any terminal status — delivered, skipped, or blocked — as "done".
     // A legitimately blocked milestone (e.g. LOW_CONFIDENCE finding that
     // research_join could not progress) used to pin the tab on `●` forever.
@@ -2282,7 +2417,7 @@ export default function MissionControl({
       liveStatus === "done" && allMilestonesDone && allMilestoneDeliverablesMaterialized;
     // P19b: require ALL deliverables ready (not just ≥1) before marking ✓.
     const tabCompletedReady = missionCompleted
-      || (allMilestonesDone && wsAllDeliverablesReady)
+      || (allMilestonesDone && wsAllDeliverablesReady && allMilestoneDeliverablesMaterialized)
       || synthesisDone
       || agentDoneWithDeliverable
       || allMilestonesBlocked
@@ -2783,8 +2918,13 @@ export default function MissionControl({
               {gateModal.merlinVerdict && (
                 <div style={{ marginBottom: "14px", border: "1px solid #d5e2d8", borderRadius: "8px", padding: "10px 12px", background: "rgba(45,110,78,.06)" }}>
                   <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
-                    Merlin verdict · {humanizeVerdict(gateModal.merlinVerdict.verdict)}
+                    Merlin verdict · {gateModal.merlinVerdict.label || humanizeVerdict(gateModal.merlinVerdict.verdict)}
                   </div>
+                  {gateModal.merlinVerdict.recommendedAction && (
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: gateModal.merlinVerdict.notes ? "6px" : 0 }}>
+                      {gateModal.merlinVerdict.recommendedAction}
+                    </div>
+                  )}
                   {gateModal.merlinVerdict.notes && (
                     <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
                       {stripVerdictScaffolding(gateModal.merlinVerdict.notes)}
@@ -2908,7 +3048,7 @@ export default function MissionControl({
 
               {gateModal.arbiterFlags && gateModal.arbiterFlags.length > 0 && (
                 <div style={{ marginBottom: "14px", color: "#8B6200", fontSize: "12px", lineHeight: 1.5 }}>
-                  <strong>Arbiter flagged:</strong>
+                  <strong>Consistency checks:</strong>
                   <ul style={{ margin: "4px 0 0", paddingLeft: "16px" }}>
                     {gateModal.arbiterFlags.map((flag, i) => (
                       <li key={`af-${i}`}>{flag}</li>
@@ -2916,19 +3056,6 @@ export default function MissionControl({
                   </ul>
                 </div>
               )}
-
-              <div
-                style={{
-                  fontFamily: '"Geist Mono", monospace',
-                  fontSize: "9px",
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  color: "#8a8784",
-                  marginBottom: "16px",
-                }}
-              >
-                Gate ID: {gateModal.gateId}
-              </div>
             </div>
 
             {/* Footer */}
@@ -3015,4 +3142,3 @@ export default function MissionControl({
     </>
   );
 }
-

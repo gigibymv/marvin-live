@@ -13,10 +13,10 @@
 // chat bubbles, deliverable preview.
 
 const VERDICT_LABELS: Record<string, string> = {
-  SHIP: "Ready to ship",
-  MINOR_FIXES: "Minor revisions needed",
+  SHIP: "Ready to present",
+  MINOR_FIXES: "Additional diligence needed",
   MAJOR_FIXES: "Significant revisions needed",
-  BACK_TO_DRAWING_BOARD: "Needs rework",
+  BACK_TO_DRAWING_BOARD: "Evidence gaps — not ready",
   READY_FOR_REVIEW: "Ready for review",
   BLOCKED: "Blocked",
   APPROVED: "Approved",
@@ -42,11 +42,11 @@ const REPLACEMENTS: Array<[RegExp, string]> = [
   [/Reach\s+SHIP\b/gi, "reach sign-off"],
 
   // ── Verdict enums (uppercase tokens, bare or with underscores) ──────
-  [/\bBACK[_\s]TO[_\s]DRAWING[_\s]BOARD\b/g, "Needs rework"],
+  [/\bBACK[_\s]TO[_\s]DRAWING[_\s]BOARD\b/g, "Evidence gaps — not ready"],
   [/\bMAJOR[_\s]FIXES\b/g, "Significant revisions needed"],
-  [/\bMINOR[_\s]FIXES\b/g, "Minor revisions needed"],
+  [/\bMINOR[_\s]FIXES\b/g, "Additional diligence needed"],
   [/\bREADY[_\s]FOR[_\s]REVIEW\b/g, "Ready for review"],
-  [/\bSHIP\b/g, "Ready to ship"],
+  [/\bSHIP\b/g, "Ready to present"],
 
   // ── Internal IDs (finding / hypothesis / mission / gate) ────────────
   // Strip the inline `[f-xxxxxxxx]` / `(f-xxxxxxxx)` / bare `f-xxxxxx`

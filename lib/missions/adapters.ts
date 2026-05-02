@@ -131,6 +131,25 @@ export function formatGatePendingFeedSignal(event: GatePendingPresentationInput)
   return `Gate pending · ${label}`;
 }
 
+export function markGateChatMessageResolved(
+  message: MissionChatMessage,
+  gateId: string,
+  verdict: "approved" | "rejected",
+): MissionChatMessage {
+  if (message.gateId !== gateId) return message;
+  const statusText =
+    verdict === "approved"
+      ? "Gate approved. The mission is continuing."
+      : "Gate rejected. MARVIN is revising the prior work.";
+  return {
+    ...message,
+    text: message.text.replace(/^🔔 Gate pending[^\n]*(\n\n)?/, "").trim()
+      ? `${statusText}\n\n${message.text.replace(/^🔔 Gate pending[^\n]*(\n\n)?/, "").trim()}`
+      : statusText,
+    gateAction: undefined,
+  };
+}
+
 export interface NarrationPresentationInput {
   agent?: string | null;
   intent?: string | null;

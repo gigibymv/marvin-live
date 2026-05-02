@@ -135,6 +135,25 @@ def test_manager_gate_findings_total_counts_only_research_findings(store: Missio
             created_at=now,
         )
     )
+    for milestone_id, ws_id in (
+        ("W1.1", "W1"),
+        ("W1.2", "W1"),
+        ("W1.3", "W1"),
+        ("W2.1", "W2"),
+        ("W2.2", "W2"),
+        ("W2.3", "W2"),
+    ):
+        store.save_deliverable(
+            Deliverable(
+                id=f"d-{milestone_id}",
+                mission_id="m-gate",
+                deliverable_type="milestone_report",
+                status="ready",
+                milestone_id=milestone_id,
+                workstream_id=ws_id,
+                created_at=now,
+            )
+        )
     gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G1")
 
     material = evaluate_gate_material(store, "m-gate", gate)
@@ -142,6 +161,122 @@ def test_manager_gate_findings_total_counts_only_research_findings(store: Missio
     assert material.is_open is True
     assert material.review_payload["findings_total"] == 1
     assert [f["id"] for f in material.review_payload["research_findings"]] == ["f-research"]
+
+
+def test_manager_gate_waits_for_delivered_milestone_reports(store: MissionStore):
+    now = datetime.now(UTC).isoformat()
+    store.save_finding(
+        Finding(
+            id="f-research",
+            mission_id="m-gate",
+            workstream_id="W1",
+            claim_text="Research claim",
+            confidence="REASONED",
+            agent_id="dora",
+            created_at=now,
+        )
+    )
+    for milestone_id, label in (
+        ("W1.1", "Market research complete"),
+        ("W1.2", "Competitive mapping complete"),
+        ("W1.3", "Moat assessment complete"),
+        ("W2.1", "Unit economics complete"),
+        ("W2.2", "Public filings review complete"),
+        ("W2.3", "Anomaly detection complete"),
+    ):
+        store.mark_milestone_delivered(milestone_id, label, "m-gate")
+    for ws_id in ("W1", "W2"):
+        store.save_deliverable(
+            Deliverable(
+                id=f"d-{ws_id}",
+                mission_id="m-gate",
+                deliverable_type="workstream_report",
+                status="ready",
+                workstream_id=ws_id,
+                created_at=now,
+            )
+        )
+    # W2.3 is intentionally missing: it is now an internal optional check, not
+    # a user-visible manager-review blocker.
+    for milestone_id, ws_id in (
+        ("W1.1", "W1"),
+        ("W1.2", "W1"),
+        ("W1.3", "W1"),
+        ("W2.1", "W2"),
+        ("W2.2", "W2"),
+    ):
+        store.save_deliverable(
+            Deliverable(
+                id=f"d-{milestone_id}",
+                mission_id="m-gate",
+                deliverable_type="milestone_report",
+                status="ready",
+                milestone_id=milestone_id,
+                workstream_id=ws_id,
+                created_at=now,
+            )
+        )
+    gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G1")
+
+    material = evaluate_gate_material(store, "m-gate", gate)
+
+    assert material.is_open is True
+    assert "deliverable_writing_in_progress" not in material.missing_material
+
+
+def test_manager_gate_ignores_internal_optional_financial_milestones(store: MissionStore):
+    now = datetime.now(UTC).isoformat()
+    store.save_finding(
+        Finding(
+            id="f-research",
+            mission_id="m-gate",
+            workstream_id="W1",
+            claim_text="Research claim",
+            confidence="REASONED",
+            agent_id="dora",
+            created_at=now,
+        )
+    )
+    for milestone_id, label in (
+        ("W1.1", "Market research complete"),
+        ("W1.2", "Competitive mapping complete"),
+        ("W1.3", "Moat assessment complete"),
+        ("W2.1", "Unit economics complete"),
+    ):
+        store.mark_milestone_delivered(milestone_id, label, "m-gate")
+    for ws_id in ("W1", "W2"):
+        store.save_deliverable(
+            Deliverable(
+                id=f"d-{ws_id}",
+                mission_id="m-gate",
+                deliverable_type="workstream_report",
+                status="ready",
+                workstream_id=ws_id,
+                created_at=now,
+            )
+        )
+    for milestone_id, ws_id in (
+        ("W1.1", "W1"),
+        ("W1.2", "W1"),
+        ("W1.3", "W1"),
+        ("W2.1", "W2"),
+    ):
+        store.save_deliverable(
+            Deliverable(
+                id=f"d-{milestone_id}",
+                mission_id="m-gate",
+                deliverable_type="milestone_report",
+                status="ready",
+                milestone_id=milestone_id,
+                workstream_id=ws_id,
+                created_at=now,
+            )
+        )
+    gate = next(g for g in store.list_gates("m-gate") if g.id == "gate-m-gate-G1")
+
+    material = evaluate_gate_material(store, "m-gate", gate)
+
+    assert material.is_open is True
 
 
 def test_missing_material_lists_are_not_aliased(store: MissionStore):

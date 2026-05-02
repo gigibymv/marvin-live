@@ -53,7 +53,11 @@ from marvin.graph.runner import build_graph
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools.common import slugify, short_id, utc_now_iso
-from marvin.tools.mission_tools import compute_hypothesis_status
+from marvin.tools.mission_tools import (
+    compute_hypothesis_status,
+    consultant_verdict_action,
+    consultant_verdict_label,
+)
 from marvin.mission.schema import (
     DataRoomFile,
     DealTerms,
@@ -61,6 +65,7 @@ from marvin.mission.schema import (
     Gate,
     Hypothesis,
     Mission as MissionModel,
+    MissionChatMessage,
     Transcript,
     TranscriptSegment,
 )
@@ -138,6 +143,49 @@ def get_display_name(node_name: str | None) -> str | None:
 # entries instead of polluting the chat with verbose reasoning.
 _CHAT_VOICE_NODES = {"framing", "framing_orchestrator", "orchestrator", "papyrus_delivery"}
 
+# LangGraph can occasionally checkpoint a mission with no pending node
+# (`snapshot.next == ()`) while the persisted phase still represents a
+# continuable workflow boundary. Treating those snapshots as terminal leaves
+# the mission paused with no pending gate and no downstream work running.
+_CONTINUABLE_CHECKPOINT_PHASES = {
+    "framing",
+    "awaiting_confirmation",
+    "confirmed",
+    "research_done",
+    "gate_g1_passed",
+    "redteam_done",
+    "rebuttal_done",
+    "synthesis_retry",
+    "synthesis_done",
+    "gate_g3_passed",
+}
+
+
+def _continuation_input_from_snapshot(snapshot: Any) -> dict[str, Any] | None:
+    values = dict(getattr(snapshot, "values", None) or {})
+    phase = values.get("phase")
+    mission_id = values.get("mission_id")
+    if not isinstance(phase, str) or phase not in _CONTINUABLE_CHECKPOINT_PHASES:
+        return None
+    if not isinstance(mission_id, str) or not mission_id:
+        return None
+    return values
+
+_TRACE_ONLY_TOOLS = {
+    "add_finding_to_mission",
+    "mark_milestone_delivered",
+    "mark_milestone_blocked",
+    "set_merlin_verdict",
+    "get_hypotheses",
+    "search_sec_filings",
+    "fetch_filing_section",
+    "tavily_search",
+    "generate_workstream_report",
+    "generate_exec_summary",
+    "generate_data_book",
+    "generate_report_pdf",
+}
+
 # Tool result summaries for user-friendly display
 _TOOL_SUMMARIES: dict[str, callable] = {
     "add_finding_to_mission": lambda r: f"Finding added · {r.get('finding_id', '')[:12]}",
@@ -199,12 +247,18 @@ _TOOL_SUMMARIES: dict[str, callable] = {
 
 def _get_tool_summary(tool_name: str, result: dict | None) -> str | None:
     """Get user-friendly summary for tool result."""
+    if tool_name in _TRACE_ONLY_TOOLS:
+        return None
     if tool_name in _TOOL_SUMMARIES:
         try:
             return _TOOL_SUMMARIES[tool_name](result or {})
         except Exception:
             pass
     return None
+
+
+def _is_trace_only_tool(tool_name: str | None) -> bool:
+    return str(tool_name or "").strip() in _TRACE_ONLY_TOOLS
 
 
 def _mission_exists(store: MissionStore, mission_id: str) -> bool:
@@ -419,6 +473,7 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
         current_agent: str | None = None
         current_phase: str | None = None
         throttle_state: dict[tuple[str, str], float] = {}
+        continued_terminal_phases: set[str] = set()
         try:
             emit_graph_event(mission_id, await _emit_run_start())
             # Bounded loop. We pass through framing/gate_entry on the first
@@ -473,6 +528,30 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                     next_input = Command(resume=resume_payload)
                     fed_resume = True
                     continue
+                if not interrupted_other:
+                    try:
+                        snapshot = await graph.aget_state(config)
+                    except Exception:  # noqa: BLE001 - best-effort recovery
+                        snapshot = None
+                    continuation_input = _continuation_input_from_snapshot(snapshot)
+                    continuation_phase = (
+                        continuation_input.get("phase")
+                        if continuation_input is not None
+                        else None
+                    )
+                    if (
+                        isinstance(continuation_phase, str)
+                        and continuation_phase not in continued_terminal_phases
+                    ):
+                        continued_terminal_phases.add(continuation_phase)
+                        logger.warning(
+                            "Detached resume continuing from routable terminal "
+                            "checkpoint: mission=%s phase=%s",
+                            mission_id,
+                            continuation_phase,
+                        )
+                        next_input = continuation_input
+                        continue
                 # Either no interrupt (graph completed) or interrupt on a
                 # different gate (next workflow checkpoint) — exit and let
                 # the user's next /resume attach to the new parked frame.
@@ -668,6 +747,48 @@ async def _emit_text(agent: str, text: str) -> str:
     return _sse_event("text", {"agent": display, "text": text})
 
 
+async def _emit_persisted_text(mission_id: str, agent: str, text: str) -> str:
+    _persist_chat_message(mission_id, "marvin", text)
+    return await _emit_text(agent, text)
+
+
+def _persist_chat_message(
+    mission_id: str,
+    role: str,
+    text: str,
+    *,
+    message_id: str | None = None,
+    deliverable_id: str | None = None,
+    deliverable_label: str | None = None,
+    gate_id: str | None = None,
+    gate_action: str | None = None,
+) -> None:
+    clean = str(text or "").strip()
+    if not clean:
+        return
+    try:
+        ts = datetime.now(UTC).isoformat()
+        store = MissionStore()
+        existing = store.list_chat_messages(mission_id)
+        seq = len(existing) + 1
+        store.save_chat_message(
+            MissionChatMessage(
+                id=message_id or f"chat-{mission_id}-{uuid.uuid4().hex[:12]}",
+                mission_id=mission_id,
+                role="user" if role == "user" else "marvin",
+                text=clean,
+                deliverable_id=deliverable_id,
+                deliverable_label=deliverable_label,
+                gate_id=gate_id,
+                gate_action=gate_action,
+                seq=seq,
+                created_at=ts,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - chat persistence must not break SSE
+        logger.warning("chat message persistence failed: %s", exc)
+
+
 async def _emit_tool_call(agent: str, tool: str) -> str:
     display = get_display_name(agent)
     if display is None:
@@ -684,6 +805,46 @@ async def _emit_tool_result(agent: str, text: str) -> str:
 
 async def _emit_gate_pending(payload: dict) -> str:
     return _sse_event("gate_pending", payload)
+
+
+def _open_gate_payload_from_store(store: MissionStore, mission_id: str) -> dict | None:
+    """Return the first currently-open gate payload from persisted truth.
+
+    A reconnect should surface an already-open checkpoint, not re-run graph
+    nodes just to rediscover the LangGraph interrupt frame.
+    """
+    try:
+        gates = sorted(store.list_gates(mission_id), key=lambda g: (g.scheduled_day, g.id))
+        hypotheses = store.list_hypotheses(mission_id)
+        findings = store.list_findings(mission_id)
+        mission_brief = store.get_mission_brief(mission_id)
+        workstreams = store.list_workstreams(mission_id)
+        milestones = store.list_milestones(mission_id)
+        for gate in gates:
+            if gate.status != "pending":
+                continue
+            if gate.id in _gate_decisions_in_flight:
+                continue
+            material = evaluate_gate_material(
+                store,
+                mission_id,
+                gate,
+                hypotheses=hypotheses,
+                findings=findings,
+                mission_brief=mission_brief,
+                workstreams=workstreams,
+                milestones=milestones,
+            )
+            if not material.is_open:
+                continue
+            payload = dict(material.review_payload)
+            research_findings = payload.get("research_findings", [])
+            if isinstance(research_findings, list):
+                payload["findings_snapshot"] = research_findings[-3:]
+            return payload
+    except Exception as exc:  # noqa: BLE001 — reconnect must stay best-effort
+        logger.warning("Could not reconstruct open gate for mission=%s: %s", mission_id, exc)
+    return None
 
 
 async def _emit_phase_blocked(payload: dict) -> str:
@@ -1035,7 +1196,7 @@ def _gate_narration(payload: dict) -> str:
 def _phase_blocked_narration(payload: dict) -> str:
     message = str(payload.get("message") or "").strip()
     if message:
-        return message
+        return _humanize_blocked_message(message)
     missing = payload.get("missing_material")
     if isinstance(missing, (list, tuple)):
         missing_text = ", ".join(str(item) for item in missing if item)
@@ -1043,8 +1204,18 @@ def _phase_blocked_narration(payload: dict) -> str:
         missing_text = ""
     gate_type = str(payload.get("gate_type") or "gate").replace("_", " ")
     if missing_text:
-        return f"Cannot open {gate_type}: missing {missing_text}"
-    return f"Cannot open {gate_type}: missing required material"
+        return _humanize_blocked_message(f"Cannot open {gate_type}: missing {missing_text}")
+    return "Review material is still being prepared."
+
+
+def _humanize_blocked_message(message: str) -> str:
+    text = message.strip()
+    lower = text.lower()
+    if "deliverable_writing_in_progress" in lower or "deliverable writing in progress" in lower:
+        return "Deliverable writing in progress."
+    if lower.startswith("cannot open"):
+        return "Review material is still being prepared."
+    return text
 
 
 async def _emit_narration(agent: str, intent: str) -> str:
@@ -1244,7 +1415,7 @@ async def _emit_for_update(
                 tool_calls = getattr(msg, "tool_calls", None) or []
                 for call in tool_calls:
                     name = call.get("name") if isinstance(call, dict) else getattr(call, "name", None)
-                    if name:
+                    if name and not _is_trace_only_tool(str(name)):
                         _throttle_key_tc = ("tool_call", node_name)
                         _now_tc = time.monotonic()
                         _last_tc = (throttle_state or {}).get(_throttle_key_tc, 0.0)
@@ -1255,7 +1426,9 @@ async def _emit_for_update(
             elif isinstance(msg, ToolMessage):
                 tool_name = getattr(msg, "name", "tool")
                 summary = _get_tool_summary(tool_name, {"result": msg.content})
-                if summary:
+                if _is_trace_only_tool(tool_name):
+                    pass
+                elif summary:
                     out.append(await _emit_tool_result(node_name, summary))
                 elif msg.content:
                     out.append(await _emit_tool_result(node_name, str(msg.content)[:200]))
@@ -1283,6 +1456,7 @@ async def _stream_chat(
     Uses astream() instead of astream_events() for better compatibility with Send nodes.
     """
     store = get_store()
+    _persist_chat_message(mission_id, "user", text)
     
     # Verify mission exists
     if not _mission_exists(store, mission_id):
@@ -1311,7 +1485,8 @@ async def _stream_chat(
             yield await _emit_run_start()
             try:
                 queue_steering(mission_id, text)
-                yield await _emit_text(
+                yield await _emit_persisted_text(
+                    mission_id,
                     "orchestrator",
                     "Got it. The next agent that runs will pick up your "
                     "instruction. To stop the mission and re-frame, reject "
@@ -1319,7 +1494,8 @@ async def _stream_chat(
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("steering queue failed: %s", exc)
-                yield await _emit_text(
+                yield await _emit_persisted_text(
+                    mission_id,
                     "orchestrator",
                     "Could not queue your instruction; please retry.",
                 )
@@ -1327,7 +1503,8 @@ async def _stream_chat(
             return
         elif _early_intent == "rerun":
             yield await _emit_run_start()
-            yield await _emit_text(
+            yield await _emit_persisted_text(
+                mission_id,
                 "orchestrator",
                 "Reruns can be triggered from the agent cards in the left panel — "
                 "click the agent name to see the option. If research is still running, "
@@ -1443,7 +1620,8 @@ async def _stream_chat(
                     "manager_review": "G2 — red-team approved",
                     "final_review": "G3 — IC sign-off",
                 }.get(pending_gate.gate_type, "Gate approved")
-                yield await _emit_text(
+                yield await _emit_persisted_text(
+                    mission_id,
                     "orchestrator",
                     f"✓ {_gate_label}. Continuing the mission.",
                 )
@@ -1461,7 +1639,8 @@ async def _stream_chat(
                     if intent == "steer":
                         try:
                             queue_steering(mission_id, text)
-                            yield await _emit_text(
+                            yield await _emit_persisted_text(
+                                mission_id,
                                 "orchestrator",
                                 "Got it. The next agent that runs will pick "
                                 "up your instruction. To stop the mission "
@@ -1475,7 +1654,8 @@ async def _stream_chat(
                                 exc,
                             )
                     elif intent == "rerun":
-                        yield await _emit_text(
+                        yield await _emit_persisted_text(
+                            mission_id,
                             "orchestrator",
                             "Reruns can be triggered from the agent cards in the left panel — "
                             "click the agent name to see the option. If research is still running, "
@@ -1503,7 +1683,7 @@ async def _stream_chat(
                     logger.warning("orchestrator_qa failed: %s", exc)
                     reply = "Mission paused. Use the gate panel to continue."
                 if reply:
-                    yield await _emit_text("orchestrator", reply)
+                    yield await _emit_persisted_text(mission_id, "orchestrator", reply)
                 yield await _emit_run_end()
                 return
 
@@ -1522,7 +1702,8 @@ async def _stream_chat(
         logger.info(f"Starting stream with state: mission_id={initial_state.get('mission_id')}, phase={initial_state.get('phase')}")
 
         if is_initial_brief:
-            yield await _emit_text(
+            yield await _emit_persisted_text(
+                mission_id,
                 "orchestrator",
                 "Framing the deal thesis from your brief — pulling out the "
                 "target, scope, and key questions before kicking off research.",
@@ -1964,33 +2145,48 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             yield await _emit_run_end()
             return
 
-        # Terminal state: graph completed cleanly.
-        if not snapshot.next:
-            phase = (snapshot.values or {}).get("phase")
-            if isinstance(phase, str) and phase:
-                yield await _emit_phase_changed(phase)
-            yield await _emit_run_end()
-            return
+        open_gate_payload = _open_gate_payload_from_store(store, mission_id)
+        continuation_input: dict[str, Any] | None = None
 
-        # 9-bug triage H: the graph is interrupted. If a gate is currently
-        # parked, the in-process notify-guard (`_GATE_PENDING_NOTIFIED`) may
-        # suppress re-emission of `gate_pending` on the astream(None) replay
-        # below — leaving a fresh client (page reload, second tab) without
-        # the gate banner the user expects. Clear the guard for the pending
-        # gate so the interrupt frame re-fires its SSE event.
-        try:
-            from marvin.graph.gates import _GATE_PENDING_NOTIFIED
-            pending_gate_id = (snapshot.values or {}).get("pending_gate_id")
-            if isinstance(pending_gate_id, str) and pending_gate_id:
-                # Do not clear the guard if an approval is already in-flight
-                # for this gate — clearing it would cause gate_node to re-emit
-                # gate_pending on the astream(None) replay, surfacing a stale
-                # gate banner to the reconnecting client and requiring a second
-                # click to advance the graph.
-                if pending_gate_id not in _gate_decisions_in_flight:
-                    _GATE_PENDING_NOTIFIED.discard(pending_gate_id)
-        except Exception:  # noqa: BLE001 — defensive boundary
-            pass
+        # Terminal state: graph completed cleanly, unless the persisted phase
+        # is a routable boundary that still needs to drive the next node.
+        if not snapshot.next and open_gate_payload is None:
+            continuation_input = None if open_gate_payload is not None else _continuation_input_from_snapshot(snapshot)
+            if continuation_input is not None:
+                logger.warning(
+                    "Continuing mission from routable terminal checkpoint: "
+                    "mission=%s phase=%s",
+                    mission_id,
+                    continuation_input.get("phase"),
+                )
+            else:
+                phase = (snapshot.values or {}).get("phase")
+                if isinstance(phase, str) and phase:
+                    yield await _emit_phase_changed(phase)
+                yield await _emit_run_end()
+                return
+
+        if continuation_input is None:
+            phase = (snapshot.values or {}).get("phase")
+            # 9-bug triage H: the graph is interrupted. If a gate is currently
+            # parked, the in-process notify-guard (`_GATE_PENDING_NOTIFIED`) may
+            # suppress re-emission of `gate_pending` on the astream(None) replay
+            # below — leaving a fresh client (page reload, second tab) without
+            # the gate banner the user expects. Clear the guard for the pending
+            # gate so the interrupt frame re-fires its SSE event.
+            try:
+                from marvin.graph.gates import _GATE_PENDING_NOTIFIED
+                pending_gate_id = (snapshot.values or {}).get("pending_gate_id")
+                if isinstance(pending_gate_id, str) and pending_gate_id:
+                    # Do not clear the guard if an approval is already in-flight
+                    # for this gate — clearing it would cause gate_node to re-emit
+                    # gate_pending on the astream(None) replay, surfacing a stale
+                    # gate banner to the reconnecting client and requiring a second
+                    # click to advance the graph.
+                    if pending_gate_id not in _gate_decisions_in_flight:
+                        _GATE_PENDING_NOTIFIED.discard(pending_gate_id)
+            except Exception:  # noqa: BLE001 — defensive boundary
+                pass
 
         yield await _emit_run_start()
         yield _sse_heartbeat()
@@ -2114,9 +2310,17 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                 "Store replay failed for mission=%s: %s", mission_id, exc
             )
 
-        # First iteration: None drives astream from the existing checkpoint.
+        if open_gate_payload is not None:
+            yield await _emit_gate_pending(open_gate_payload)
+            yield await _emit_narration("workflow", _gate_narration(open_gate_payload))
+            yield await _emit_run_end()
+            return
+
+        # First iteration: None drives astream from an interrupted checkpoint.
+        # For a routable terminal checkpoint, feed the persisted state so the
+        # START phase_router can continue to the next workflow node.
         # Subsequent iterations use Command(resume=payload) after a gate decision.
-        next_input: Any = None
+        next_input: Any = continuation_input
         resume_payload_to_clear: dict[str, Any] | None = None
         # Recovery payload — see _stream_chat for rationale. If a post-resume
         # astream pass crashes/cancels, the outer finally spawns a detached
@@ -2805,6 +3009,7 @@ async def get_mission_progress(mission_id: str):
                 "workstream_id": m.workstream_id,
                 "label": m.label,
                 "status": m.status,
+                "result_summary": m.result_summary,
             }
             for m in milestones
         ],
@@ -2840,6 +3045,8 @@ async def get_mission_progress(mission_id: str):
         "merlin_verdict": (
             {
                 "verdict": v.verdict,
+                "label": consultant_verdict_label(v.verdict),
+                "recommended_action": consultant_verdict_action(v.verdict),
                 "notes": v.notes,
                 "created_at": v.created_at,
             }
@@ -2883,7 +3090,7 @@ async def get_mission_events(mission_id: str):
         })
 
     for milestone in milestones:
-        if milestone.status != "delivered":
+        if milestone.status not in ("delivered", "blocked"):
             continue
         events.append({
             "type": "milestone_done",
@@ -2928,6 +3135,32 @@ async def get_mission_events(mission_id: str):
 # =============================================================================
 # CHAT ENDPOINT (SSE STREAMING)
 # =============================================================================
+
+@app.get("/api/v1/missions/{mission_id}/chat/messages")
+async def get_chat_messages(mission_id: str):
+    """Return persisted user/MARVIN chat messages for reload recovery."""
+    store = get_store()
+    if not _mission_exists(store, mission_id):
+        raise HTTPException(status_code=404, detail="Mission not found")
+    messages = store.list_chat_messages(mission_id)
+    return {
+        "mission_id": mission_id,
+        "messages": [
+            {
+                "id": msg.id,
+                "from": "u" if msg.role == "user" else "m",
+                "text": msg.text,
+                "deliverableId": msg.deliverable_id,
+                "deliverableLabel": msg.deliverable_label,
+                "gateId": msg.gate_id,
+                "gateAction": msg.gate_action,
+                "seq": msg.seq,
+                "createdAt": msg.created_at,
+            }
+            for msg in messages
+        ],
+    }
+
 
 @app.post("/api/v1/missions/{mission_id}/chat")
 async def chat_mission_post(

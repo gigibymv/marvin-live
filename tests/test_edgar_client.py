@@ -27,6 +27,8 @@ def _factory(handler):
 SAMPLE_TICKERS = {
     "0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
     "1": {"cik_str": 789019, "ticker": "MSFT", "title": "Microsoft Corp"},
+    "2": {"cik_str": 1326801, "ticker": "META", "title": "Meta Platforms, Inc."},
+    "3": {"cik_str": 1045810, "ticker": "NVDA", "title": "NVIDIA Corp"},
 }
 
 SAMPLE_SUBMISSIONS = {
@@ -107,6 +109,20 @@ def test_resolve_cik_by_name_substring(monkeypatch):
     out = ec.resolve_cik("microsoft")
     assert out is not None
     assert out["ticker"] == "MSFT"
+
+
+def test_resolve_cik_uses_common_company_aliases(monkeypatch):
+    import marvin.tools.edgar_client as ec
+    handler = _make_handler({"https://www.sec.gov/files/company_tickers.json": SAMPLE_TICKERS})
+    monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
+
+    meta = ec.resolve_cik("Meta, social media / digital advertising, global")
+    nvidia = ec.resolve_cik("Nvidia, semiconductors / AI infrastructure, global")
+
+    assert meta is not None
+    assert meta["ticker"] == "META"
+    assert nvidia is not None
+    assert nvidia["ticker"] == "NVDA"
 
 
 def test_resolve_cik_missing(monkeypatch):

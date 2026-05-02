@@ -35,6 +35,17 @@ _TIMEOUT_S = 30.0
 
 _HTTP_CLIENT_FACTORY = httpx.Client
 
+_COMPANY_ALIASES: dict[str, str] = {
+    "meta": "META",
+    "meta platforms": "META",
+    "facebook": "META",
+    "nvidia": "NVDA",
+    "nvidia corporation": "NVDA",
+    "google": "GOOGL",
+    "alphabet": "GOOGL",
+    "alphabet inc": "GOOGL",
+}
+
 
 def _user_agent() -> str:
     ua = os.environ.get("MARVIN_SEC_USER_AGENT")
@@ -89,9 +100,15 @@ def resolve_cik(company_name_or_ticker: str) -> dict[str, Any] | None:
                 _TICKER_CACHE[ticker] = {"cik": cik, "ticker": ticker, "title": title}
 
     upper = needle.upper()
+    needle_lower = needle.lower()
+    alias = _COMPANY_ALIASES.get(needle_lower)
+    if alias and alias in _TICKER_CACHE:
+        return _TICKER_CACHE[alias]
     if upper in _TICKER_CACHE:
         return _TICKER_CACHE[upper]
-    needle_lower = needle.lower()
+    for alias_name, alias_ticker in _COMPANY_ALIASES.items():
+        if alias_name in needle_lower and alias_ticker in _TICKER_CACHE:
+            return _TICKER_CACHE[alias_ticker]
     for entry in _TICKER_CACHE.values():
         if needle_lower in entry["title"].lower():
             return entry

@@ -8,9 +8,9 @@ from langchain_openai import ChatOpenAI
 # Model routing via OpenRouter:
 # - GPT-5.4 Nano: cheap roles where reasoning depth doesn't gate quality
 #   (extraction, classification, structured numeric output, chat QA).
-# - Gemini 2.5 Pro: reasoning-critical roles (synthesis verdict, red-team,
-#   long-form deliverable drafting). Comparable to Sonnet 4.6 on these
-#   tasks at ~60% the cost.
+# - Gemini 2.5 Pro: reasoning-critical roles (synthesis verdict, red-team).
+# - Claude Haiku: client-facing drafting where cost matters more than deep
+#   adversarial reasoning.
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 MODEL_BY_ROLE = {
@@ -22,9 +22,9 @@ MODEL_BY_ROLE = {
     # Nano was borderline on multi-claim reconciliation.
     "merlin": "google/gemini-2.5-pro",
     "adversus": "google/gemini-2.5-pro",
-    # Papyrus produces client-facing IC documents — quality > cost.
-    # Gemini 2.5 Pro matches Sonnet on long structured output at lower cost.
-    "papyrus": "google/gemini-2.5-pro",
+    # Papyrus produces client-facing documents frequently; use Haiku for the
+    # writing pass to keep live mission cost under control.
+    "papyrus": "anthropic/claude-3.5-haiku",
 }
 
 

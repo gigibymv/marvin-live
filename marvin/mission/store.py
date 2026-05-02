@@ -37,6 +37,7 @@ from marvin.mission.schema import (
     Milestone,
     Mission,
     MissionBrief,
+    MissionChatMessage,
     Source,
     Transcript,
     TranscriptSegment,
@@ -272,12 +273,66 @@ class MissionStore:
                 "CREATE INDEX IF NOT EXISTS idx_mission_steering_pending "
                 "ON mission_steering(mission_id, consumed_at)"
             )
+        if "mission_chat_messages" not in existing_tables:
+            self._conn.execute(
+                """
+                CREATE TABLE mission_chat_messages (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL CHECK (role IN ('user','marvin')),
+                    text TEXT NOT NULL,
+                    deliverable_id TEXT,
+                    deliverable_label TEXT,
+                    gate_id TEXT,
+                    gate_action TEXT,
+                    seq INTEGER,
+                    created_at TEXT
+                )
+                """
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mission_chat_messages_mission_seq "
+                "ON mission_chat_messages(mission_id, seq, created_at)"
+            )
         self._conn.commit()
 
     def _execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
         cursor = self._conn.execute(sql, params)
         self._conn.commit()
         return cursor
+
+    def save_chat_message(self, message: MissionChatMessage) -> MissionChatMessage:
+        self._execute(
+            """
+            INSERT OR IGNORE INTO mission_chat_messages
+            (id, mission_id, role, text, deliverable_id, deliverable_label, gate_id, gate_action, seq, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                message.id,
+                message.mission_id,
+                message.role,
+                message.text,
+                message.deliverable_id,
+                message.deliverable_label,
+                message.gate_id,
+                message.gate_action,
+                message.seq,
+                message.created_at,
+            ),
+        )
+        return message
+
+    def list_chat_messages(self, mission_id: str) -> list[MissionChatMessage]:
+        rows = self._execute(
+            """
+            SELECT * FROM mission_chat_messages
+            WHERE mission_id = ?
+            ORDER BY COALESCE(seq, 0), created_at, id
+            """,
+            (mission_id,),
+        ).fetchall()
+        return [MissionChatMessage.model_validate(dict(row)) for row in rows]
 
     @staticmethod
     def _row_to_model(row: sqlite3.Row | None, model_cls):

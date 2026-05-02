@@ -181,3 +181,18 @@ CREATE TABLE IF NOT EXISTS mission_steering (
 );
 CREATE INDEX IF NOT EXISTS idx_mission_steering_pending
     ON mission_steering(mission_id, consumed_at);
+
+CREATE TABLE IF NOT EXISTS mission_chat_messages (
+    id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('user','marvin')),
+    text TEXT NOT NULL,
+    deliverable_id TEXT,
+    deliverable_label TEXT,
+    gate_id TEXT,
+    gate_action TEXT,
+    seq INTEGER,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_mission_chat_messages_mission_seq
+    ON mission_chat_messages(mission_id, seq, created_at);

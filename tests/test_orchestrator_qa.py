@@ -103,6 +103,18 @@ def test_qa_verdict_question(mission_store):
     assert "MINOR_FIXES" in reply or "minor" in reply.lower() or "verdict" in reply.lower()
 
 
+def test_qa_reports_blocked_calculus_from_milestones(mission_store):
+    mid, store = mission_store
+    _persist_brief(store, mid, "Substantive brief.")
+    store.mark_milestone_blocked("W2.1", "agent produced no findings", mid)
+
+    reply = asyncio.run(orchestrator_qa.respond_qa(mid, "Why is Calculus blocked?"))
+
+    assert "calculus" in reply.lower()
+    assert "blocked" in reply.lower()
+    assert "agent produced no findings" in reply.lower()
+
+
 def test_chat_during_awaiting_does_not_replay(mission_store, monkeypatch):
     """Sending a chat message after the brief is set must NOT trigger the
     full mission flow. We assert that graph.astream is NEVER called."""

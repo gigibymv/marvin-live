@@ -105,6 +105,12 @@ export function RightRail({
         style={{ flex: 1, overflow: "auto", padding: "16px 16px", display: "flex", flexDirection: "column", gap: 10, background: "var(--bone)" }}
       >
         {[...messages].sort((a, b) => {
+          // An open gate is the decision the consultant must see next. Keep
+          // pending gate bubbles pinned below status/deliverable chatter so a
+          // late persistence event cannot bury the checkpoint actions.
+          const ga = a.gateAction === "pending" ? 1 : 0;
+          const gb = b.gateAction === "pending" ? 1 : 0;
+          if (ga !== gb) return ga - gb;
           // Stable sort by seq. Historical messages hydrated from the store
           // have no seq — treating undefined as -1 keeps them ahead of live
           // messages and preserves their insertion order via Array.sort

@@ -79,6 +79,8 @@ export function mapGateReviewPayloadToModal(
     merlinVerdict: Object.keys(merlinVerdict).length ? {
       id: asString(merlinVerdict.id) ?? "merlin-verdict",
       verdict: asString(merlinVerdict.verdict) ?? "UNKNOWN",
+      label: asString(merlinVerdict.label) ?? null,
+      recommendedAction: asString(merlinVerdict.recommended_action) ?? asString(merlinVerdict.recommendedAction) ?? null,
       notes: asString(merlinVerdict.notes) ?? null,
       created_at: asString(merlinVerdict.created_at) ?? null,
     } : undefined,

@@ -84,6 +84,25 @@ def test_g1_reject_seeds_retry_gate_and_routes_to_confirmed(
                 created_at=datetime.now(UTC).isoformat(),
             )
         )
+    for mid, ws_id in (
+        ("W1.1", "W1"),
+        ("W1.2", "W1"),
+        ("W1.3", "W1"),
+        ("W2.1", "W2"),
+        ("W2.2", "W2"),
+        ("W2.3", "W2"),
+    ):
+        graph_store.save_deliverable(
+            Deliverable(
+                id=f"d-{mid}-reject",
+                mission_id="m-test",
+                deliverable_type="milestone_report",
+                status="ready",
+                milestone_id=mid,
+                workstream_id=ws_id,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
     result = asyncio.run(
         gates.gate_node({"mission_id": "m-test", "pending_gate_id": "gate-m-test-G1"})
     )

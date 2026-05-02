@@ -5,7 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from marvin.mission.schema import Deliverable, Finding, Gate, Hypothesis, MerlinVerdict, Mission, MissionBrief, Source
+from marvin.mission.schema import (
+    Deliverable,
+    Finding,
+    Gate,
+    Hypothesis,
+    MerlinVerdict,
+    Mission,
+    MissionBrief,
+    MissionChatMessage,
+    Source,
+)
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 
 
@@ -55,7 +65,41 @@ def test_store_initializes_temp_db_file(tmp_path: Path):
     }
     assert "missions" in tables
     assert "mission_briefs" in tables
+    assert "mission_chat_messages" in tables
     assert "merlin_verdicts" in tables
+    store.close()
+
+
+def test_save_and_list_chat_messages_in_seq_order():
+    store = MissionStore(":memory:")
+    store.save_mission(_mission())
+
+    store.save_chat_message(
+        MissionChatMessage(
+            id="chat-2",
+            mission_id="m-test",
+            role="marvin",
+            text="Second",
+            seq=2,
+            created_at="2026-01-01T00:00:02+00:00",
+        )
+    )
+    store.save_chat_message(
+        MissionChatMessage(
+            id="chat-1",
+            mission_id="m-test",
+            role="user",
+            text="First",
+            seq=1,
+            created_at="2026-01-01T00:00:01+00:00",
+        )
+    )
+
+    messages = store.list_chat_messages("m-test")
+
+    assert [message.id for message in messages] == ["chat-1", "chat-2"]
+    assert messages[0].role == "user"
+    assert messages[1].text == "Second"
     store.close()
 
 

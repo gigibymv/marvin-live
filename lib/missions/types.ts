@@ -92,6 +92,8 @@ export interface MissionGateCoverage {
 export interface MissionGateMerlinVerdict {
   id: string;
   verdict: string;
+  label?: string | null;
+  recommendedAction?: string | null;
   notes?: string | null;
   created_at?: string | null;
 }

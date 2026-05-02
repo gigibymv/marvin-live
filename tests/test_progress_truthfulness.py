@@ -6,7 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from marvin.mission.schema import Deliverable, Finding, Hypothesis, MerlinVerdict, Mission, MissionBrief
+from marvin.mission.schema import (
+    Deliverable,
+    Finding,
+    Hypothesis,
+    MerlinVerdict,
+    Mission,
+    MissionBrief,
+    MissionChatMessage,
+)
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin_ui import server as srv
 from fastapi import HTTPException
@@ -42,6 +50,35 @@ def test_empty_mission_has_scheduled_gates_but_none_open(store: MissionStore):
     assert payload["gates"]
     assert {gate["lifecycle_status"] for gate in payload["gates"]} == {"scheduled"}
     assert all(gate["is_open"] is False for gate in payload["gates"])
+
+
+def test_chat_messages_endpoint_returns_persisted_history(store: MissionStore):
+    store.save_chat_message(
+        MissionChatMessage(
+            id="chat-user",
+            mission_id="m-progress",
+            role="user",
+            text="What is blocked?",
+            seq=1,
+            created_at="2026-01-01T00:00:01+00:00",
+        )
+    )
+    store.save_chat_message(
+        MissionChatMessage(
+            id="chat-marvin",
+            mission_id="m-progress",
+            role="marvin",
+            text="Deliverable writing in progress.",
+            seq=2,
+            created_at="2026-01-01T00:00:02+00:00",
+        )
+    )
+
+    payload = asyncio.run(srv.get_chat_messages("m-progress"))
+
+    assert [message["id"] for message in payload["messages"]] == ["chat-user", "chat-marvin"]
+    assert payload["messages"][0]["from"] == "u"
+    assert payload["messages"][1]["from"] == "m"
 
 
 def test_hypothesis_gate_opens_only_after_hypotheses_exist(store: MissionStore):
@@ -194,6 +231,32 @@ def test_manager_review_opens_after_research_finding(store: MissionStore, tmp_pa
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    for milestone_id, ws_id in (
+        ("W1.1", "W1"),
+        ("W1.2", "W1"),
+        ("W1.3", "W1"),
+        ("W2.1", "W2"),
+        ("W2.2", "W2"),
+        ("W2.3", "W2"),
+    ):
+        milestone_report = tmp_path / f"{milestone_id}_report.md"
+        milestone_report.write_text(
+            f"{milestone_id} milestone report content.\n" * 20,
+            encoding="utf-8",
+        )
+        store.save_deliverable(
+            Deliverable(
+                id=f"d-{milestone_id}",
+                mission_id="m-progress",
+                deliverable_type="milestone_report",
+                status="ready",
+                milestone_id=milestone_id,
+                workstream_id=ws_id,
+                file_path=str(milestone_report.resolve()),
+                file_size_bytes=milestone_report.stat().st_size,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
 
     payload = asyncio.run(srv.get_mission_progress("m-progress"))
     gates = {gate["gate_type"]: gate for gate in payload["gates"]}

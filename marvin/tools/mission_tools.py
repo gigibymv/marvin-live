@@ -46,9 +46,50 @@ def _clean_brief_text(raw_brief: str) -> str:
     return " ".join(raw_brief.strip().split())
 
 
+def _structured_brief_sections(raw_brief: str) -> dict[str, str]:
+    """Parse numbered brief sections like `[5] INVESTMENT QUESTION "..."`.
+
+    The free-form fallback remains important, but CDD briefs are often pasted
+    as numbered blocks. A broad question-mark regex can otherwise capture text
+    from the competitive landscape into the IC question.
+    """
+    text = _clean_brief_text(raw_brief)
+    if not text:
+        return {}
+    sections: dict[str, str] = {}
+    blocks = re.split(r"\s*(?=\[\d+\]\s+)", text)
+    for block in blocks:
+        if not block.strip():
+            continue
+        match = re.match(
+            r"\[(?P<num>\d+)\]\s*(?P<label>[A-Z][A-Z\s/&-]*)(?P<body>.*)$",
+            block.strip(),
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            continue
+        label = re.sub(r"\s+", " ", match.group("label").strip().lower())
+        body = match.group("body").strip().strip('"').strip()
+        if body:
+            sections[label] = body
+    return sections
+
+
 def _derive_ic_question(mission: Mission, raw_brief: str) -> str:
     if (mission.ic_question or "").strip():
         return mission.ic_question.strip()
+
+    sections = _structured_brief_sections(raw_brief)
+    for key, value in sections.items():
+        if "investment" in key or "ic question" in key or "ic question" in value.lower():
+            cleaned = re.sub(
+                r'^\s*(?:QUESTION\s*"?\s*)?IC question\s*:\s*',
+                "",
+                value,
+                flags=re.IGNORECASE,
+            ).strip().strip('"')
+            if cleaned:
+                return cleaned
 
     match = re.search(r"([^.!?\n]{20,180}\?)", raw_brief)
     if match:
@@ -215,6 +256,24 @@ def get_hypotheses(state: InjectedStateArg = None) -> dict[str, Any]:
 HYPOTHESIS_STATUSES = ("NOT_STARTED", "TESTING", "SUPPORTED", "WEAKENED")
 
 
+def consultant_verdict_label(verdict: str | None) -> str:
+    labels = {
+        "SHIP": "Ready to present",
+        "MINOR_FIXES": "Additional diligence needed",
+        "BACK_TO_DRAWING_BOARD": "Evidence gaps — not ready",
+    }
+    return labels.get(str(verdict or "").strip(), str(verdict or "").replace("_", " ").title())
+
+
+def consultant_verdict_action(verdict: str | None) -> str:
+    actions = {
+        "SHIP": "Approve to finalize the IC memo and deliverables.",
+        "MINOR_FIXES": "Approve with caveats or send back for targeted revision.",
+        "BACK_TO_DRAWING_BOARD": "Send back for targeted revision before the IC memo is finalized.",
+    }
+    return actions.get(str(verdict or "").strip(), "Review the synthesis before deciding.")
+
+
 def compute_hypothesis_status(findings: list[Finding]) -> dict[str, Any]:
     """Pure function: derive UI status for a hypothesis from its linked findings.
 
@@ -240,17 +299,23 @@ def compute_hypothesis_status(findings: list[Finding]) -> dict[str, Any]:
     total = len(findings)
     if total == 0:
         status = "NOT_STARTED"
+        rationale = "No findings have been linked to this hypothesis yet."
     elif contradicting > 0:
         status = "WEAKENED"
+        rationale = f"{contradicting} red-team challenge{'s' if contradicting != 1 else ''} weaken this hypothesis."
     elif counts["LOW_CONFIDENCE"] * 2 > total:
         status = "WEAKENED"
+        rationale = "Most linked findings are low-confidence, so the hypothesis is not yet defensible."
     elif supporting_known >= 2:
         status = "SUPPORTED"
+        rationale = f"{supporting_known} sourced findings support this hypothesis."
     else:
         status = "TESTING"
+        rationale = "Findings exist, but source strength is still being tested."
 
     return {
         "status": status,
+        "rationale": rationale,
         "total": total,
         "known": counts["KNOWN"],
         "reasoned": counts["REASONED"],
@@ -963,17 +1028,28 @@ def set_merlin_verdict(
     notes: str,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
-    """Record Merlin's final verdict (SHIP, MINOR_FIXES, or BACK_TO_DRAWING_BOARD) for the mission."""
+    """Record Merlin's final verdict for the mission."""
     mission_id = require_mission_id(state)
-    _emit_merlin_narration(mission_id, f"Verdict · {verdict}")
     store = get_store(_STORE_FACTORY)
     g3_gate = next((gate for gate in store.list_gates(mission_id) if gate.scheduled_day == 10), None)
+    normalized_verdict = str(verdict).strip()
+    normalized_notes = str(notes or "").strip()
+    latest = store.get_latest_merlin_verdict(mission_id)
+    if (
+        latest is not None
+        and latest.verdict == normalized_verdict
+        and (latest.notes or "").strip() == normalized_notes
+        and (latest.gate_id or None) == (g3_gate.id if g3_gate else None)
+    ):
+        return {"verdict": latest.verdict, "verdict_id": latest.id, "deduped": True}
+
+    _emit_merlin_narration(mission_id, f"Verdict · {normalized_verdict}")
     verdict_row = MerlinVerdict(
         id=short_id("mv"),
         mission_id=mission_id,
-        verdict=verdict,
+        verdict=normalized_verdict,
         gate_id=g3_gate.id if g3_gate else None,
-        notes=notes,
+        notes=normalized_notes,
         created_at=utc_now_iso(),
     )
     store.save_merlin_verdict(verdict_row)
@@ -987,7 +1063,8 @@ def set_merlin_verdict(
             mission_id=mission_id,
             workstream_id="W3",
             agent_id="merlin",
-            claim_text=f"Synthesis verdict: {verdict}" + (f" — {notes}" if notes else ""),
+            claim_text=f"Synthesis verdict: {consultant_verdict_label(normalized_verdict)}"
+            + (f" — {normalized_notes}" if normalized_notes else ""),
             confidence="REASONED",
             source_id=None,
             created_at=utc_now_iso(),

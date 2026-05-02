@@ -25,7 +25,12 @@ from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools import mission_tools, papyrus_tools
 
 
-def _seed_finding(store: MissionStore, fid: str, workstream_id: str) -> str:
+def _seed_finding(
+    store: MissionStore,
+    fid: str,
+    workstream_id: str,
+    claim_text: str | None = None,
+) -> str:
     """Helper: persist a minimal finding so mark_milestone_delivered can
     anchor against it. Phase 3 (Fix D) requires finding_id to deliver."""
     store.save_finding(
@@ -34,7 +39,7 @@ def _seed_finding(store: MissionStore, fid: str, workstream_id: str) -> str:
             mission_id="m-mile",
             workstream_id=workstream_id,
             hypothesis_id=None,
-            claim_text=f"seeded finding for {workstream_id}",
+            claim_text=claim_text or f"seeded finding for {workstream_id}",
             confidence="REASONED",
             agent_id="dora",
             created_at=datetime.now(UTC).isoformat(),
@@ -60,6 +65,16 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore:
     monkeypatch.setattr(mission_tools, "_STORE_FACTORY", lambda: s)
     monkeypatch.setattr(papyrus_tools, "_STORE_FACTORY", lambda: s)
     monkeypatch.setattr(papyrus_tools, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        papyrus_tools,
+        "_generate_workstream_report_impl",
+        lambda workstream_id, mission_id: {"status": "ready", "workstream_id": workstream_id},
+    )
+    monkeypatch.setattr(
+        papyrus_tools,
+        "_generate_milestone_report_impl",
+        lambda milestone_id, mission_id: {"status": "ready", "milestone_id": milestone_id},
+    )
     monkeypatch.setattr(runner, "MissionStore", lambda *a, **kw: s)
     yield s
     s.close()
@@ -104,6 +119,33 @@ def test_runner_research_join_triggers_listener_twice(store: MissionStore):
     # (blocked when no finding was tagged to them) so the UI tab can flip ✓.
     for sibling in ("W1.2", "W1.3", "W2.2", "W2.3"):
         assert by_id.get(sibling) in ("delivered", "blocked")
+
+
+def test_research_join_derives_competitive_and_moat_milestones_without_tags(store: MissionStore):
+    _seed_finding(
+        store,
+        "f-w1-competitive",
+        "W1",
+        "Nvidia faces competitive pressure from AMD, Intel, Google TPUs, and custom AI chips.",
+    )
+    _seed_finding(
+        store,
+        "f-w1-moat",
+        "W1",
+        "Nvidia's CUDA ecosystem, switching costs, and TSMC CoWoS capacity support its moat.",
+    )
+    _seed_finding(
+        store,
+        "f-w2-margin",
+        "W2",
+        "Nvidia revenue growth and gross margin levels support strong unit economics.",
+    )
+
+    runner.research_join({"mission_id": "m-mile", "phase": "confirmed"})
+
+    by_id = {m.id: m.status for m in store.list_milestones("m-mile")}
+    assert by_id["W1.2"] == "delivered"
+    assert by_id["W1.3"] == "delivered"
 
 
 def test_research_join_blocks_when_no_findings(store: MissionStore):

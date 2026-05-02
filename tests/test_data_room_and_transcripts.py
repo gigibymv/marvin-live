@@ -130,6 +130,7 @@ def test_search_transcript_returns_segments():
 
 def _setup(tmp_path, monkeypatch):
     monkeypatch.setenv("MARVIN_DB_PATH", str(tmp_path / "marvin.db"))
+    monkeypatch.setenv("HOME", str(tmp_path))
     import importlib
     import marvin.mission.store as store_mod
     importlib.reload(store_mod)

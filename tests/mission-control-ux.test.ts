@@ -8,20 +8,40 @@
  */
 
 import { describe, expect, it } from "vitest";
+import React from "react";
+import { render, screen } from "@testing-library/react";
 import { getDeliverableDownloadUrl } from "@/lib/missions/api";
+import MissionControlV2View from "@/components/marvin/v2/MissionControlV2View";
 import {
   formatDeliverableReadyChatMessage,
   formatDeliverableDisplayName,
   formatGatePendingChatMessage,
   formatGatePendingFeedSignal,
   formatNarrationChatMessage,
+  markGateChatMessageResolved,
   routeDeliverableToSectionId,
   routeDeliverableToWorkstreamId,
 } from "@/lib/missions/adapters";
 import { shouldAttachResumeStream } from "@/lib/missions/gate-resume";
 import { mapGateReviewPayloadToModal } from "@/lib/missions/gate-review";
+import { mapAgentStatus } from "@/components/marvin/v2/Primitives";
+import { humanizeVerdict } from "@/lib/missions/humanize";
 
 describe("MissionControl UX slice", () => {
+  const baseMission = {
+    id: "m-test",
+    name: "Nvidia CDD",
+    client: "CDD",
+    target: "Nvidia",
+    template: "cdd" as const,
+    status: "active" as const,
+    checkpoint: "Research review",
+    progress: 0.5,
+    createdAt: "2026-05-01T00:00:00.000Z",
+    fileAttached: false,
+    briefReceived: true,
+  };
+
   it("reattaches the resume stream after any backend-resumed gate result", () => {
     expect(shouldAttachResumeStream({ status: "resumed" })).toBe(true);
     expect(shouldAttachResumeStream({ status: "resumed_detached" })).toBe(true);
@@ -83,6 +103,12 @@ describe("MissionControl UX slice", () => {
     expect(mapped.merlinVerdict?.verdict).toBe("SHIP");
     expect(mapped.findingsTotal).toBe(17);
     expect(mapped.arbiterFlags?.length).toBe(1);
+  });
+
+  it("maps internal Merlin verdict enums to consultant language", () => {
+    expect(humanizeVerdict("SHIP")).toBe("Ready to present");
+    expect(humanizeVerdict("MINOR_FIXES")).toBe("Additional diligence needed");
+    expect(humanizeVerdict("BACK_TO_DRAWING_BOARD")).toBe("Evidence gaps — not ready");
   });
 
   it("gate payload mapping normalizes incomplete coverage safely", async () => {
@@ -198,23 +224,123 @@ describe("MissionControl UX slice", () => {
       );
       expect(feed[0]?.confidence).toBe("gate");
     });
+
+    it("resolved gates no longer leave a pending chat bubble behind", () => {
+      const pending = {
+        id: "gate-1-gate-pending",
+        from: "m" as const,
+        gateId: "gate-1",
+        gateAction: "pending" as const,
+        text: formatGatePendingChatMessage(gateEvent),
+      };
+
+      const approved = markGateChatMessageResolved(pending, "gate-1", "approved");
+      const rejected = markGateChatMessageResolved(pending, "gate-1", "rejected");
+
+      expect(approved.gateAction).toBeUndefined();
+      expect(approved.text).toContain("Gate approved. The mission is continuing.");
+      expect(approved.text).not.toContain("Gate pending");
+      expect(rejected.gateAction).toBeUndefined();
+      expect(rejected.text).toContain("Gate rejected. MARVIN is revising the prior work.");
+      expect(rejected.text).not.toContain("Gate pending");
+    });
   });
 
   it("humanizeToolResult strips raw JSON dumps from chat surface", () => {
     function humanizeToolResult(text: unknown): string {
       const raw = String(text ?? "");
-      if (!raw) return "step complete";
-      if (raw.startsWith("{") || raw.startsWith("[")) return "step complete";
+      if (!raw) return "";
+      if (raw.startsWith("{") || raw.startsWith("[")) return "";
       if (raw.length > 240) return raw.slice(0, 240).trim() + "…";
       return raw;
     }
-    expect(humanizeToolResult('{"id": "f-1", "claim": "x"}')).toBe("step complete");
-    expect(humanizeToolResult("[1,2,3]")).toBe("step complete");
+    expect(humanizeToolResult('{"id": "f-1", "claim": "x"}')).toBe("");
+    expect(humanizeToolResult("[1,2,3]")).toBe("");
     expect(humanizeToolResult("Recorded finding for Dora.")).toBe(
       "Recorded finding for Dora.",
     );
-    expect(humanizeToolResult("")).toBe("step complete");
+    expect(humanizeToolResult("")).toBe("");
   });
+
+  it("routes W4 red-team outputs into the merged Red team & verdict tab", () => {
+    render(
+      React.createElement(MissionControlV2View, {
+        mission: baseMission,
+        messages: [],
+        initialMessages: [],
+        chatDraft: "",
+        onChatDraftChange: () => undefined,
+        onSendMessage: () => undefined,
+        selectedTab: "ws3",
+        onSelectTab: () => undefined,
+        isTyping: false,
+        defaultTab: "brief",
+        onGateClose: () => undefined,
+        agents: [],
+        checkpoints: [],
+        hypotheses: [],
+        deliverables: [],
+        activeAgent: null,
+        findings: [
+          {
+            id: "adv-1",
+            kind: "finding",
+            ag: "Adversus",
+            claim_text: "Contextual Attack on H1: hyperscaler custom ASICs weaken Nvidia's moat.",
+            confidence: "reasoned",
+            workstream_id: "W4",
+          },
+        ],
+        sectionTabs: [
+          { id: "brief", label: "Brief", status: "completed" },
+          { id: "ws3", label: "Red team & verdict", status: "in_progress" },
+        ],
+      }),
+    );
+
+    expect(screen.getByText(/Contextual Attack on H1/)).toBeInTheDocument();
+    expect(screen.getByText("Adversus")).toBeInTheDocument();
+  });
+
+  it("shows blocked milestone rows as blocked, not in progress", () => {
+    render(
+      React.createElement(MissionControlV2View, {
+        mission: baseMission,
+        messages: [],
+        initialMessages: [],
+        chatDraft: "",
+        onChatDraftChange: () => undefined,
+        onSendMessage: () => undefined,
+        selectedTab: "ws2",
+        onSelectTab: () => undefined,
+        isTyping: false,
+        defaultTab: "brief",
+        onGateClose: () => undefined,
+        agents: [],
+        checkpoints: [],
+        hypotheses: [],
+        deliverables: [],
+        activeAgent: null,
+        findings: [
+          {
+            id: "W2.2",
+            kind: "milestone",
+            ag: "MARVIN",
+            claim_text: "Milestone blocked · Public filings review",
+            confidence: "BLOCKED",
+            workstream_id: "W2",
+          },
+        ],
+        sectionTabs: [
+          { id: "ws2", label: "Financial analysis", status: "in_progress" },
+        ],
+      }),
+    );
+
+    expect(screen.getByText("BLOCKED")).toBeInTheDocument();
+    expect(screen.queryByText("IN PROGRESS")).not.toBeInTheDocument();
+  });
+
 
   it("formats narration as visible chat copy", () => {
     expect(
@@ -235,6 +361,10 @@ describe("MissionControl UX slice", () => {
     expect(formatDeliverableReadyChatMessage("data_book")).toBe(
       "MARVIN — I’ve generated the data book and added it to Deliverables.",
     );
+  });
+
+  it("maps blocked agent state for the left rail", () => {
+    expect(mapAgentStatus("blocked")).toBe("blocked");
   });
 
   it("routes deliverables to the matching section", () => {

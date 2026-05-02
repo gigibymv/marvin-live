@@ -45,8 +45,28 @@ def store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore:
     monkeypatch.setattr(runner, "MissionStore", lambda *a, **kw: s)
     monkeypatch.setattr(papyrus_tools, "_STORE_FACTORY", lambda: s)
     monkeypatch.setattr(papyrus_tools, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(papyrus_tools, "_papyrus_llm_generate", _stub_papyrus_llm_generate)
     yield s
     s.close()
+
+
+def _stub_papyrus_llm_generate(
+    deliverable_type, mission, hypotheses, findings, mission_brief=None, extra=None,
+):
+    title = str(deliverable_type).replace("_", " ").title()
+    finding_paras = "\n\n".join(
+        f"### {f.claim_text[:52].rstrip('.')}\n\n{f.claim_text} Confidence: {f.confidence}."
+        for f in findings[:4]
+    ) or "No findings available for this workstream."
+    return (
+        f"# {title} — {mission.target}\n\n"
+        f"**Mission:** {mission.client} — {mission.target}\n"
+        f"**Date:** 2026-04-28\n\n"
+        "## Scope\n\nThis workstream summarizes the available diligence evidence.\n\n"
+        f"## Findings\n\n{finding_paras}\n\n"
+        "## Coverage Gaps\n\nNo primary-source data has been secured. Further evidence required.\n\n"
+        "## Manager Review Note\n\nReview the findings above before advancing to the next gate.\n"
+    )
 
 
 def test_research_join_advances_phase_unconditionally(store: MissionStore):

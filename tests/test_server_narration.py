@@ -38,7 +38,7 @@ async def test_emit_for_update_adds_workflow_and_agent_narration():
     assert any(
         event_type == "narration"
         and payload["agent"] == "MARVIN"
-        and payload["intent"] == "Starting the research workstreams"
+        and payload["intent"] == "Starting the research workstreams."
         for event_type, payload in events
     )
     assert any(
@@ -142,6 +142,33 @@ async def test_emit_for_update_narrates_phase_blocked():
     assert any(
         event_type == "narration"
         and payload["agent"] == "MARVIN"
-        and payload["intent"] == "Cannot open final review: missing merlin_verdict"
+        and payload["intent"] == "Review material is still being prepared."
+        for event_type, payload in events
+    )
+
+
+@pytest.mark.asyncio
+async def test_emit_for_update_humanizes_deliverable_writing_blocker():
+    chunks, _, _, _ = await _emit_for_update(
+        {
+            "gate": {
+                "phase_blocked": {
+                    "gate_id": "gate-1",
+                    "gate_type": "manager_review",
+                    "missing_material": ["deliverable_writing_in_progress"],
+                }
+            }
+        },
+        None,
+        "research_done",
+        {},
+    )
+
+    events = _events(chunks)
+
+    assert any(
+        event_type == "narration"
+        and payload["agent"] == "MARVIN"
+        and payload["intent"] == "Deliverable writing in progress."
         for event_type, payload in events
     )

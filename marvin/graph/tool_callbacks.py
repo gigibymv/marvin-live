@@ -69,7 +69,7 @@ _TOOL_VERBOSITY: dict[str, str] = {
     # Action / metadata
     "update_action_title": "silent",
     "ask_question": "summarized",
-    "generate_interview_guides": "summarized",
+    "generate_interview_guides": "silent",
 }
 
 
@@ -88,7 +88,7 @@ _TOOL_VERBS: dict[str, str] = {
     "check_internal_consistency": "checking arbiter consistency",
     "set_merlin_verdict": "setting the verdict",
     "ask_question": "asking the user",
-    "generate_interview_guides": "drafting interview guides",
+    "generate_interview_guides": "silent",
 }
 
 

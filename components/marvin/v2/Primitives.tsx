@@ -236,7 +236,7 @@ export function ProgressBar({ pct = 0, color = "var(--ink)", height = 4, bg = "v
 
 // ─── StateTag ────────────────────────────────────────────────────────────────
 
-export type AgentState = "running" | "done" | "waiting" | "idle" | "error";
+export type AgentState = "running" | "done" | "waiting" | "idle" | "blocked" | "error";
 
 export interface StateTagProps {
   state: AgentState;
@@ -247,6 +247,7 @@ const STATE_CONFIG: Record<AgentState, { c: string; active: boolean }> = {
   done:    { c: "var(--muted)", active: false },
   waiting: { c: "var(--amber)", active: true },
   idle:    { c: "var(--muted)", active: false },
+  blocked: { c: "var(--amber)", active: false },
   error:   { c: "var(--red)",   active: true },
 };
 
@@ -278,6 +279,7 @@ export function mapAgentStatus(status: string): AgentState {
   if (status === "running" || status === "active") return "running";
   if (status === "done" || status === "completed") return "done";
   if (status === "waiting") return "waiting";
+  if (status === "blocked") return "blocked";
   if (status === "error") return "error";
   return "idle";
 }

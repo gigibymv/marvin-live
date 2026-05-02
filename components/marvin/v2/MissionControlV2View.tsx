@@ -132,8 +132,10 @@ function routeToTab(sectionId: string | null | undefined, workstreamId: string |
   const match = lower.match(/^w(\d)$/);
   if (match) {
     const n = match[1];
-    if (n === "1" || n === "2" || n === "3" || n === "4") return (`ws${n}` as WorkspaceTab);
+    if (n === "3" || n === "4") return "ws3";
+    if (n === "1" || n === "2") return (`ws${n}` as WorkspaceTab);
   }
+  if (lower === "ws4") return "ws3";
   if (lower === "ws1" || lower === "ws2" || lower === "ws3" || lower === "ws4") return lower as WorkspaceTab;
   return null;
 }

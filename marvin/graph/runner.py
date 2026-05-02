@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -31,6 +32,61 @@ from marvin.mission.store import MissionStore
 from marvin.runtime_debug import log_node_entry
 
 logger = logging.getLogger(__name__)
+
+
+_OPTIONAL_INTERNAL_RESEARCH_MILESTONES = {"W2.2", "W2.3"}
+
+_MILESTONE_COVERAGE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "W1.2": (
+        r"\bcompet",
+        r"\bpeer",
+        r"\bmarket share\b",
+        r"\bshare\b",
+        r"\bamd\b",
+        r"\bintel\b",
+        r"\bgoogle\b",
+        r"\btpu",
+        r"\bhyperscaler",
+        r"\bcustom (?:ai )?chip",
+    ),
+    "W1.3": (
+        r"\bmoat\b",
+        r"\bswitching cost",
+        r"\block-?in\b",
+        r"\becosystem\b",
+        r"\bcuda\b",
+        r"\bdeveloper",
+        r"\bsupply chain\b",
+        r"\btsmc\b",
+        r"\bcowos\b",
+        r"\bpackaging\b",
+    ),
+    "W2.1": (
+        r"\bmargin",
+        r"\brevenue\b",
+        r"\bgross\b",
+        r"\bnet income\b",
+        r"\bunit economic",
+        r"\bprofit",
+        r"\boperating income\b",
+    ),
+}
+
+
+def _milestone_covered_by_findings(milestone_id: str, findings: list) -> bool:
+    """Deterministically infer milestone coverage from persisted findings.
+
+    Agents are encouraged to tag milestone_id, but graph progress must not
+    depend on perfect tool arguments. This keeps milestone truth data-driven
+    without rubber-stamping empty workstreams.
+    """
+    patterns = _MILESTONE_COVERAGE_PATTERNS.get(milestone_id)
+    if not patterns:
+        return False
+    combined = "\n".join(str(getattr(f, "claim_text", "") or "") for f in findings)
+    if not combined.strip():
+        return False
+    return any(re.search(pattern, combined, re.IGNORECASE) for pattern in patterns)
 
 
 # Bug 3 (chantier 2.6): pre-flight check before launching W2 financial agent.
@@ -313,9 +369,11 @@ def research_join(state: MarvinState) -> dict:
     findings = store.list_findings(mission_id)
     findings_by_workstream: dict[str, int] = {}
     findings_by_milestone: dict[str, int] = {}
+    findings_by_workstream_rows: dict[str, list] = {}
     for f in findings:
         if f.workstream_id:
             findings_by_workstream[f.workstream_id] = findings_by_workstream.get(f.workstream_id, 0) + 1
+            findings_by_workstream_rows.setdefault(f.workstream_id, []).append(f)
         if f.milestone_id:
             findings_by_milestone[f.milestone_id] = findings_by_milestone.get(f.milestone_id, 0) + 1
 
@@ -351,11 +409,21 @@ def research_join(state: MarvinState) -> dict:
         if milestone.status != "pending":
             continue
         tagged = findings_by_milestone.get(milestone.id, 0)
+        covered = _milestone_covered_by_findings(
+            milestone.id,
+            findings_by_workstream_rows.get(milestone.workstream_id, []),
+        )
         try:
-            if tagged >= 1:
+            if tagged >= 1 or covered:
                 store.mark_milestone_delivered(
                     milestone.id,
-                    "covered by tagged findings",
+                    "covered by research findings",
+                    mission_id=mission_id,
+                )
+            elif milestone.id in _OPTIONAL_INTERNAL_RESEARCH_MILESTONES:
+                store.mark_milestone_blocked(
+                    milestone.id,
+                    "internal optional check not required for manager review",
                     mission_id=mission_id,
                 )
             else:
@@ -460,7 +528,6 @@ async def framing_node(state: MarvinState) -> dict:
     persist_framing_from_brief(mission_id, raw_brief)
     _frame_narrate("Drafting the hypotheses")
     hypotheses, reply_prose = generate_framing_with_reply(mission_id, raw_brief)
-    _frame_narrate("Drafting interview guides")
     generate_interview_guides([hypothesis.id for hypothesis in hypotheses], state=state)
     generate_engagement_brief(state)
     reset_clarification_state(mission_id)
@@ -803,6 +870,23 @@ async def merlin_node(state: MarvinState) -> dict:
     log_node_entry("merlin", state)
     mission_id = state.get("mission_id", "")
     messages = state.get("messages", [])
+    store = MissionStore()
+    latest_verdict = store.get_latest_merlin_verdict(mission_id)
+    if latest_verdict is not None:
+        final_gate = next(
+            (gate for gate in store.list_gates(mission_id) if gate.gate_type == "final_review"),
+            None,
+        )
+        if final_gate is not None:
+            from marvin.graph.gate_material import evaluate_gate_material
+
+            material = evaluate_gate_material(store, mission_id, final_gate)
+            if final_gate.status == "completed" or material.is_open:
+                logger.info(
+                    "merlin_node: final review already available for %s; skipping duplicate Merlin pass",
+                    mission_id,
+                )
+                return {"phase": "synthesis_done"}
 
     msg = HumanMessage(
         content=(
@@ -829,7 +913,6 @@ async def merlin_node(state: MarvinState) -> dict:
     except LLMTransientFailure as failure:
         _persist_transient_gate_failure(mission_id, failure, gate_type="final_review")
         return {"phase": "llm_transient_failure", "failed_agent": "merlin"}
-    store = MissionStore()
     verdict_row = store.get_latest_merlin_verdict(mission_id)
     if not verdict_row:
         # No silent default. A missing verdict means Merlin's LLM never called

@@ -35,12 +35,22 @@ SMOKE_DURATION = 25  # seconds of SSE we read after sending brief
 HEALTH_TIMEOUT = 30
 PROGRESS_EVENT_NAMES = {
     "agent_active", "agent_started", "agent_done",
-    "milestone", "milestone_persisted",
+    "milestone", "milestone_done", "milestone_persisted",
     "gate_pending", "gate_opened",
     "phase", "phase_changed",
-    "finding_persisted", "deliverable_persisted",
-    "chat_token", "node_update", "tool_call",
+    "finding_added", "finding_persisted",
+    "deliverable_ready", "deliverable_persisted",
+    "chat_token", "text", "narration", "node_update", "tool_call",
 }
+FORBIDDEN_USER_STREAM_PATTERNS = (
+    "BACK_TO_DRAWING_BOARD",
+    "MINOR_FIXES",
+    "tool_calls",
+    "raw_response",
+    "get_hypotheses",
+    "Finding added ·",
+    "Cannot open Manager review",
+)
 
 BRIEF = (
     "Smoke test brief: assess Mistral AI investment thesis at €6B post-money. "
@@ -196,6 +206,12 @@ def main() -> int:
         # Assertions
         error_events = [(n, p) for n, p in events if n == "error"]
         progress_events = [(n, p) for n, p in events if n in PROGRESS_EVENT_NAMES]
+        noisy_events = [
+            (n, p)
+            for n, p in events
+            if n in {"text", "tool_call", "tool_result", "narration", "agent_message"}
+            and any(pattern in json.dumps(p) for pattern in FORBIDDEN_USER_STREAM_PATTERNS)
+        ]
 
         passed = True
         if error_events:
@@ -207,6 +223,11 @@ def main() -> int:
             passed = False
             print(f"[smoke] FAIL — no progress event observed (run_start alone is not enough)")
             print(f"        Expected one of: {sorted(PROGRESS_EVENT_NAMES)}")
+        if noisy_events:
+            passed = False
+            print(f"[smoke] FAIL — saw {len(noisy_events)} noisy user-facing SSE event(s):")
+            for n, p in noisy_events[:3]:
+                print(f"  NOISY {n}: {json.dumps(p)[:400]}")
 
         if passed:
             print(f"[smoke] PASS — {len(progress_events)} progress event(s), 0 errors")

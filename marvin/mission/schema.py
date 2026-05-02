@@ -44,6 +44,19 @@ class MissionBrief(MarvinModel):
     updated_at: str | None = None
 
 
+class MissionChatMessage(MarvinModel):
+    id: str
+    mission_id: str
+    role: Literal["user", "marvin"]
+    text: str
+    deliverable_id: str | None = None
+    deliverable_label: str | None = None
+    gate_id: str | None = None
+    gate_action: str | None = None
+    seq: int | None = None
+    created_at: str | None = None
+
+
 class Hypothesis(MarvinModel):
     id: str
     mission_id: str

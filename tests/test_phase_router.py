@@ -8,6 +8,7 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from marvin.graph import gates, runner
+from marvin.graph.subgraphs import framing_orchestrator
 from marvin.mission.schema import Deliverable, Finding, MerlinVerdict, Mission
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools import arbiter_tools, mission_tools, papyrus_tools
@@ -28,6 +29,7 @@ def graph_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> MissionStore
     )
     _seed_standard_workplan("m-test", store)
     monkeypatch.setattr(runner, "MissionStore", lambda: store)
+    monkeypatch.setattr(framing_orchestrator, "MissionStore", lambda: store)
     monkeypatch.setattr(gates, "MissionStore", lambda: store)
     monkeypatch.setattr(mission_tools, "_STORE_FACTORY", lambda: store)
     monkeypatch.setattr(papyrus_tools, "_STORE_FACTORY", lambda: store)
@@ -213,6 +215,25 @@ def test_gate_node_completes_gate_when_approved(monkeypatch: pytest.MonkeyPatch,
                 mission_id="m-test",
                 deliverable_type="workstream_report",
                 status="ready",
+                workstream_id=ws_id,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
+    for mid, ws_id in (
+        ("W1.1", "W1"),
+        ("W1.2", "W1"),
+        ("W1.3", "W1"),
+        ("W2.1", "W2"),
+        ("W2.2", "W2"),
+        ("W2.3", "W2"),
+    ):
+        graph_store.save_deliverable(
+            Deliverable(
+                id=f"d-{mid}-phase-router",
+                mission_id="m-test",
+                deliverable_type="milestone_report",
+                status="ready",
+                milestone_id=mid,
                 workstream_id=ws_id,
                 created_at=datetime.now(UTC).isoformat(),
             )

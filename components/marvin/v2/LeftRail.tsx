@@ -22,6 +22,7 @@ export interface LeftRailHypothesis {
   status: string;
   computed?: {
     status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED";
+    rationale?: string;
     total: number;
     known: number;
     reasoned: number;
@@ -139,8 +140,10 @@ function HypothesesRail({
           <div
             key={h.id}
             onClick={() => onSelectHypothesis?.(h.id)}
+            title={c?.rationale}
             style={{
               display: "flex",
+              flexWrap: "wrap",
               alignItems: "baseline",
               gap: 8,
               padding: "6px 0",
@@ -157,6 +160,20 @@ function HypothesesRail({
               {h.text}
             </span>
             <Mono size={9} weight={600} color={st.c} spacing=".08em" style={{ flexShrink: 0 }}>{st.l}</Mono>
+            {isSelected && c?.rationale && (
+              <span
+                style={{
+                  flexBasis: "100%",
+                  marginLeft: 30,
+                  marginTop: -2,
+                  fontSize: 10.5,
+                  lineHeight: 1.45,
+                  color: "var(--ink3)",
+                }}
+              >
+                {c.rationale}
+              </span>
+            )}
           </div>
         );
       })}

@@ -5,7 +5,7 @@
  * Base URL configurable via NEXT_PUBLIC_API_BASE_URL env var.
  */
 
-import type { MissionGateVerdict } from "@/lib/missions/types";
+import type { MissionChatMessage, MissionGateVerdict } from "@/lib/missions/types";
 
 export type GateReviewPayload = Record<string, unknown>;
 
@@ -195,6 +195,7 @@ export async function getMissionProgress(missionId: string): Promise<{
     status: string;
     computed?: {
       status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED";
+      rationale?: string;
       total: number;
       known: number;
       reasoned: number;
@@ -218,6 +219,8 @@ export async function getMissionProgress(missionId: string): Promise<{
   }>;
   merlin_verdict?: {
     verdict: string;
+    label?: string;
+    recommended_action?: string;
     notes: string | null;
     created_at: string | null;
   } | null;
@@ -272,6 +275,22 @@ export async function getMissionEvents(missionId: string): Promise<{
     }
     throw new Error(`Failed to get mission events: ${response.status}`);
   }
+  return response.json();
+}
+
+export async function getMissionChatMessages(missionId: string): Promise<{
+  mission_id: string;
+  messages: MissionChatMessage[];
+}> {
+  const response = await fetch(`${API_BASE}/missions/${missionId}/chat/messages`);
+
+  if (!response.ok) {
+    if (response.status === 0) {
+      throw new BackendOfflineError();
+    }
+    throw new Error(`Failed to get mission chat messages: ${response.status}`);
+  }
+
   return response.json();
 }
 

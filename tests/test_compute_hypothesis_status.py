@@ -20,6 +20,7 @@ def _f(*, conf: str, agent: str = "calculus", source: str | None = "src-1", _id:
 def test_not_started_when_empty() -> None:
     r = compute_hypothesis_status([])
     assert r["status"] == "NOT_STARTED"
+    assert "No findings" in r["rationale"]
     assert r["total"] == 0
 
 
@@ -27,6 +28,7 @@ def test_supported_with_two_known_and_no_contradicting() -> None:
     findings = [_f(conf="KNOWN", _id=f"f{i}") for i in range(2)]
     r = compute_hypothesis_status(findings)
     assert r["status"] == "SUPPORTED"
+    assert "2 sourced findings" in r["rationale"]
     assert r["known"] == 2
     assert r["contradicting"] == 0
 
@@ -39,6 +41,7 @@ def test_weakened_when_adversus_contradicts() -> None:
     ]
     r = compute_hypothesis_status(findings)
     assert r["status"] == "WEAKENED"
+    assert "red-team challenge" in r["rationale"]
     assert r["contradicting"] == 1
 
 
@@ -50,6 +53,7 @@ def test_weakened_when_majority_low_confidence() -> None:
     ]
     r = compute_hypothesis_status(findings)
     assert r["status"] == "WEAKENED"
+    assert "low-confidence" in r["rationale"]
     assert r["low_confidence"] == 2
 
 
@@ -57,6 +61,7 @@ def test_testing_when_only_reasoned() -> None:
     findings = [_f(conf="REASONED", source=None, _id="f1")]
     r = compute_hypothesis_status(findings)
     assert r["status"] == "TESTING"
+    assert "source strength" in r["rationale"]
 
 
 def test_testing_when_one_known_only() -> None:
