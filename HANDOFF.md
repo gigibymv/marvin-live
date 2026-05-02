@@ -3,6 +3,122 @@
 > **Last updated:** 2026-05-01 — end of Phase F live test, Phase G in flight.
 > CLAUDE.md (root) is the source of truth on architecture invariants. Read it first.
 
+## Target Vision (source of truth for UX intent)
+
+> This is **what MARVIN should feel like** when finished. Use it to triage every UI/UX decision.
+> Where current behavior diverges from this vision, file as a Phase-H gap.
+
+### Principe directeur
+
+Une mission MARVIN est un mandat de conseil exécuté conjointement par un consultant et une équipe d'agents spécialisés. Le consultant pense, juge, décide. Les agents recherchent, structurent, produisent, vérifient. À tout moment, ce que l'interface montre reflète exactement ce qui se passe — pas de boîte noire, pas d'état ambigu, pas de jargon technique visible.
+
+### Les 4 actes d'une mission
+
+**Acte 1 — Cadrage**
+Le consultant crée une mission et colle son brief dans le chat. MARVIN lit le brief et structure la thèse en 4 à 6 hypothèses testables avec leurs critères de falsification. Un engagement brief est généré et disponible immédiatement. Les hypothèses sont visibles dans le tab Engagement Brief.
+
+Premier checkpoint dans le chat :
+> "MARVIN has framed the deal into testable hypotheses. Approve to start parallel research workstreams. Reject to revise the framing before any research runs."
+
+Boutons : **APPROVE · REJECT · REVIEW**
+
+Si rejet, MARVIN explique ce qu'il va réviser et relance. Il ne demande jamais "awaiting further instructions."
+
+**Acte 2 — Recherche**
+Les deux équipes (marché, financier) démarrent en parallèle, visibles dans la rail agents. Le feed d'activité montre en temps réel ce que chaque agent fait, avec son nom :
+> "Dora is mapping the competitive landscape."
+> "Calculus is parsing revenue data from the annual filing."
+
+Chaque finding apparaît avec son niveau de confiance (**Sourced / Inferred / Preliminary**) et sa source quand disponible. Les hypothèses passent de **Pending → Testing** dans la sidebar.
+
+Les rapports de workstream sont générés au fil de l'eau. Les tabs restent en cours jusqu'à ce que **tous** leurs rapports soient disponibles — jamais de coche prématurée.
+
+Deuxième checkpoint quand tous les rapports attendus sont accessibles :
+> "Initial research is complete. Review the claims surfaced so far for soundness, sourcing, and confidence before stress testing begins."
+
+**APPROVE · REJECT · REVIEW**
+
+Si rejet, MARVIN identifie précisément quels workstreams relancent et pourquoi.
+
+**Acte 3 — Stress test et synthèse**
+L'équipe adversariale challenge chaque claim accepté. Hypothèses affectées passent en **Challenged**.
+
+Synthèse produit un verdict en langage consultant :
+- **Ready to present** — la thèse est défendable en comité d'investissement
+- **Additional diligence needed** — la thèse tient mais des points doivent être documentés
+- **Evidence gaps — not ready** — des hypothèses clés ne sont pas étayées par des preuves primaires
+- **Thesis challenged** — l'analyse adversariale a trouvé des failles structurelles
+
+Sur "Evidence gaps" ou "Thesis challenged", le consultant voit le gap principal en 2 lignes et :
+**SEND BACK FOR REVISION · APPROVE WITH CAVEATS**
+
+La mission ne reste **jamais** bloquée sans sortie proposée.
+
+**Acte 4 — Décision finale**
+Troisième checkpoint après synthèse complète et livrables finaux générés :
+> "Synthesis is complete after the stress test pass. Approve to finalize the IC memo and deliverables. Reject to send the synthesis back for another pass."
+
+**APPROVE · REJECT · REVIEW**
+
+Un seul clic suffit. Toujours.
+
+### Livrables (set canonique : 6 documents)
+
+1. Engagement brief
+2. Market report
+3. Financial report
+4. Stress test report
+5. Executive summary
+6. Data book
+
+Chaque document apparaît dans le chat au moment où il est prêt :
+> "MARVIN — I've generated the Executive Summary."
+> **OPEN EXECUTIVE SUMMARY →**
+
+Le message **"Mission complete" apparaît une seule fois**, après que le dernier document est persisté. Jamais avant.
+
+### Ce que le consultant voit à tout moment
+
+- **Rail agents** : Idle / Running / Done / Blocked. Papyrus visible dès le démarrage.
+- **Tabs** : suivent la phase active. Une coche = tous les rapports accessibles, pas seulement agents finis.
+- **Feed d'activité** : qui parle maintenant, avec son nom. Jamais MARVIN attribué quand c'est Dora qui travaille.
+- **Chat** : reçoit tous les checkpoints avec boutons d'action.
+- **Sidebar hypothèses** : statut courant. Cliquer une hypothèse l'affiche dans le tab Brief.
+- **Barre de progression** : reflète la réalité — ~85% au dernier checkpoint, 100% uniquement quand tous les livrables sont persistés.
+
+### Invariants non-négociables
+
+1. Ce que l'interface montre est **vrai**.
+2. Le consultant ne clique **jamais deux fois** sur le même bouton.
+3. Le système ne répond **jamais** par un point d'interrogation à une demande reconnaissable.
+4. **Aucun terme technique interne** dans l'UI — ni feed, ni chat, ni labels (pas de "Lector", "synthesis_retry", "W1/W2", "phase_router").
+5. Crash serveur, fermeture d'onglet, redémarrage → la mission **reprend exactement** là où elle s'était arrêtée.
+
+### Critère de livraison d'une mission
+
+Une mission est livrée **uniquement si** :
+1. Toutes les phases ont avancé sans intervention manuelle de déblocage
+2. Tous les livrables attendus sont persistés et ouvrables
+3. Les trois checkpoints ont été franchis avec décision explicite du consultant
+4. L'executive summary reflète le verdict de synthèse
+5. La progression affiche 100%
+6. Aucun événement d'erreur n'a été masqué
+
+### Phase H — Vision alignment gaps (radar, à traiter post Phase G)
+
+| # | Cible | Gap actuel |
+|---|-------|------------|
+| H1 | Verdicts en langage consultant (Ready to present / etc.) | Actuellement "Ship / Needs rework / Don't ship" |
+| H2 | "Send back for revision / Approve with caveats" sur G3 négatif | Seul Reject existe |
+| H3 | 6 livrables canoniques enforced | Set variable selon mission |
+| H4 | Aucun jargon interne dans UI | "Lector", phase keys, retry visibles par endroits |
+| H5 | Confidence labels Sourced/Inferred/Preliminary sur findings | Champ à vérifier + UI à câbler |
+| H6 | Hypothèse status Pending/Testing/Challenged alignés | TESTING/WEAKENED actuels — labels à mapper |
+| H7 | Papyrus visible dans agents rail dès démarrage | À vérifier |
+| H8 | "Mission complete" atomic post-last-deliverable | Risque double-emit / ordering |
+
+---
+
 ## Current State Summary
 
 MARVIN is an AI-enabled consulting OS. First implemented workflow: Commercial Due Diligence (CDD).
@@ -19,8 +135,9 @@ Papyrus (deliverable writer), MARVIN (orchestrator).
 | C | mission complete ordering, hypothesis status, gate tab ✓ | shipped |
 | D | P9 tab restructure (design only) | **deferred** — no implementation without design validation |
 | E | P13 (mission stuck livelock), P14 (chat send corrupts), P15 (phase narration), P16 (gate requires deliverables), P17 (milestone OPEN gate) | shipped |
-| F | P18a (G1 chat CTA), P18b (stale live bar), P19b (strict ws done), P19d (milestone OPEN gate), P20 (phantom Moat), P21 (progress formula), P14-bis | shipped (commits c98e7ee, 9d884c6, 48b1972) — **partial regressions found in live test** |
-| G | Live test caught: gate G1 fires too early, P19b not actually fixed, chat ordering broken, P18a not fixed for live G1 path | **in flight** (background agent a423b71bb0787cdd7) |
+| F | P18a (G1 chat CTA), P18b (stale live bar), P19b (strict ws done), P19d (milestone OPEN gate), P20 (phantom Moat), P21 (progress formula), P14-bis | shipped (commits c98e7ee, 9d884c6, 48b1972) — partial regressions found in live test |
+| G | Gate G1 strict timing, tab strict against expected set, chat order via `seq`, G1 chat CTA on live `_stream_chat` path | shipped (commits 9dcb8d5, c98fb43) — **awaiting local live test before push** |
+| H | Vision alignment gaps (H1–H8 above) | radar — to triage post Phase G validation |
 
 ### Known issues at handoff
 
