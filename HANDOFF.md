@@ -1,22 +1,50 @@
 # Marvin Project Handoff Document
 
+> **Last updated:** 2026-05-01 — end of Phase F live test, Phase G in flight.
+> CLAUDE.md (root) is the source of truth on architecture invariants. Read it first.
+
 ## Current State Summary
 
-Marvin is a CDD (Commercial Due Diligence) automation platform with a FastAPI backend (Python) and Next.js frontend (TypeScript). The project uses LangGraph for agent orchestration with multiple agents (Dora, Calculus, Adversus, Merlin, Papyrus, Orchestrator).
+MARVIN is an AI-enabled consulting OS. First implemented workflow: Commercial Due Diligence (CDD).
+Stack: FastAPI + LangGraph + SQLite (backend), Next.js 15 + React 19 (frontend), SSE transport.
+Agents: Dora (W1 market), Calculus (W2 financial), Adversus (W4 red-team), Merlin (W3 synthesis),
+Papyrus (deliverable writer), MARVIN (orchestrator).
 
-### Working
-- Backend API starts and serves requests
-- Mission creation works
-- Database (SQLite) initialized with fresh schema
-- SSE streaming for chat messages
-- LLM integration via OpenRouter (GPT-5.4-nano)
+### Phase progression (where we are)
 
-### Recently Fixed
-- Removed hardcoded demo data from UI
-- Extended `/api/v1/missions/{id}/progress` to include hypotheses, deliverables, workstreams
-- Added `agent_active` SSE event for tracking which agent is running
-- Frontend now fetches progress data and passes to view
-- Agent status now tracked from SSE events (not hardcoded)
+| Phase | Scope | Status |
+|-------|-------|--------|
+| A | P1 (gate safety), P11 (chat narration typo) | shipped |
+| B | P2/P3/P4/P5/P6/P7/P8/P10/P12 (UI truthfulness + visual hierarchy) | shipped |
+| C | mission complete ordering, hypothesis status, gate tab ✓ | shipped |
+| D | P9 tab restructure (design only) | **deferred** — no implementation without design validation |
+| E | P13 (mission stuck livelock), P14 (chat send corrupts), P15 (phase narration), P16 (gate requires deliverables), P17 (milestone OPEN gate) | shipped |
+| F | P18a (G1 chat CTA), P18b (stale live bar), P19b (strict ws done), P19d (milestone OPEN gate), P20 (phantom Moat), P21 (progress formula), P14-bis | shipped (commits c98e7ee, 9d884c6, 48b1972) — **partial regressions found in live test** |
+| G | Live test caught: gate G1 fires too early, P19b not actually fixed, chat ordering broken, P18a not fixed for live G1 path | **in flight** (background agent a423b71bb0787cdd7) |
+
+### Known issues at handoff
+
+1. **Gate G1 timing (live)** — gate becomes pending while Anomaly detection blocked + Public Filings Review still being drafted by Papyrus. Criterion in `marvin/graph/gate_material.py` is too lax: counts blocked milestones as terminal AND uses ≥1 ready deliverable. Must tighten to ALL expected deliverables ready per non-skipped W1+W2.
+2. **Tab ✓ (P19b)** — `wsAllDeliverablesReady` in `MissionControl.tsx` only checks deliverables present in array, not against expected set. If Papyrus hasn't emitted yet, "all ready" passes trivially.
+3. **Chat message ordering** — Papyrus milestone-report messages can appear above subsequent MARVIN messages. Likely sort-by-ts with collisions.
+4. **G1 chat CTA missing on live path** — fix in commit c98e7ee only patched `_drive_detached_resume` (post-resume interrupts). Initial G1 in `_stream_chat` is unmodified. No Approve/Reject bubble in chat for first G1.
+
+### Deploy state (Render)
+
+- Backend service: `srv-d7p2l53bc2fs73c3lu80`
+- Frontend service: `srv-d7p2l8vavr4c73d1gnvg`
+- **Auto-deploy webhook is broken** (`gh api repos/gigibymv/marvin-live/hooks` returns []). Trigger manually:
+  ```
+  render deploys create <service-id> --commit <sha> --confirm
+  ```
+- Currently 3 commits ahead on `main` past last green Render deploy (8a9564a). Phase F + review fix commits pushed but **not yet deployed** (waiting on Phase G to land first).
+
+### Local dev
+
+- Backend: `set -a; source .env; set +a; PYTHONPATH=$PWD .venv/bin/python -m uvicorn marvin_ui.server:app --port 8095`
+- Frontend: `npm run dev` → `http://localhost:3000`
+- Mandatory smoke before commit when touching graph/server/checkpointer: `make smoke`
+- Tests: `PYTHONPATH=$PWD .venv/bin/pytest tests/ -q`
 
 ---
 
@@ -356,3 +384,42 @@ npm run dev
 4. **Add file upload** - For engagement brief and data room
 5. **Add real Tavily integration** - Currently stubbed in `dora_tools.py`
 6. **Add tests for new progress endpoint** - Verify hypotheses/deliverables included
+
+---
+
+## Critical Traps (read before editing)
+
+These are recurring footguns. Each has burned us at least once.
+
+1. **React error #310 in MissionControl.tsx**
+   ANY new hook (`useEffect`/`useMemo`/`useState`/`useCallback`) MUST go above line ~1670 (`if (!hasLoaded) return null`). Hit twice. Production-breaking.
+
+2. **mission_id only flows via LangGraph state**
+   Never infer from "first active mission", DB lookup, or fallback. Only via `MarvinState` → `InjectedState`. Hard rule in CLAUDE.md.
+
+3. **Gate routing must go through `gate_entry_node`**
+   Phases requiring a gate route through `gate_entry` (sets `pending_gate_id`), then deterministic edge to `gate_node`. Skipping causes orchestrator to fall back into bad idle.
+
+4. **Merlin retry must NOT self-loop**
+   Path: `merlin → phase="synthesis_retry" → phase_router → adversus → merlin`. Never make merlin route back to itself via its own conditional edge map. Causes `KeyError: 'merlin'`.
+
+5. **`research_join` is deterministic, not LLM-driven**
+   Workflow advancement does not depend on the LLM choosing a milestone tool. Owned in Python.
+
+6. **Persistence-owned SSE events**
+   `findings`, `deliverables`, `milestones` emit from the persistence chokepoint (`marvin/events.py` listener registries), NOT from `map_tool_to_sse_event`. Re-emitting at the tool-message layer causes duplicates.
+
+7. **Render auto-deploy is broken**
+   Webhook missing — verify via `gh api repos/gigibymv/marvin-live/hooks` (returns `[]`). Trigger deploys manually via `render deploys create <service-id> --commit <sha> --confirm`.
+
+8. **Mandatory smoke for graph/server/checkpointer changes**
+   `make smoke` (i.e. `.venv/bin/python scripts/smoke_runtime.py`) MUST pass before commit. Pre-commit hook enforces it. Catches sync-vs-async runtime divergences unit tests miss.
+
+9. **Phase D (P9 tab restructure) deferred**
+   No implementation without explicit design validation. Don't rebuild the tab layout proactively.
+
+10. **Chat narration has subtle requirements**
+    - Trailing periods on `_PHASE_NARRATION` entries (server.py)
+    - `whiteSpace: "pre-wrap"` on chat span (RightRail.tsx) for `\n\n` to render
+    - Both Approve/Reject/Review buttons require `m.gateId && m.gateAction === "pending"` on the message — backend must set both for G1 AND G3.
+
