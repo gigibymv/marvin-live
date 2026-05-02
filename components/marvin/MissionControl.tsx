@@ -495,7 +495,7 @@ export default function MissionControl({
         const merged = data.deliverables.map((d: any) => {
           if (d.file_path) return d;
           const prevD = prevMap.get(d.id);
-          if (prevD?.file_path) return { ...d, file_path: prevD.file_path, status: prevD.status };
+          if (prevD?.file_path) return { ...d, file_path: prevD.file_path };
           return d;
         });
         return { ...data, deliverables: merged };
@@ -1883,8 +1883,7 @@ export default function MissionControl({
     // P21: when we're past redteam_done, workstreams are definitively done even
     // if synthesis is in a retry cycle and wsDone() returns 0 transiently.
     // Force each W1–W4 to contribute at least 1.0 to prevent under-reporting.
-    const pastRedteam = ["redteam_done", "synthesis_retry", "synthesis_done",
-      "gate_g3_passed", "done"].includes(currentPhase ?? "");
+    const pastRedteam = ["synthesis_done", "gate_g3_passed", "done"].includes(currentPhase ?? "");
     const wsScore = (id: string): number => {
       if (pastRedteam) return 1;
       return wsDone(id) + wsActive(id);
