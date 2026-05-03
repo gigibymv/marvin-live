@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-This file provides guidance  when working with code in this repository.
+This file provides guidance when working with code in this repository.
+
+> Known bugs and fixes: see [DEBUG_LOG.md](./DEBUG_LOG.md)
 
 ## What this is
 

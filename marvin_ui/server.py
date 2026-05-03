@@ -712,7 +712,7 @@ def get_store() -> MissionStore:
 class CreateMissionRequest(BaseModel):
     client: str
     target: str
-    ic_question: str
+    ic_question: str = ""
     mission_type: str = "cdd"
 
 
