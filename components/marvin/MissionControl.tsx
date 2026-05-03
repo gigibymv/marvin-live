@@ -1886,6 +1886,36 @@ export default function MissionControl({
     [progress?.deliverables],
   );
 
+  // React-rules: this useMemo MUST stay above the early returns below;
+  // otherwise hook count varies between renders and can trigger React #310.
+  const hypotheses = useMemo(() => {
+    const base = progress?.hypotheses ?? [];
+    const updates = (((progress as any)?.merlin_verdict?.hypothesis_updates ?? []) as Array<any>)
+      .filter((row) => row && typeof row === "object");
+    if (!updates.length) return base;
+    const updateEntries: Array<[string, { nextStatus: string; why: string }]> = updates
+      .map((row) => {
+        const label = String(row.hypothesis_label ?? row.hypothesisLabel ?? "").trim();
+        const nextStatus = String(row.next_status ?? row.nextStatus ?? "").trim().toUpperCase();
+        const why = String(row.why ?? "").trim();
+        return [label, { nextStatus, why }] as [string, { nextStatus: string; why: string }];
+      })
+      .filter(([label, payload]) => Boolean(label) && Boolean(payload.why));
+    const updateByLabel = new Map<string, { nextStatus: string; why: string }>(updateEntries);
+    return base.map((hypothesis: any) => {
+      const update = updateByLabel.get(String(hypothesis.label ?? "").trim());
+      if (!update) return hypothesis;
+      return {
+        ...hypothesis,
+        computed: {
+          ...(hypothesis.computed ?? {}),
+          status: update.nextStatus || hypothesis.computed?.status || "TESTING",
+          rationale: update.why,
+        },
+      };
+    });
+  }, [progress?.hypotheses, (progress as any)?.merlin_verdict?.hypothesis_updates]);
+
   if (!hasLoaded) {
     return null;
   }
@@ -2181,37 +2211,6 @@ export default function MissionControl({
     checkpoint: nextCheckpointLabel ?? "No open checkpoint",
     statusLabel: missionStatusLabel,
   };
-
-  // Compute hypotheses. Merlin's structured verdict can attach consultant-
-  // facing "why challenged / weakened" explanations that are more specific
-  // than the generic finding-count rationale. Prefer those when present.
-  const hypotheses = useMemo(() => {
-    const base = progress?.hypotheses ?? [];
-    const updates = (((progress as any)?.merlin_verdict?.hypothesis_updates ?? []) as Array<any>)
-      .filter((row) => row && typeof row === "object");
-    if (!updates.length) return base;
-    const updateEntries: Array<[string, { nextStatus: string; why: string }]> = updates
-      .map((row) => {
-        const label = String(row.hypothesis_label ?? row.hypothesisLabel ?? "").trim();
-        const nextStatus = String(row.next_status ?? row.nextStatus ?? "").trim().toUpperCase();
-        const why = String(row.why ?? "").trim();
-        return [label, { nextStatus, why }] as [string, { nextStatus: string; why: string }];
-      })
-      .filter(([label, payload]) => Boolean(label) && Boolean(payload.why));
-    const updateByLabel = new Map<string, { nextStatus: string; why: string }>(updateEntries);
-    return base.map((hypothesis: any) => {
-      const update = updateByLabel.get(String(hypothesis.label ?? "").trim());
-      if (!update) return hypothesis;
-      return {
-        ...hypothesis,
-        computed: {
-          ...(hypothesis.computed ?? {}),
-          status: update.nextStatus || hypothesis.computed?.status || "TESTING",
-          rationale: update.why,
-        },
-      };
-    });
-  }, [progress?.hypotheses, (progress as any)?.merlin_verdict?.hypothesis_updates]);
 
   // Compute section outputs (findings + milestones + deliverables). The center
   // pane is scoped to an explicit section, so Brief, Synthesis, Stress testing,
