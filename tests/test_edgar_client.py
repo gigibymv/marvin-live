@@ -242,6 +242,32 @@ def test_search_sec_filings_unknown_company_returns_error(monkeypatch):
     assert out["filings"] == []
 
 
+def test_search_sec_filings_surfaces_edgar_fetch_failures(monkeypatch):
+    import marvin.tools.edgar_client as ec
+    from marvin.tools.calculus_tools import search_sec_filings
+
+    tickers = {
+        **SAMPLE_TICKERS,
+        "4": {"cik_str": 1065280, "ticker": "NFLX", "title": "Netflix, Inc."},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://www.sec.gov/files/company_tickers.json":
+            return httpx.Response(200, json=tickers)
+        if url == "https://data.sec.gov/submissions/CIK0001065280.json":
+            return httpx.Response(503, text="unavailable")
+        return httpx.Response(404, text="not found")
+
+    monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
+
+    out = search_sec_filings("Netflix", year=2024)
+
+    assert out["ticker"] == "NFLX"
+    assert out["filings"] == []
+    assert out["error"] == "edgar_submissions_fetch_failed"
+
+
 def test_fetch_filing_section_returns_quotable_text(monkeypatch):
     import marvin.tools.edgar_client as ec
     from marvin.tools.calculus_tools import fetch_filing_section
@@ -258,6 +284,32 @@ def test_fetch_filing_section_returns_quotable_text(monkeypatch):
     assert "factors" in out["text"].lower()
     assert out["url"].startswith(archive_prefix)
     assert out["accession"] == "0000320193-24-000123"
+
+
+def test_fetch_filing_section_surfaces_edgar_fetch_failures(monkeypatch):
+    import marvin.tools.edgar_client as ec
+    from marvin.tools.calculus_tools import fetch_filing_section
+
+    tickers = {
+        **SAMPLE_TICKERS,
+        "4": {"cik_str": 1065280, "ticker": "NFLX", "title": "Netflix, Inc."},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://www.sec.gov/files/company_tickers.json":
+            return httpx.Response(200, json=tickers)
+        if url == "https://data.sec.gov/submissions/CIK0001065280.json":
+            return httpx.Response(429, text="rate limited")
+        return httpx.Response(404, text="not found")
+
+    monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
+
+    out = fetch_filing_section("Netflix", form="10-K", year=2024, section="mdna")
+
+    assert out["ticker"] == "NFLX"
+    assert out["text"] is None
+    assert out["error"] == "edgar_rate_limited"
 
 
 def test_fetch_filing_section_matches_fiscal_year_when_10k_filed_next_year(monkeypatch):

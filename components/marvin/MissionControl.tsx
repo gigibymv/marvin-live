@@ -233,12 +233,12 @@ interface MissionControlViewProps {
   sectionTabs?: {
     id: WorkspaceTab;
     label: string;
-    status?: "pending" | "now" | "in_progress" | "completed";
+    status?: "pending" | "now" | "in_progress" | "completed" | "blocked";
   }[];
   workstreamContent?: {
     id: string;
     label: string;
-    status?: "pending" | "now" | "in_progress" | "completed";
+    status?: "pending" | "now" | "in_progress" | "completed" | "blocked";
     findings: Array<{ id: string; claim_text: string; confidence: string | null; agent_id: string | null }>;
     milestones: Array<{ id: string; label: string; status: string }>;
   }[];
@@ -270,7 +270,7 @@ interface MissionControlViewProps {
 
 const MissionControlView = RawMissionControlView as unknown as ComponentType<MissionControlViewProps>;
 type MissionProgressSnapshot = Awaited<ReturnType<typeof getMissionProgress>>;
-type WorkstreamViewStatus = "pending" | "now" | "in_progress" | "completed";
+type WorkstreamViewStatus = "pending" | "now" | "in_progress" | "completed" | "blocked";
 type LiveFindingEvent = {
   id: string;
   kind:
@@ -2476,10 +2476,6 @@ export default function MissionControl({
     const wsAllDeliverablesReady = wsDeliverableItems.length > 0 &&
       wsDeliverableItems.every((d) => d.status === "ready");
     const allMilestonesDone = wsMilestones.length > 0 && wsTerminal === wsMilestones.length;
-    // A workstream where every milestone is `blocked` (e.g. Calculus with no
-    // EDGAR data for the target) cannot ever produce a deliverable. Treat
-    // it as terminally complete so the tab doesn't spin forever waiting for
-    // a deliverable that will never come.
     const allMilestonesBlocked = wsMilestones.length > 0 && wsMilestones.every((m: any) => {
       const liveStatus = milestoneStatusOverrides[m.id];
       return (liveStatus ?? m.status) === "blocked";
@@ -2516,11 +2512,12 @@ export default function MissionControl({
       || (allMilestonesDone && wsAllDeliverablesReady && allMilestoneDeliverablesMaterialized)
       || synthesisDone
       || agentDoneWithDeliverable
-      || allMilestonesBlocked
       || agentDoneAllMilestonesTerminal;
     const status: WorkstreamViewStatus =
       tabCompletedReady
         ? "completed"
+        : allMilestonesBlocked
+          ? "blocked"
         : liveStatus === "active"
           ? "now"
           : wsDelivered > 0 || wsHasReadyDeliverable
@@ -2571,12 +2568,14 @@ export default function MissionControl({
   const mergedRedTeamStatus: WorkstreamViewStatus =
     w3Status === "completed" && w4Status === "completed"
       ? "completed"
+      : w3Status === "blocked" && w4Status === "blocked"
+        ? "blocked"
       : w3Status === "now" || w4Status === "now"
         ? "now"
         : w3Status === "in_progress" || w4Status === "in_progress"
           ? "in_progress"
           : "pending";
-  const baseSectionTabs: MissionControlViewProps["sectionTabs"] = [
+  const baseSectionTabs: NonNullable<MissionControlViewProps["sectionTabs"]> = [
     { id: "brief", label: "Brief", status: briefStatus },
     { id: "ws1", label: "Market analysis", status: workstreamStatus("W1") },
     { id: "ws2", label: "Financial analysis", status: workstreamStatus("W2") },

@@ -327,7 +327,7 @@ def search_sec_filings(
     text. If resolution fails the response carries an `error` field and
     `filings: []` — never fabricate a citation from an empty result.
     """
-    from marvin.tools.edgar_client import list_filings, resolve_cik
+    from marvin.tools.edgar_client import list_filings_result, resolve_cik
 
     try:
         year_int = int(year)
@@ -344,21 +344,27 @@ def search_sec_filings(
             "error": "company_not_found_on_edgar",
         }
 
-    filings = list_filings(
+    filings_result = list_filings_result(
         resolved["cik"],
         forms=("10-K", "10-Q", "20-F", "8-K"),
         since_year=year_int or None,
         limit=20,
     )
+    filings = filings_result["filings"]
     if year_int:
         filings = [f for f in filings if _filing_matches_requested_year(f, year_int)]
-    return {
+    result = {
         "company_name": resolved["title"],
         "ticker": resolved["ticker"],
         "cik": resolved["cik"],
         "year": year_int,
         "filings": filings,
     }
+    if filings_result["error"]:
+        result["error"] = filings_result["error"]
+    elif not filings:
+        result["error"] = "no_matching_filing"
+    return result
 
 
 def fetch_filing_section(
@@ -381,7 +387,7 @@ def fetch_filing_section(
     from marvin.tools.edgar_client import (
         extract_sections,
         fetch_filing_text,
-        list_filings,
+        list_filings_result,
         resolve_cik,
     )
 
@@ -402,11 +408,24 @@ def fetch_filing_section(
             "error": "company_not_found_on_edgar",
         }
 
-    filings = list_filings(
+    filings_result = list_filings_result(
         resolved["cik"], forms=(form,), since_year=year_int or None, limit=10
     )
+    filings = filings_result["filings"]
     if year_int:
         filings = [f for f in filings if _filing_matches_requested_year(f, year_int)]
+    if filings_result["error"]:
+        return {
+            "company_name": resolved["title"],
+            "ticker": resolved["ticker"],
+            "cik": resolved["cik"],
+            "form": form,
+            "year": year_int,
+            "section": section,
+            "text": None,
+            "url": None,
+            "error": filings_result["error"],
+        }
     if not filings:
         return {
             "company_name": resolved["title"],

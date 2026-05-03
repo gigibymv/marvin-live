@@ -50,7 +50,7 @@ export interface CenterActivityItem {
 export interface CenterTab {
   id: WorkspaceTab;
   label: string;
-  status?: "pending" | "now" | "in_progress" | "completed";
+  status?: "pending" | "now" | "in_progress" | "completed" | "blocked";
 }
 
 export interface CenterCheckpoint {
@@ -517,6 +517,7 @@ export function CenterPane({
             {tabs.map(t => {
               const isDone = t.status === "completed";
               const isLive = t.status === "in_progress" || t.status === "now";
+              const isBlocked = t.status === "blocked";
               const isOn = selectedTab === t.id;
               return (
                 <button
@@ -526,13 +527,13 @@ export function CenterPane({
                     fontFamily: "var(--m)", fontSize: 9, letterSpacing: ".05em", textTransform: "uppercase",
                     padding: "9px 16px", background: "transparent", border: "none",
                     borderBottom: isOn ? "2px solid var(--ink)" : "2px solid transparent",
-                    color: isOn ? "var(--ink)" : isDone ? "var(--ink3)" : isLive ? "var(--ink2)" : "var(--muted)",
+                    color: isOn ? "var(--ink)" : isDone ? "var(--ink3)" : isBlocked ? "var(--amber)" : isLive ? "var(--ink2)" : "var(--muted)",
                     fontWeight: isOn ? 700 : 500,
                     cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
                     transition: "color .15s cubic-bezier(0.16,1,0.3,1), border-color .15s cubic-bezier(0.16,1,0.3,1)",
                   }}
                 >
-                  {isDone ? <span style={{ color: "var(--green)" }}>✓ </span> : isLive ? <Spinner /> : null}{t.label}
+                  {isDone ? <span style={{ color: "var(--green)" }}>✓ </span> : isBlocked ? <span style={{ color: "var(--amber)" }}>! </span> : isLive ? <Spinner /> : null}{t.label}
                 </button>
               );
             })}

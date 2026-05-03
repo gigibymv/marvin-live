@@ -88,12 +88,12 @@ export interface MissionControlV2ViewProps {
   sectionTabs?: {
     id: WorkspaceTab;
     label: string;
-    status?: "pending" | "now" | "in_progress" | "completed";
+    status?: "pending" | "now" | "in_progress" | "completed" | "blocked";
   }[];
   workstreamContent?: {
     id: string;
     label: string;
-    status?: "pending" | "now" | "in_progress" | "completed";
+    status?: "pending" | "now" | "in_progress" | "completed" | "blocked";
     findings: Array<{ id: string; claim_text: string; confidence: string | null; agent_id: string | null }>;
     milestones: Array<{ id: string; label: string; status: string }>;
   }[];

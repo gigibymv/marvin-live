@@ -39,6 +39,8 @@ _COMPANY_ALIASES: dict[str, str] = {
     "meta": "META",
     "meta platforms": "META",
     "facebook": "META",
+    "netflix": "NFLX",
+    "netflix inc": "NFLX",
     "nvidia": "NVDA",
     "nvidia corporation": "NVDA",
     "uber": "UBER",
@@ -213,6 +215,68 @@ def list_filings(
         if len(filings) >= limit:
             break
     return filings
+
+
+def list_filings_result(
+    cik: str,
+    forms: tuple[str, ...] = ("10-K", "10-Q", "20-F", "8-K"),
+    since_year: int | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Fetch recent filings while preserving why a result set is empty."""
+    cik10 = cik.zfill(10)
+    url = _SUBMISSIONS_URL.format(cik10=cik10)
+    try:
+        with _client() as c:
+            r = c.get(url)
+            r.raise_for_status()
+            data = r.json()
+    except httpx.HTTPStatusError as exc:
+        logger.warning("EDGAR submissions fetch failed for CIK %s: %s", cik, exc)
+        status = exc.response.status_code if exc.response is not None else None
+        return {
+            "filings": [],
+            "error": "edgar_rate_limited" if status == 429 else "edgar_submissions_fetch_failed",
+        }
+    except httpx.HTTPError as exc:
+        logger.warning("EDGAR submissions fetch failed for CIK %s: %s", cik, exc)
+        return {"filings": [], "error": "edgar_submissions_fetch_failed"}
+
+    recent = (data.get("filings") or {}).get("recent") or {}
+    accs = recent.get("accessionNumber") or []
+    forms_arr = recent.get("form") or []
+    dates = recent.get("filingDate") or []
+    report_dates = recent.get("reportDate") or []
+    docs = recent.get("primaryDocument") or []
+
+    filings: list[dict[str, Any]] = []
+    cik_int = str(int(cik))
+    for acc, form, fdate, rdate, doc in zip(accs, forms_arr, dates, report_dates, docs):
+        if form not in forms:
+            continue
+        if since_year is not None and fdate:
+            try:
+                yr = int(fdate.split("-")[0])
+            except (ValueError, IndexError):
+                yr = 0
+            if yr < since_year:
+                continue
+        accession_nodash = acc.replace("-", "")
+        filings.append(
+            {
+                "form": form,
+                "accession": acc,
+                "filing_date": fdate,
+                "report_date": rdate,
+                "primary_document": doc,
+                "url": _ARCHIVE_URL.format(
+                    cik=cik_int, accession_nodash=accession_nodash, document=doc
+                ),
+            }
+        )
+        if len(filings) >= limit:
+            break
+    return {"filings": filings, "error": None}
 
 
 class _TextOnly(HTMLParser):
