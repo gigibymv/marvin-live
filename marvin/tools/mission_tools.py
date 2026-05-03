@@ -253,7 +253,7 @@ def get_hypotheses(state: InjectedStateArg = None) -> dict[str, Any]:
 
 
 # Chantier 4: HypothesisPanel needs a computed status per hypothesis.
-HYPOTHESIS_STATUSES = ("NOT_STARTED", "TESTING", "SUPPORTED", "WEAKENED")
+HYPOTHESIS_STATUSES = ("NOT_STARTED", "TESTING", "SUPPORTED", "WEAKENED", "CHALLENGED")
 
 
 def consultant_verdict_label(verdict: str | None) -> str:
@@ -301,8 +301,8 @@ def compute_hypothesis_status(findings: list[Finding]) -> dict[str, Any]:
         status = "NOT_STARTED"
         rationale = "No findings have been linked to this hypothesis yet."
     elif contradicting > 0:
-        status = "WEAKENED"
-        rationale = f"{contradicting} red-team challenge{'s' if contradicting != 1 else ''} weaken this hypothesis."
+        status = "CHALLENGED"
+        rationale = f"{contradicting} red-team challenge{'s' if contradicting != 1 else ''} directly challenge this hypothesis."
     elif counts["LOW_CONFIDENCE"] * 2 > total:
         status = "WEAKENED"
         rationale = "Most linked findings are low-confidence, so the hypothesis is not yet defensible."

@@ -140,12 +140,10 @@ def evaluate_gate_material(
         # without standard research workstreams), fall back to the old "any
         # milestone resolved" rule so the gate can still fire.
         _RESEARCH_WORKSTREAMS = {"W1", "W2"}
-        _INTERNAL_OPTIONAL_MILESTONES = {"W2.2", "W2.3"}
         _TERMINAL = {"delivered", "skipped", "blocked"}
         research_milestones = [
             m for m in (milestones or [])
             if (m.workstream_id or "").upper() in _RESEARCH_WORKSTREAMS
-            and (m.id or "").upper() not in _INTERNAL_OPTIONAL_MILESTONES
         ]
         if research_milestones:
             research_complete = all(
@@ -191,7 +189,6 @@ def evaluate_gate_material(
             ws_milestones = [
                 m for m in (milestones or [])
                 if (m.workstream_id or "").upper() == ws_id
-                and (m.id or "").upper() not in _INTERNAL_OPTIONAL_MILESTONES
             ]
             all_skipped = ws_milestones and all(
                 (m.status or "").lower() == "skipped" for m in ws_milestones

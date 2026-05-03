@@ -767,7 +767,6 @@ async def adversus_node(state: MarvinState) -> dict:
     """
     log_node_entry("adversus", state)
     mission_id = state.get("mission_id", "")
-    messages = state.get("messages", [])
     store = MissionStore()
     hypotheses = store.list_hypotheses(mission_id, status="active")
     hyp_text = "\n".join([f"[{hypothesis.id}] {hypothesis.text}" for hypothesis in hypotheses])
@@ -788,7 +787,11 @@ async def adversus_node(state: MarvinState) -> dict:
     from marvin.llm.transient import LLMTransientFailure, async_invoke_with_retry
 
     extra = apply_pending_steering(mission_id)
-    payload = {**state, "messages": messages + [msg] + extra}
+    # Red-team work should read persisted mission truth through tools and the
+    # explicit hypothesis prompt below. Avoid replaying the full accumulated
+    # conversation history into this long node; it is slow and repeats stale
+    # agent prose after resume.
+    payload = {**state, "messages": [msg] + extra}
 
     try:
         result = await async_invoke_with_retry(
@@ -905,7 +908,6 @@ async def merlin_node(state: MarvinState) -> dict:
     """Run merlin agent and determine next phase based on verdict."""
     log_node_entry("merlin", state)
     mission_id = state.get("mission_id", "")
-    messages = state.get("messages", [])
     store = MissionStore()
     latest_verdict = store.get_latest_merlin_verdict(mission_id)
     if latest_verdict is not None:
@@ -939,7 +941,13 @@ async def merlin_node(state: MarvinState) -> dict:
     from marvin.llm.transient import LLMTransientFailure, async_invoke_with_retry
 
     extra = apply_pending_steering(mission_id)
-    payload = {**state, "messages": messages + [msg] + extra}
+    # Merlin is a verdict pass, not a conversational continuation. Passing the
+    # full accumulated LangGraph message history makes this node slow and
+    # expensive on long missions, and can cause it to re-read stale agent prose.
+    # Keep mission_id/state fields, but give the agent only the current verdict
+    # instruction plus pending steering context; it can pull persisted truth via
+    # tools.
+    payload = {**state, "messages": [msg] + extra}
 
     try:
         result = await async_invoke_with_retry(

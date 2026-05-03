@@ -40,7 +40,7 @@ def test_weakened_when_adversus_contradicts() -> None:
         _f(conf="REASONED", agent="adversus", source=None, _id="f3"),
     ]
     r = compute_hypothesis_status(findings)
-    assert r["status"] == "WEAKENED"
+    assert r["status"] == "CHALLENGED"
     assert "red-team challenge" in r["rationale"]
     assert r["contradicting"] == 1
 

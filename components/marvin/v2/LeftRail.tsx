@@ -21,7 +21,7 @@ export interface LeftRailHypothesis {
   text: string;
   status: string;
   computed?: {
-    status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED";
+    status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED" | "CHALLENGED";
     rationale?: string;
     total: number;
     known: number;
@@ -106,13 +106,14 @@ function MissionCard({ mission }: { mission: MissionCardData }): React.ReactElem
 
 // ─── HypothesesRail ───────────────────────────────────────────────────────────
 
-type HypothesisStatus = "SUPPORTED" | "TESTING" | "WEAKENED" | "NOT_STARTED";
+type HypothesisStatus = "SUPPORTED" | "TESTING" | "WEAKENED" | "CHALLENGED" | "NOT_STARTED";
 
 function statusStyle(s: HypothesisStatus | string): { c: string; l: string } {
   const map: Record<string, { c: string; l: string }> = {
     SUPPORTED:   { c: "var(--green)", l: "Supported" },
     TESTING:     { c: "var(--amber)", l: "Testing" },
     WEAKENED:    { c: "var(--red)",   l: "Weakened" },
+    CHALLENGED:  { c: "var(--red)",   l: "Challenged" },
     NOT_STARTED: { c: "var(--muted)", l: "Pending" },
   };
   return map[s] ?? { c: "var(--muted)", l: s || "—" };
@@ -160,7 +161,7 @@ function HypothesesRail({
               {h.text}
             </span>
             <Mono size={9} weight={600} color={st.c} spacing=".08em" style={{ flexShrink: 0 }}>{st.l}</Mono>
-            {isSelected && c?.rationale && (
+            {c?.rationale && (
               <span
                 style={{
                   flexBasis: "100%",
@@ -169,6 +170,7 @@ function HypothesesRail({
                   fontSize: 10.5,
                   lineHeight: 1.45,
                   color: "var(--ink3)",
+                  display: isSelected || ["WEAKENED", "CHALLENGED"].includes(c.status) ? "block" : "none",
                 }}
               >
                 {c.rationale}
@@ -279,8 +281,8 @@ export function LeftRail({ mission, agents, hypotheses, deliverables, selectedHy
     }}>
       <MissionCard mission={missionData} />
       <HypothesesRail hypotheses={hypotheses} selectedHypothesisId={selectedHypothesisId} onSelectHypothesis={onSelectHypothesis} />
-      <DeliverablesRail deliverables={deliverables} />
       <AgentsRail agents={agentData} />
+      <DeliverablesRail deliverables={deliverables} />
     </aside>
   );
 }

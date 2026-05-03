@@ -196,8 +196,8 @@ def test_manager_gate_waits_for_delivered_milestone_reports(store: MissionStore)
                 created_at=now,
             )
         )
-    # W2.3 is intentionally missing: it is now an internal optional check, not
-    # a user-visible manager-review blocker.
+    # W2.3 is intentionally missing: if the backend delivered that milestone,
+    # the manager gate must wait until Papyrus has produced its report.
     for milestone_id, ws_id in (
         ("W1.1", "W1"),
         ("W1.2", "W1"),
@@ -220,11 +220,11 @@ def test_manager_gate_waits_for_delivered_milestone_reports(store: MissionStore)
 
     material = evaluate_gate_material(store, "m-gate", gate)
 
-    assert material.is_open is True
-    assert "deliverable_writing_in_progress" not in material.missing_material
+    assert material.is_open is False
+    assert "deliverable_writing_in_progress" in material.missing_material
 
 
-def test_manager_gate_ignores_internal_optional_financial_milestones(store: MissionStore):
+def test_manager_gate_allows_blocked_optional_financial_milestones_without_reports(store: MissionStore):
     now = datetime.now(UTC).isoformat()
     store.save_finding(
         Finding(
@@ -244,6 +244,8 @@ def test_manager_gate_ignores_internal_optional_financial_milestones(store: Miss
         ("W2.1", "Unit economics complete"),
     ):
         store.mark_milestone_delivered(milestone_id, label, "m-gate")
+    store.mark_milestone_blocked("W2.2", "optional public filings review not required", "m-gate")
+    store.mark_milestone_blocked("W2.3", "optional anomaly detection not required", "m-gate")
     for ws_id in ("W1", "W2"):
         store.save_deliverable(
             Deliverable(

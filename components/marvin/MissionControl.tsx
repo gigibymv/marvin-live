@@ -143,10 +143,9 @@ function agentForWorkstream(wsId: string | null | undefined): string | null {
   return WS_TO_AGENT[wsId.toUpperCase()] ?? null;
 }
 
-// W2.2/W2.3 were useful implementation probes while the financial workstream
-// was hardening, but they create confusing user-visible rows. The canonical
-// financial tab is the W2 report plus Unit economics/QoE output.
-const HIDDEN_MILESTONE_IDS = new Set(["W2.2", "W2.3"]);
+// W2.2/W2.3 are visible when the backend chooses to produce them. If they are
+// visible/delivered, tab completion and G1 must wait for their reports too.
+const HIDDEN_MILESTONE_IDS = new Set<string>();
 function isVisibleMilestone(milestone: { id?: string | null }): boolean {
   return !HIDDEN_MILESTONE_IDS.has(String(milestone.id ?? ""));
 }
@@ -196,7 +195,7 @@ interface MissionControlViewProps {
     text: string;
     status: string;
     computed?: {
-      status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED";
+      status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED" | "CHALLENGED";
       total: number;
       known: number;
       reasoned: number;
@@ -918,6 +917,18 @@ export default function MissionControl({
           case "narration": {
             if (!event.intent.trim()) {
               break;
+            }
+            if (event.agent) {
+              const agentDisplay = normalizeAgentName(event.agent);
+              const agentKey = String(event.agent).toLowerCase();
+              if (agentKey && !["marvin", "workflow"].includes(agentKey)) {
+                setActiveAgent(agentDisplay);
+                setActiveAgentSince(Date.now());
+                setAgentStatuses((current) => ({
+                  ...current,
+                  [agentKey]: "active",
+                }));
+              }
             }
             const narrationText = formatNarrationChatMessage({
               agent: normalizeAgentName(event.agent),
@@ -2624,7 +2635,13 @@ export default function MissionControl({
         completedEmptyText={completedEmptyText}
         onOpenDeliverable={(id: string) => setPreviewDeliverableId(id)}
         selectedHypothesisId={selectedHypothesisId}
-        onSelectHypothesis={(id: string | null) => setSelectedHypothesisId(prev => prev === id ? null : id)}
+        onSelectHypothesis={(id: string | null) => {
+          setSelectedHypothesisId(prev => prev === id ? null : id);
+          if (id) {
+            setWorkspaceTab(mission.id, "brief");
+            userPickedTabRef.current = true;
+          }
+        }}
       />
 
       {/* Chantier 4 CP3: deliverable preview modal. */}

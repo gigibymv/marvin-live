@@ -194,7 +194,7 @@ export async function getMissionProgress(missionId: string): Promise<{
     text: string;
     status: string;
     computed?: {
-      status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED";
+      status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED" | "CHALLENGED";
       rationale?: string;
       total: number;
       known: number;
