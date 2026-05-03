@@ -142,6 +142,10 @@ export async function getMissionProgress(missionId: string): Promise<{
     ic_question?: string | null;
     created_at: string;
     status: string;
+    active_agent?: string | null;
+    active_phase_agents?: string[];
+    synthesis_state?: string | null;
+    synthesis_complete_at?: string | null;
   };
   framing?: {
     mission_id: string;
@@ -222,6 +226,14 @@ export async function getMissionProgress(missionId: string): Promise<{
     label?: string;
     recommended_action?: string;
     notes: string | null;
+    ship_risk?: string | null;
+    hypothesis_updates?: Array<{
+      hypothesis_label: string;
+      next_status: string;
+      why: string;
+    }>;
+    recommended_actions?: string[];
+    synthesis_complete_at?: string | null;
     created_at: string | null;
   } | null;
 }> {

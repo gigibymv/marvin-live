@@ -10,9 +10,11 @@ Architecture:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
+from datetime import UTC, datetime
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -27,6 +29,7 @@ from marvin.graph.subgraphs.framing_orchestrator import (
     reset_clarification_state,
 )
 from marvin.graph.subgraphs.orchestrator import orchestrator_agent_node
+from marvin.graph.verdict_dossier import build_verdict_dossier
 from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore
 from marvin.runtime_debug import log_node_entry
@@ -536,8 +539,6 @@ async def framing_node(state: MarvinState) -> dict:
     if not raw_brief.strip():
         # The framing orchestrator may have already persisted a brief from
         # earlier turns. Use that as the source of truth before giving up.
-        from marvin.mission.store import MissionStore
-
         existing_brief = MissionStore().get_mission_brief(mission_id)
         if existing_brief and (existing_brief.raw_brief or "").strip():
             raw_brief = existing_brief.raw_brief
@@ -909,6 +910,7 @@ async def merlin_node(state: MarvinState) -> dict:
     log_node_entry("merlin", state)
     mission_id = state.get("mission_id", "")
     store = MissionStore()
+    store.update_mission_synthesis_state(mission_id, "running", None)
     latest_verdict = store.get_latest_merlin_verdict(mission_id)
     if latest_verdict is not None:
         final_gate = next(
@@ -924,15 +926,22 @@ async def merlin_node(state: MarvinState) -> dict:
                     "merlin_node: final review already available for %s; skipping duplicate Merlin pass",
                     mission_id,
                 )
+                if not store.get_mission(mission_id).synthesis_complete_at:
+                    store.update_mission_synthesis_state(
+                        mission_id,
+                        "complete",
+                        latest_verdict.synthesis_complete_at or datetime.now(UTC).isoformat(),
+                    )
                 return {"phase": "synthesis_done"}
 
+    dossier = build_verdict_dossier(store, mission_id)
     msg = HumanMessage(
         content=(
             f"Mission: {mission_id}\n"
-            "Task: Evaluate storyline quality.\n"
-            "Check MECE. Update action titles.\n"
-            "Call set_merlin_verdict(verdict=..., notes=...) before returning.\n"
-            "Verdict options: SHIP | MINOR_FIXES | BACK_TO_DRAWING_BOARD"
+            "Task: Judge the synthesis dossier and issue one bounded verdict.\n"
+            "Use only the dossier below. Do not explore with tools beyond set_merlin_verdict.\n"
+            "Verdict options: SHIP | MINOR_FIXES | BACK_TO_DRAWING_BOARD\n\n"
+            f"VERDICT_DOSSIER:\n{json.dumps(dossier, indent=2, sort_keys=True)}"
         )
     )
 
@@ -955,6 +964,7 @@ async def merlin_node(state: MarvinState) -> dict:
             agent="merlin",
         )
     except LLMTransientFailure as failure:
+        store.update_mission_synthesis_state(mission_id, "failed", None)
         _persist_transient_gate_failure(mission_id, failure, gate_type="final_review")
         return {"phase": "llm_transient_failure", "failed_agent": "merlin"}
     verdict_row = store.get_latest_merlin_verdict(mission_id)
@@ -974,6 +984,7 @@ async def merlin_node(state: MarvinState) -> dict:
                 "G3 cannot open without a verdict. Re-run synthesis to retry."
             )
         )
+        store.update_mission_synthesis_state(mission_id, "failed", None)
         return {**result, "phase": "merlin_failed", "messages": [err]}
     verdict = verdict_row.verdict
 
@@ -986,6 +997,14 @@ async def merlin_node(state: MarvinState) -> dict:
         last_finding_count=int(state.get("last_verdict_at_finding_count", 0) or 0),
         adversus_finding_count=adversus_count,
     )
+    if decision.get("phase") == "synthesis_done":
+        completed_at = datetime.now(UTC).isoformat()
+        if verdict_row.synthesis_complete_at != completed_at:
+            verdict_row = verdict_row.model_copy(update={"synthesis_complete_at": completed_at})
+            store.save_merlin_verdict(verdict_row)
+        store.update_mission_synthesis_state(mission_id, "complete", completed_at)
+    else:
+        store.update_mission_synthesis_state(mission_id, "retry_pending", None)
     return {**result, **decision}
 
 

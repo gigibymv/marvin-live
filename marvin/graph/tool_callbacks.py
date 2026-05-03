@@ -31,6 +31,7 @@ from uuid import UUID
 from langchain_core.callbacks import AsyncCallbackHandler
 
 from marvin.events import emit_graph_event
+from marvin.mission.store import MissionStore
 
 logger = logging.getLogger(__name__)
 
@@ -102,10 +103,22 @@ _ACTIVE_AGENT: dict[str, str] = {}
 def set_active_agent(mission_id: str, agent: str | None) -> None:
     if not mission_id:
         return
+    display = None
+    if agent:
+        display = _NODE_TO_AGENT.get(agent, agent)
     if agent:
         _ACTIVE_AGENT[mission_id] = agent
     else:
         _ACTIVE_AGENT.pop(mission_id, None)
+    try:
+        store = MissionStore()
+        if display:
+            store.update_mission_active_agent(mission_id, display)
+            store.update_mission_active_phase_agents(mission_id, [display])
+        else:
+            store.clear_mission_runtime_agents(mission_id)
+    except Exception:  # noqa: BLE001 — runtime truth is best-effort, never fatal
+        logger.debug("set_active_agent persistence failed for %s", mission_id, exc_info=True)
 
 
 def _resolve_agent(mission_id: str, metadata: dict | None) -> str:

@@ -395,15 +395,32 @@ def test_ask_question_returns_pending_payload(state: dict[str, str]):
 
 
 def test_set_and_check_merlin_verdict(store: MissionStore, state: dict[str, str]):
-    saved = mission_tools.set_merlin_verdict("SHIP", "Looks good", state)
+    saved = mission_tools.set_merlin_verdict(
+        "SHIP",
+        "Looks good",
+        hypothesis_updates=[{"hypothesis_label": "H1", "next_status": "SUPPORTED", "why": "Primary sourcing is strong."}],
+        recommended_actions=["Finalize the memo."],
+        ship_risk="low",
+        state=state,
+    )
     assert saved["verdict"] == "SHIP"
+    assert saved["ship_risk"] == "low"
+    assert saved["hypothesis_updates"][0]["hypothesis_label"] == "H1"
     checked = mission_tools.check_merlin_verdict(state)
     assert checked["verdict"] == "SHIP"
 
 
 def test_set_merlin_verdict_is_idempotent_for_same_pass(store: MissionStore, state: dict[str, str]):
-    first = mission_tools.set_merlin_verdict("BACK_TO_DRAWING_BOARD", "Need stronger sourcing.", state)
-    second = mission_tools.set_merlin_verdict("BACK_TO_DRAWING_BOARD", "Need stronger sourcing.", state)
+    kwargs = {
+        "hypothesis_updates": [
+            {"hypothesis_label": "H1", "next_status": "CHALLENGED", "why": "Adversus contradicted the claim."},
+        ],
+        "recommended_actions": ["Run targeted follow-up diligence on H1."],
+        "ship_risk": "high",
+        "state": state,
+    }
+    first = mission_tools.set_merlin_verdict("BACK_TO_DRAWING_BOARD", "Need stronger sourcing.", **kwargs)
+    second = mission_tools.set_merlin_verdict("BACK_TO_DRAWING_BOARD", "Need stronger sourcing.", **kwargs)
 
     assert second["verdict_id"] == first["verdict_id"]
     assert second["deduped"] is True

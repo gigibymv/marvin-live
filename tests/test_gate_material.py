@@ -343,11 +343,13 @@ def test_missing_material_lists_are_not_aliased(store: MissionStore):
 
 def test_final_gate_findings_total_counts_all_findings(store: MissionStore):
     now = datetime.now(UTC).isoformat()
+    store.update_mission_synthesis_state("m-gate", "complete", now)
     store.save_merlin_verdict(
         MerlinVerdict(
             id="mv-gate",
             mission_id="m-gate",
             verdict="SHIP",
+            synthesis_complete_at=now,
             created_at=now,
         )
     )

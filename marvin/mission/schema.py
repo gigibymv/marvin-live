@@ -26,6 +26,9 @@ class Mission(MarvinModel):
     ic_question: str | None = None
     status: str = "active"
     active_agent: str | None = None
+    active_phase_agents: list[str] = Field(default_factory=list)
+    synthesis_state: str | None = None
+    synthesis_complete_at: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
     clarification_rounds_used: int = 0
@@ -227,4 +230,8 @@ class MerlinVerdict(MarvinModel):
     verdict: MerlinVerdictValue
     gate_id: str | None = None
     notes: str | None = None
+    ship_risk: Literal["low", "medium", "high"] | None = None
+    hypothesis_updates: list[dict] = Field(default_factory=list)
+    recommended_actions: list[str] = Field(default_factory=list)
+    synthesis_complete_at: str | None = None
     created_at: str | None = None

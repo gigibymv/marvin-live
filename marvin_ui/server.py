@@ -1137,6 +1137,17 @@ async def _emit_run_end() -> str:
     return _sse_event("run_end", {})
 
 
+def _clear_runtime_agents(mission_id: str | None) -> None:
+    if not mission_id:
+        return
+    try:
+        from marvin.graph.tool_callbacks import set_active_agent
+
+        set_active_agent(mission_id, None)
+    except Exception:  # noqa: BLE001 - cleanup is best effort
+        logger.debug("_clear_runtime_agents failed for %s", mission_id, exc_info=True)
+
+
 _MISSION_COMPLETE_TEXT = (
     "Mission complete. The executive summary, data book, and workstream "
     "reports are ready for review. All deliverables have been generated "
@@ -1378,8 +1389,7 @@ async def _emit_for_update(
         if current_agent is not None:
             out.append(await _emit_agent_done(current_agent))
             current_agent = None
-            from marvin.graph.tool_callbacks import set_active_agent
-            set_active_agent(mission_id, None)
+            _clear_runtime_agents(mission_id)
         interrupts = event["__interrupt__"]
         if isinstance(interrupts, tuple) and interrupts:
             interrupt_value = getattr(interrupts[0], "value", None)
@@ -1405,11 +1415,19 @@ async def _emit_for_update(
             # sees "Mission complete" without lag.
             if new_phase == "done":
                 out.append(await _emit_mission_complete_once(mission_id))
+            if new_phase in {"synthesis_done", "done"} and current_agent is not None:
+                out.append(await _emit_agent_done(current_agent))
+                current_agent = None
+                _clear_runtime_agents(mission_id)
             current_phase = new_phase
 
         if output.get("phase_blocked"):
             blocked_payload = output["phase_blocked"]
             out.append(await _emit_phase_blocked(blocked_payload))
+            if current_agent is not None:
+                out.append(await _emit_agent_done(current_agent))
+                current_agent = None
+                _clear_runtime_agents(mission_id)
             if isinstance(blocked_payload, dict):
                 out.append(await _emit_narration("workflow", _phase_blocked_narration(blocked_payload)))
                 missing = blocked_payload.get("missing_material") or []
@@ -3145,6 +3163,10 @@ async def get_mission_progress(mission_id: str):
             "ic_question": mission.ic_question,
             "created_at": mission.created_at or "",
             "status": mission.status,
+            "active_agent": mission.active_agent,
+            "active_phase_agents": list(mission.active_phase_agents or []),
+            "synthesis_state": mission.synthesis_state,
+            "synthesis_complete_at": mission.synthesis_complete_at,
         },
         "framing": mission_brief.model_dump() if mission_brief else None,
         "gates": [
@@ -3207,6 +3229,10 @@ async def get_mission_progress(mission_id: str):
                 "label": consultant_verdict_label(v.verdict),
                 "recommended_action": consultant_verdict_action(v.verdict),
                 "notes": v.notes,
+                "ship_risk": v.ship_risk,
+                "hypothesis_updates": list(v.hypothesis_updates or []),
+                "recommended_actions": list(v.recommended_actions or []),
+                "synthesis_complete_at": v.synthesis_complete_at,
                 "created_at": v.created_at,
             }
             if (v := store.get_latest_merlin_verdict(mission_id))

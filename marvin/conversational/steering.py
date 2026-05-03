@@ -104,7 +104,10 @@ def apply_pending_steering(mission_id: str) -> list[HumanMessage]:
     """
     if not mission_id:
         return []
-    store = MissionStore()
+    try:
+        store = MissionStore()
+    except Exception:  # noqa: BLE001 - steering must never block the main run
+        return []
     pending = store.list_pending_steering(mission_id)
     if not pending:
         return []

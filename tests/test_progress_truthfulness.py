@@ -268,12 +268,14 @@ def test_manager_review_opens_after_research_finding(store: MissionStore, tmp_pa
     assert gates["final_review"]["lifecycle_status"] == "scheduled"
 
 
-def test_final_review_opens_after_merlin_verdict_and_redteam_finding(store: MissionStore):
+def test_final_review_opens_only_after_synthesis_complete(store: MissionStore):
+    store.update_mission_synthesis_state("m-progress", "complete", datetime.now(UTC).isoformat())
     store.save_merlin_verdict(
         MerlinVerdict(
             id="mv-progress",
             mission_id="m-progress",
             verdict="SHIP",
+            synthesis_complete_at=datetime.now(UTC).isoformat(),
             created_at=datetime.now(UTC).isoformat(),
         )
     )
@@ -298,6 +300,37 @@ def test_final_review_opens_after_merlin_verdict_and_redteam_finding(store: Miss
     assert gates["final_review"]["is_open"] is True
     assert gates["final_review"]["review_payload"]["merlin_verdict"]["verdict"] == "SHIP"
     assert gates["final_review"]["review_payload"]["redteam_findings"][0]["id"] == "f-redteam"
+
+
+def test_final_review_stays_scheduled_while_synthesis_running(store: MissionStore):
+    store.update_mission_synthesis_state("m-progress", "running", None)
+    store.save_merlin_verdict(
+        MerlinVerdict(
+            id="mv-progress-running",
+            mission_id="m-progress",
+            verdict="SHIP",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    store.save_finding(
+        Finding(
+            id="f-redteam-running",
+            mission_id="m-progress",
+            workstream_id="W4",
+            claim_text="Adversus challenge still being synthesized",
+            confidence="REASONED",
+            agent_id="adversus",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    g2 = next(g for g in store.list_gates("m-progress") if g.gate_type == "manager_review")
+    store.update_gate_status(g2.id, "completed", "approved-for-test")
+
+    payload = asyncio.run(srv.get_mission_progress("m-progress"))
+    gates = {gate["gate_type"]: gate for gate in payload["gates"]}
+
+    assert gates["final_review"]["lifecycle_status"] == "scheduled"
+    assert "synthesis_incomplete" in gates["final_review"]["missing_material"]
 
 
 def test_validate_gate_rejects_scheduled_gate_without_material(store: MissionStore):

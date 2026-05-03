@@ -26,6 +26,25 @@ def _decode_json_list(value: object) -> list[str]:
             return [str(item) for item in decoded]
     return []
 
+
+def _decode_json_value(value: object, *, default: object) -> object:
+    """Decode a JSON-encoded TEXT column into its structured value."""
+    if value is None or value == "":
+        return default
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode("utf-8", errors="ignore")
+        except Exception:  # noqa: BLE001
+            return default
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return default
+    return default
+
 from marvin.mission.schema import (
     DataRoomFile,
     DealTerms,
@@ -207,6 +226,17 @@ class MissionStore:
         """Add columns introduced after initial schema, idempotent for existing DBs."""
         for table, column, ddl in (
             ("missions", "active_agent", "ALTER TABLE missions ADD COLUMN active_agent TEXT"),
+            (
+                "missions",
+                "active_phase_agents",
+                "ALTER TABLE missions ADD COLUMN active_phase_agents TEXT DEFAULT '[]'",
+            ),
+            ("missions", "synthesis_state", "ALTER TABLE missions ADD COLUMN synthesis_state TEXT"),
+            (
+                "missions",
+                "synthesis_complete_at",
+                "ALTER TABLE missions ADD COLUMN synthesis_complete_at TEXT",
+            ),
             ("deliverables", "status", "ALTER TABLE deliverables ADD COLUMN status TEXT DEFAULT 'pending'"),
             (
                 "missions",
@@ -245,6 +275,22 @@ class MissionStore:
             # gate timestamps — enable timing diagnostics on gate open/close.
             ("gates", "opened_at", "ALTER TABLE gates ADD COLUMN opened_at TEXT"),
             ("gates", "closed_at", "ALTER TABLE gates ADD COLUMN closed_at TEXT"),
+            ("merlin_verdicts", "ship_risk", "ALTER TABLE merlin_verdicts ADD COLUMN ship_risk TEXT"),
+            (
+                "merlin_verdicts",
+                "hypothesis_updates",
+                "ALTER TABLE merlin_verdicts ADD COLUMN hypothesis_updates TEXT DEFAULT '[]'",
+            ),
+            (
+                "merlin_verdicts",
+                "recommended_actions",
+                "ALTER TABLE merlin_verdicts ADD COLUMN recommended_actions TEXT DEFAULT '[]'",
+            ),
+            (
+                "merlin_verdicts",
+                "synthesis_complete_at",
+                "ALTER TABLE merlin_verdicts ADD COLUMN synthesis_complete_at TEXT",
+            ),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
@@ -342,18 +388,26 @@ class MissionStore:
         if model_cls is Mission:
             raw = data.get("clarification_answers")
             data["clarification_answers"] = _decode_json_list(raw)
+            data["active_phase_agents"] = _decode_json_list(data.get("active_phase_agents"))
         if model_cls is Gate:
             raw = data.get("questions")
             data["questions"] = _decode_json_list(raw) or None
+        if model_cls is MerlinVerdict:
+            data["hypothesis_updates"] = _decode_json_value(
+                data.get("hypothesis_updates"),
+                default=[],
+            )
+            data["recommended_actions"] = _decode_json_list(data.get("recommended_actions"))
         return model_cls.model_validate(data)
 
     def save_mission(self, mission: Mission) -> Mission:
         self._execute(
             """
             INSERT OR REPLACE INTO missions
-            (id, client, target, mission_type, ic_question, status, active_agent, created_at, updated_at,
+            (id, client, target, mission_type, ic_question, status, active_agent, active_phase_agents,
+             synthesis_state, synthesis_complete_at, created_at, updated_at,
              clarification_rounds_used, clarification_answers, data_room_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 mission.id,
@@ -363,6 +417,9 @@ class MissionStore:
                 mission.ic_question,
                 mission.status,
                 mission.active_agent,
+                json.dumps(list(mission.active_phase_agents or [])),
+                mission.synthesis_state,
+                mission.synthesis_complete_at,
                 mission.created_at,
                 mission.updated_at,
                 int(mission.clarification_rounds_used or 0),
@@ -379,11 +436,34 @@ class MissionStore:
             (active_agent, mission_id),
         )
 
+    def update_mission_active_phase_agents(self, mission_id: str, active_agents: list[str]) -> None:
+        self._execute(
+            "UPDATE missions SET active_phase_agents = ? WHERE id = ?",
+            (json.dumps(list(active_agents or [])), mission_id),
+        )
+
+    def clear_mission_runtime_agents(self, mission_id: str) -> None:
+        self._execute(
+            "UPDATE missions SET active_agent = NULL, active_phase_agents = '[]' WHERE id = ?",
+            (mission_id,),
+        )
+
     def update_mission_status(self, mission_id: str, status: str) -> None:
         """Transition mission status (e.g. active → complete). No-op if mission missing."""
         self._execute(
             "UPDATE missions SET status = ? WHERE id = ?",
             (status, mission_id),
+        )
+
+    def update_mission_synthesis_state(
+        self,
+        mission_id: str,
+        synthesis_state: str | None,
+        synthesis_complete_at: str | None = None,
+    ) -> None:
+        self._execute(
+            "UPDATE missions SET synthesis_state = ?, synthesis_complete_at = ? WHERE id = ?",
+            (synthesis_state, synthesis_complete_at, mission_id),
         )
 
     def get_mission(self, mission_id: str) -> Mission:
@@ -1131,8 +1211,9 @@ class MissionStore:
         self._execute(
             """
             INSERT OR REPLACE INTO merlin_verdicts
-            (id, mission_id, verdict, gate_id, notes, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (id, mission_id, verdict, gate_id, notes, ship_risk, hypothesis_updates,
+             recommended_actions, synthesis_complete_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 verdict.id,
@@ -1140,6 +1221,10 @@ class MissionStore:
                 verdict.verdict,
                 verdict.gate_id,
                 verdict.notes,
+                verdict.ship_risk,
+                json.dumps(list(verdict.hypothesis_updates or [])),
+                json.dumps(list(verdict.recommended_actions or [])),
+                verdict.synthesis_complete_at,
                 verdict.created_at,
             ),
         )

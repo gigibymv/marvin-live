@@ -82,6 +82,26 @@ export function mapGateReviewPayloadToModal(
       label: asString(merlinVerdict.label) ?? null,
       recommendedAction: asString(merlinVerdict.recommended_action) ?? asString(merlinVerdict.recommendedAction) ?? null,
       notes: asString(merlinVerdict.notes) ?? null,
+      shipRisk: asString(merlinVerdict.ship_risk) ?? asString(merlinVerdict.shipRisk) ?? null,
+      hypothesisUpdates: Array.isArray(merlinVerdict.hypothesis_updates)
+        ? (merlinVerdict.hypothesis_updates as Array<Record<string, unknown>>)
+            .map((row) => ({
+              hypothesisLabel: asString(row.hypothesis_label) ?? asString(row.hypothesisLabel) ?? "",
+              nextStatus: asString(row.next_status) ?? asString(row.nextStatus) ?? "",
+              why: asString(row.why) ?? "",
+            }))
+            .filter((row) => row.hypothesisLabel && row.nextStatus && row.why)
+        : Array.isArray(merlinVerdict.hypothesisUpdates)
+          ? (merlinVerdict.hypothesisUpdates as Array<Record<string, unknown>>)
+              .map((row) => ({
+                hypothesisLabel: asString(row.hypothesis_label) ?? asString(row.hypothesisLabel) ?? "",
+                nextStatus: asString(row.next_status) ?? asString(row.nextStatus) ?? "",
+                why: asString(row.why) ?? "",
+              }))
+              .filter((row) => row.hypothesisLabel && row.nextStatus && row.why)
+          : undefined,
+      recommendedActions: asStringArray(merlinVerdict.recommended_actions) ?? asStringArray(merlinVerdict.recommendedActions),
+      synthesisCompleteAt: asString(merlinVerdict.synthesis_complete_at) ?? asString(merlinVerdict.synthesisCompleteAt) ?? null,
       created_at: asString(merlinVerdict.created_at) ?? null,
     } : undefined,
     weakestLinks: Array.isArray(payload.weakest_links)

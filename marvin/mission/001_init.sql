@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS missions (
     ic_question TEXT,
     status TEXT DEFAULT 'active',
     active_agent TEXT,
+    active_phase_agents TEXT DEFAULT '[]',
+    synthesis_state TEXT,
+    synthesis_complete_at TEXT,
     created_at TEXT,
     updated_at TEXT
 );
@@ -165,6 +168,10 @@ CREATE TABLE IF NOT EXISTS merlin_verdicts (
         CHECK (verdict IN ('SHIP','MINOR_FIXES','BACK_TO_DRAWING_BOARD')),
     gate_id TEXT,
     notes TEXT,
+    ship_risk TEXT,
+    hypothesis_updates TEXT DEFAULT '[]',
+    recommended_actions TEXT DEFAULT '[]',
+    synthesis_complete_at TEXT,
     created_at TEXT
 );
 

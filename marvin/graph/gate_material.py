@@ -298,12 +298,19 @@ def evaluate_gate_material(
             (g for g in store.list_gates(mission_id) if g.gate_type == "manager_review"),
             None,
         )
+        mission = store.get_mission(mission_id)
         if manager_gate is None or manager_gate.status != "completed":
             missing_material.append("prior_gate_pending")
+        if mission.synthesis_state != "complete" or not mission.synthesis_complete_at:
+            missing_material.append("synthesis_incomplete")
         if merlin_verdict is None:
             missing_material.append("merlin_verdict")
         if not redteam_findings:
             missing_material.append("redteam_evidence")
+        if list(mission.active_phase_agents or []):
+            missing_material.append("agent_active")
+        if (mission.active_agent or "").strip().lower() == "papyrus":
+            missing_material.append("delivery_in_progress")
         open_risks = [
             f["claim_text"]
             for f in redteam_findings
@@ -318,6 +325,7 @@ def evaluate_gate_material(
                 "open_risks": open_risks,
                 "arbiter_flags": arbiter_flags or [],
                 "findings_total": len(findings),
+                "synthesis_complete_at": mission.synthesis_complete_at,
             }
         )
 
@@ -435,5 +443,9 @@ def _verdict_payload(verdict: MerlinVerdict | None) -> dict[str, Any] | None:
         "label": consultant_verdict_label(verdict.verdict),
         "recommended_action": consultant_verdict_action(verdict.verdict),
         "notes": verdict.notes,
+        "ship_risk": verdict.ship_risk,
+        "hypothesis_updates": list(verdict.hypothesis_updates or []),
+        "recommended_actions": list(verdict.recommended_actions or []),
+        "synthesis_complete_at": verdict.synthesis_complete_at,
         "created_at": verdict.created_at,
     }

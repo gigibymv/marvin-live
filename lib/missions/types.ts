@@ -95,6 +95,14 @@ export interface MissionGateMerlinVerdict {
   label?: string | null;
   recommendedAction?: string | null;
   notes?: string | null;
+  shipRisk?: string | null;
+  hypothesisUpdates?: Array<{
+    hypothesisLabel: string;
+    nextStatus: string;
+    why: string;
+  }>;
+  recommendedActions?: string[];
+  synthesisCompleteAt?: string | null;
   created_at?: string | null;
 }
 

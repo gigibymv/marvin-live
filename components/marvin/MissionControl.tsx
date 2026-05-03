@@ -196,6 +196,7 @@ interface MissionControlViewProps {
     status: string;
     computed?: {
       status: "NOT_STARTED" | "TESTING" | "SUPPORTED" | "WEAKENED" | "CHALLENGED";
+      rationale?: string;
       total: number;
       known: number;
       reasoned: number;
@@ -1041,6 +1042,16 @@ export default function MissionControl({
             });
             setPausedForGate(true);
             setLatestNarration(null);
+            setActiveAgent(null);
+            setActiveAgentSince(null);
+            setActiveAgentElapsed(0);
+            setAgentStatuses((current) => {
+              const next: Record<string, "idle" | "active" | "done"> = { ...current };
+              for (const key of Object.keys(next)) {
+                if (next[key] === "active") next[key] = "done";
+              }
+              return next;
+            });
             setRunState(missionId, { isStreaming: false });
             void refreshProgress();
             break;
@@ -1229,6 +1240,16 @@ export default function MissionControl({
           case "run_end":
             setPausedForGate(false);
             setLatestNarration(null);
+            setActiveAgent(null);
+            setActiveAgentSince(null);
+            setActiveAgentElapsed(0);
+            setAgentStatuses((current) => {
+              const next: Record<string, "idle" | "active" | "done"> = { ...current };
+              for (const key of Object.keys(next)) {
+                if (next[key] === "active") next[key] = "done";
+              }
+              return next;
+            });
             setRunState(missionId, { isStreaming: false });
             setGateActionInFlight(null);
             // Multi-stage refresh: a detached driver may emit deliverables
@@ -1800,6 +1821,50 @@ export default function MissionControl({
     });
   }, [pendingGateForEffect?.id]);
 
+  const authoritativeActiveAgents = useMemo(
+    () =>
+      (((progress?.mission as any)?.active_phase_agents ?? []) as string[])
+        .map((agent) => normalizeAgentName(agent))
+        .filter(Boolean),
+    [JSON.stringify((progress?.mission as any)?.active_phase_agents ?? [])],
+  );
+  const authoritativeSynthesisState = (progress?.mission as any)?.synthesis_state ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (authoritativeActiveAgents.length > 0) {
+      const [first] = authoritativeActiveAgents;
+      setActiveAgent(first);
+      setActiveAgentSince((current) => current ?? Date.now());
+      setAgentStatuses((current) => {
+        const next: Record<string, "idle" | "active" | "done"> = { ...current };
+        const activeSet = new Set(authoritativeActiveAgents.map((agent) => agent.toLowerCase()));
+        for (const key of Object.keys(next)) {
+          if (activeSet.has(key)) next[key] = "active";
+          else if (next[key] === "active") next[key] = "done";
+        }
+        for (const agent of activeSet) next[agent] = "active";
+        return next;
+      });
+      return;
+    }
+    if (
+      pausedForGate
+      || authoritativeSynthesisState === "complete"
+      || (progress?.mission as any)?.status === "complete"
+    ) {
+      setActiveAgent(null);
+      setActiveAgentSince(null);
+      setActiveAgentElapsed(0);
+      setAgentStatuses((current) => {
+        const next: Record<string, "idle" | "active" | "done"> = { ...current };
+        for (const key of Object.keys(next)) {
+          if (next[key] === "active") next[key] = "done";
+        }
+        return next;
+      });
+    }
+  }, [authoritativeActiveAgents.join("|"), pausedForGate, authoritativeSynthesisState, (progress?.mission as any)?.status]);
+
   // P14 + React-rules: this useMemo MUST sit above the early returns below;
   // otherwise hook count varies between renders → React error #310.
   const seedDeliverables = useMemo(
@@ -1878,12 +1943,14 @@ export default function MissionControl({
   // milestone_done SSE event captured in milestoneStatusOverrides.
   const allMilestones = progress?.milestones ?? [];
   const visibleMilestones = allMilestones.filter(isVisibleMilestone);
+  const authoritativeActiveAgentSet = new Set(authoritativeActiveAgents.map((agent) => agent.toLowerCase()));
   // 9-bug triage F: synthesize a Papyrus row for the agents panel. Papyrus
   // has no workstream of its own — it writes deliverables across the run —
   // so the workstream-derived map below would never surface it. We infer
   // its state from (a) the most recent narration agent and (b) whether
   // any deliverable exists yet.
-  const papyrusActive = (latestNarration ?? "").startsWith("Papyrus —")
+  const papyrusActive = authoritativeActiveAgentSet.has("papyrus")
+    || (latestNarration ?? "").startsWith("Papyrus —")
     || agentStatuses["papyrus"] === "active";
   const anyDeliverableReady = (progress?.deliverables ?? []).some((d: any) => d.status === "ready");
   const papyrusRow = {
@@ -1902,7 +1969,9 @@ export default function MissionControl({
       return (liveStatus ?? m.status) === "delivered";
     }).length;
     const agentKey = ws.assigned_agent?.toLowerCase() ?? ws.id;
-    const liveStatus = agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
+    const liveStatus = authoritativeActiveAgentSet.has(agentKey)
+      ? "active"
+      : agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
     const hasBlockedMilestone = wsMilestones.some(m => {
       const live = milestoneStatusOverrides[m.id];
       return (live ?? m.status) === "blocked";
@@ -2113,8 +2182,36 @@ export default function MissionControl({
     statusLabel: missionStatusLabel,
   };
 
-  // Compute hypotheses
-  const hypotheses = progress?.hypotheses ?? [];
+  // Compute hypotheses. Merlin's structured verdict can attach consultant-
+  // facing "why challenged / weakened" explanations that are more specific
+  // than the generic finding-count rationale. Prefer those when present.
+  const hypotheses = useMemo(() => {
+    const base = progress?.hypotheses ?? [];
+    const updates = (((progress as any)?.merlin_verdict?.hypothesis_updates ?? []) as Array<any>)
+      .filter((row) => row && typeof row === "object");
+    if (!updates.length) return base;
+    const updateEntries: Array<[string, { nextStatus: string; why: string }]> = updates
+      .map((row) => {
+        const label = String(row.hypothesis_label ?? row.hypothesisLabel ?? "").trim();
+        const nextStatus = String(row.next_status ?? row.nextStatus ?? "").trim().toUpperCase();
+        const why = String(row.why ?? "").trim();
+        return [label, { nextStatus, why }] as [string, { nextStatus: string; why: string }];
+      })
+      .filter(([label, payload]) => Boolean(label) && Boolean(payload.why));
+    const updateByLabel = new Map<string, { nextStatus: string; why: string }>(updateEntries);
+    return base.map((hypothesis: any) => {
+      const update = updateByLabel.get(String(hypothesis.label ?? "").trim());
+      if (!update) return hypothesis;
+      return {
+        ...hypothesis,
+        computed: {
+          ...(hypothesis.computed ?? {}),
+          status: update.nextStatus || hypothesis.computed?.status || "TESTING",
+          rationale: update.why,
+        },
+      };
+    });
+  }, [progress?.hypotheses, (progress as any)?.merlin_verdict?.hypothesis_updates]);
 
   // Compute section outputs (findings + milestones + deliverables). The center
   // pane is scoped to an explicit section, so Brief, Synthesis, Stress testing,
@@ -2142,9 +2239,9 @@ export default function MissionControl({
     brief: "Brief",
     W1: "Market analysis",
     W2: "Financial analysis",
-    W3_4: "Red team & verdict",
-    W3: "Red team & verdict",
-    W4: "Red team & verdict",
+    W3_4: "Stress test",
+    W3: "Stress test",
+    W4: "Stress test",
     final: "Final deliverables",
   };
   const workstreamLabel = sectionLabelById[selectedSectionId] ?? "section";
@@ -2292,12 +2389,18 @@ export default function MissionControl({
     const baseRow = {
       kind: "deliverable" as const,
       ag: "Merlin",
-      text: `Synthesis · ${verdictLabel || "Verdict"}`,
-      claim_text: `Synthesis · ${verdictLabel || "Verdict"}`,
+      text: `Merlin verdict · ${verdictLabel || "Verdict"}`,
+      claim_text: `Merlin verdict · ${verdictLabel || "Verdict"}`,
       confidence: verdictLabel,
       agent_id: "merlin",
       ts: v.created_at ?? "",
-      source_id: stripVerdictScaffolding([v.recommended_action, prose].filter(Boolean).join(" ")) || null,
+      source_id: stripVerdictScaffolding(
+        [
+          v.recommended_action,
+          ...(Array.isArray(v.recommended_actions) ? v.recommended_actions : []),
+          prose,
+        ].filter(Boolean).join("\n\n"),
+      ) || null,
     };
     return [
       { ...baseRow, id: `synthesis-verdict-w3-${v.created_at ?? "current"}`, section_id: null, workstream_id: "W3" },
@@ -2372,7 +2475,9 @@ export default function MissionControl({
       return (liveStatus ?? m.status) === "delivered";
     }).length;
     const agentKey = ws.assigned_agent?.toLowerCase() ?? ws.id.toLowerCase();
-    const liveStatus = agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
+    const liveStatus = authoritativeActiveAgentSet.has(agentKey)
+      ? "active"
+      : agentStatuses[agentKey] ?? (activeAgent?.toLowerCase() === agentKey ? "active" : "idle");
     const wsHasReadyDeliverable = seedDeliverables.some((d) => {
       if (d.status !== "ready") return false;
       return routeDeliverableToSectionId({
@@ -2494,7 +2599,7 @@ export default function MissionControl({
     { id: "brief", label: "Brief", status: briefStatus },
     { id: "ws1", label: "Market analysis", status: workstreamStatus("W1") },
     { id: "ws2", label: "Financial analysis", status: workstreamStatus("W2") },
-    { id: "ws3", label: "Red team & verdict", status: mergedRedTeamStatus },
+    { id: "ws3", label: "Stress test", status: mergedRedTeamStatus },
     { id: "final", label: "Final deliverables", status: hasFinalDeliverables ? "completed" : "pending" },
   ];
   const hasLiveStep = baseSectionTabs.some((tab) => tab.status === "now" || tab.status === "in_progress");
@@ -2944,6 +3049,25 @@ export default function MissionControl({
                   {gateModal.merlinVerdict.notes && (
                     <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
                       {stripVerdictScaffolding(gateModal.merlinVerdict.notes)}
+                    </div>
+                  )}
+                  {gateModal.merlinVerdict.recommendedActions && gateModal.merlinVerdict.recommendedActions.length > 0 && (
+                    <div style={{ marginTop: "8px", display: "grid", gap: "4px" }}>
+                      {gateModal.merlinVerdict.recommendedActions.map((action, index) => (
+                        <div key={`${action}-${index}`} style={{ fontSize: "11px", lineHeight: 1.45, color: "#3a362f" }}>
+                          - {action}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {gateModal.merlinVerdict.hypothesisUpdates && gateModal.merlinVerdict.hypothesisUpdates.length > 0 && (
+                    <div style={{ marginTop: "10px", display: "grid", gap: "6px" }}>
+                      {gateModal.merlinVerdict.hypothesisUpdates.map((update) => (
+                        <div key={`${update.hypothesisLabel}-${update.nextStatus}`} style={{ fontSize: "11px", lineHeight: 1.45, color: "#3a362f" }}>
+                          <strong>{update.hypothesisLabel}</strong> · {humanizeText(update.nextStatus)}<br />
+                          {update.why}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

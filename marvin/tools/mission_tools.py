@@ -1026,6 +1026,9 @@ def _emit_merlin_narration(mission_id: str, intent: str) -> None:
 def set_merlin_verdict(
     verdict: str,
     notes: str,
+    hypothesis_updates: list[dict[str, Any]] | None = None,
+    recommended_actions: list[str] | None = None,
+    ship_risk: str | None = None,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
     """Record Merlin's final verdict for the mission."""
@@ -1034,11 +1037,36 @@ def set_merlin_verdict(
     g3_gate = next((gate for gate in store.list_gates(mission_id) if gate.scheduled_day == 10), None)
     normalized_verdict = str(verdict).strip()
     normalized_notes = str(notes or "").strip()
+    normalized_updates = []
+    for update in hypothesis_updates or []:
+        if not isinstance(update, dict):
+            continue
+        label = str(update.get("hypothesis_label") or "").strip()
+        next_status = str(update.get("next_status") or "").strip().upper()
+        why = str(update.get("why") or "").strip()
+        if not label or not next_status or not why:
+            continue
+        normalized_updates.append(
+            {
+                "hypothesis_label": label,
+                "next_status": next_status,
+                "why": why,
+            }
+        )
+    normalized_actions = [
+        str(action).strip()
+        for action in (recommended_actions or [])
+        if str(action or "").strip()
+    ]
+    normalized_ship_risk = str(ship_risk or "").strip().lower() or None
     latest = store.get_latest_merlin_verdict(mission_id)
     if (
         latest is not None
         and latest.verdict == normalized_verdict
         and (latest.notes or "").strip() == normalized_notes
+        and list(latest.hypothesis_updates or []) == normalized_updates
+        and list(latest.recommended_actions or []) == normalized_actions
+        and (latest.ship_risk or None) == normalized_ship_risk
         and (latest.gate_id or None) == (g3_gate.id if g3_gate else None)
     ):
         return {"verdict": latest.verdict, "verdict_id": latest.id, "deduped": True}
@@ -1050,6 +1078,9 @@ def set_merlin_verdict(
         verdict=normalized_verdict,
         gate_id=g3_gate.id if g3_gate else None,
         notes=normalized_notes,
+        ship_risk=normalized_ship_risk,
+        hypothesis_updates=normalized_updates,
+        recommended_actions=normalized_actions,
         created_at=utc_now_iso(),
     )
     store.save_merlin_verdict(verdict_row)
@@ -1083,7 +1114,13 @@ def set_merlin_verdict(
         )
     except Exception:  # noqa: BLE001 — defensive: verdict persistence is the contract; finding is UX only
         pass
-    return {"verdict": verdict_row.verdict, "verdict_id": verdict_row.id}
+    return {
+        "verdict": verdict_row.verdict,
+        "verdict_id": verdict_row.id,
+        "ship_risk": verdict_row.ship_risk,
+        "hypothesis_updates": verdict_row.hypothesis_updates,
+        "recommended_actions": verdict_row.recommended_actions,
+    }
 
 
 def check_merlin_verdict(state: InjectedStateArg = None) -> dict[str, Any]:
