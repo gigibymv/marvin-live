@@ -14,6 +14,16 @@ Scope reconstructed from commits:
 
 I found the fixes below in commits/tests. I did not find a single pre-existing debug document that listed them all, so this section is the consolidated ledger.
 
+### Mission page crashed with React error #310
+
+**Symptom:** Opening a mission page could fall into the generic "Something went wrong" screen with minified React error `#310`.
+
+**Root cause:** A new `useMemo` for hypothesis enrichment in `MissionControl.tsx` had been added below `if (!hasLoaded) return null`, so hook count varied across renders.
+
+**Fix:** Moved the `hypotheses` `useMemo` back into the hook-safe zone above all early returns, preserving stable hook order across renders.
+
+**Files touched:** `components/marvin/MissionControl.tsx`
+
 ### Final deliverables tab showed Red Team / Merlin content
 
 **Symptom:** The `Final deliverables` tab showed the same synthesis verdict content as `Red team & verdict`; `Exec summary` and `Data book` appeared in the left rail but not as the primary final-tab content.

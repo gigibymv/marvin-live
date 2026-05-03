@@ -256,7 +256,7 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
       gap: 10,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <Mono size={9} weight={700} color={agentColor(f.agent ?? "MARVIN", "rgba(244,240,234,.45)")} spacing=".06em" style={{ minWidth: 52 }}>
+        <Mono size={9} weight={700} color={agentColor(f.agent ?? "MARVIN", "rgba(244,240,234,.82)")} spacing=".06em" style={{ minWidth: 52 }}>
           {f.agent ?? "MARVIN"}
         </Mono>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--paper)", lineHeight: 1.6 }}>
