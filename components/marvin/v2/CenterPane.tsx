@@ -151,6 +151,9 @@ function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolea
   // inline "IN PROGRESS" status label rather than hiding the row entirely.
   // This surfaces that the report is still generating vs. silently absent.
   const hasFile = !!f.onOpen;
+  if (isTerminal && !hasFile) {
+    return null;
+  }
   if (!hasFile) {
     return (
       <div style={{

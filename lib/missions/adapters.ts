@@ -175,6 +175,7 @@ const DELIVERABLE_LABELS: Record<string, string> = {
   engagement_brief: "Engagement brief",
   framing_memo: "Framing memo",
   exec_summary: "Exec summary",
+  executive_summary: "Executive summary",
   data_book: "Data book",
 };
 
@@ -216,6 +217,7 @@ export function routeDeliverableToSectionId(deliverable: {
     framing_memo: "brief",
     investment_memo: "final",
     exec_summary: "final",
+    executive_summary: "final",
     data_book: "final",
     report_pdf: "final",
   };

@@ -376,6 +376,7 @@ describe("MissionControl UX slice", () => {
     expect(routeDeliverableToSectionId({ deliverable_type: "engagement_brief" })).toBe("brief");
     expect(routeDeliverableToSectionId({ deliverable_type: "framing_memo" })).toBe("brief");
     expect(routeDeliverableToSectionId({ deliverable_type: "exec_summary" })).toBe("final");
+    expect(routeDeliverableToSectionId({ deliverable_type: "executive_summary" })).toBe("final");
     expect(routeDeliverableToSectionId({ deliverable_type: "investment_memo" })).toBe("final");
     expect(routeDeliverableToSectionId({ deliverable_type: "market_brief" })).toBe("W1");
     expect(routeDeliverableToSectionId({ deliverable_type: "risk_register" })).toBe("W4");
@@ -389,6 +390,59 @@ describe("MissionControl UX slice", () => {
     expect(routeOutputToSectionId({ agent_id: "adversus" })).toBe("W4");
     expect(routeOutputToSectionId({ section_id: "final", workstream_id: "W1" })).toBe("final");
     expect(routeOutputToSectionId({ workstreamId: "unknown" })).toBeNull();
+  });
+
+  it("shows final deliverables without leaking synthesis verdict content", () => {
+    render(
+      React.createElement(MissionControlV2View, {
+        mission: { ...baseMission, status: "completed", progress: 1 },
+        messages: [],
+        initialMessages: [],
+        chatDraft: "",
+        onChatDraftChange: () => {},
+        onSendMessage: () => {},
+        selectedTab: "final",
+        onSelectTab: () => {},
+        isTyping: false,
+        defaultTab: "brief",
+        onGateClose: () => {},
+        agents: [],
+        checkpoints: [],
+        hypotheses: [],
+        findings: [
+          {
+            id: "synthesis-w3",
+            kind: "deliverable",
+            agent_id: "merlin",
+            claim_text: "Synthesis · Evidence gaps — not ready",
+            confidence: "Evidence gaps — not ready",
+            workstream_id: "W3",
+          },
+          {
+            id: "d-exec",
+            kind: "deliverable",
+            agent_id: "MARVIN",
+            claim_text: "Deliverable ready · Exec summary",
+            confidence: "READY",
+            section_id: "final",
+          },
+          {
+            id: "d-book",
+            kind: "deliverable",
+            agent_id: "MARVIN",
+            claim_text: "Deliverable ready · Data book",
+            confidence: "READY",
+            section_id: "final",
+          },
+        ],
+        deliverables: [],
+        activeAgent: null,
+      }),
+    );
+
+    expect(screen.getByText("Deliverable ready · Exec summary")).toBeInTheDocument();
+    expect(screen.getByText("Deliverable ready · Data book")).toBeInTheDocument();
+    expect(screen.queryByText("Synthesis · Evidence gaps — not ready")).not.toBeInTheDocument();
   });
 
   it("labels workstream reports by section", () => {

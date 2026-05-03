@@ -2299,12 +2299,8 @@ export default function MissionControl({
       ts: v.created_at ?? "",
       source_id: stripVerdictScaffolding([v.recommended_action, prose].filter(Boolean).join(" ")) || null,
     };
-    // Surface the verdict on BOTH Synthesis (W3) and Final deliverables (final)
-    // so the final tab isn't just a bare file list — the user sees the
-    // verdict + prose at the top of the IC handoff view.
     return [
       { ...baseRow, id: `synthesis-verdict-w3-${v.created_at ?? "current"}`, section_id: null, workstream_id: "W3" },
-      { ...baseRow, id: `synthesis-verdict-final-${v.created_at ?? "current"}`, section_id: "final", workstream_id: null },
     ];
   })();
   // Live findings (SSE-driven, not yet persisted to /progress.findings) are
