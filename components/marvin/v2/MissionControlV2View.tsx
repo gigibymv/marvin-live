@@ -403,6 +403,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
           onSelectTab={onSelectTab}
           latestTrace={latestTrace ?? null}
           highlightHypothesisId={selectedHypothesisId}
+          briefHypotheses={hypotheses}
         />
       </div>
 
@@ -417,6 +418,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
         onGateApprove={onGateApprove ? (gateId) => onGateApprove(gateId, "") : undefined}
         onGateReject={onGateReject ? (gateId) => onGateReject(gateId, "") : undefined}
         onGateReview={pendingGateBanner?.onResume ? () => pendingGateBanner.onResume() : undefined}
+        gateHypotheses={hypotheses}
       />
     </div>
   );

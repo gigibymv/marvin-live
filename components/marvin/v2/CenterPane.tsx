@@ -68,6 +68,7 @@ export interface CenterPaneProps {
   // When set (brief tab only), finding rows whose hypothesis_label contains
   // the matching hypothesis text receive a subtle visual highlight.
   highlightHypothesisId?: string | null;
+  briefHypotheses?: Array<{ id: string; label?: string | null; text: string; status: string }>;
 }
 
 // ─── FindingRow ───────────────────────────────────────────────────────────────
@@ -449,11 +450,13 @@ export function CenterPane({
   onSelectTab,
   latestTrace,
   highlightHypothesisId,
+  briefHypotheses,
 }: CenterPaneProps): React.ReactElement {
   const findings = findingsMap[selectedTab] ?? [];
   const activity = activityMap[selectedTab] ?? [];
   const isWorking = waitState?.isWorking ?? false;
   const shouldHighlight = selectedTab === "brief" && !!highlightHypothesisId;
+  const showBriefHypotheses = selectedTab === "brief" && !!briefHypotheses?.length;
 
   // P10: aggregate consecutive milestone events from the same agent in the
   // activity pane to reduce noise. Group runs of milestone items by agent.
@@ -584,6 +587,43 @@ export function CenterPane({
                 isHighlighted={shouldHighlight && item.hypothesis_id === highlightHypothesisId}
               />
             ))
+          )}
+          {showBriefHypotheses && (
+            <div style={{ borderTop: findings.length ? "1px solid var(--rule)" : undefined }}>
+              <div style={{ padding: "10px 24px 6px", display: "flex", alignItems: "baseline", gap: 8 }}>
+                <Mono size={9} weight={700} spacing=".14em" color="var(--ink3)">Hypotheses</Mono>
+                <Mono size={9} color="var(--muted)">{briefHypotheses!.length}</Mono>
+              </div>
+              {briefHypotheses!.map((h, i) => (
+                <div
+                  key={h.id}
+                  style={{
+                    padding: "10px 24px",
+                    borderBottom: "1px solid var(--rule)",
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 12,
+                  }}
+                >
+                  <span style={{
+                    fontFamily: "var(--m)", fontSize: 9, fontWeight: 700,
+                    letterSpacing: ".1em", color: "var(--muted)", flexShrink: 0,
+                    paddingTop: 2,
+                  }}>
+                    H{i + 1}
+                  </span>
+                  <span style={{ fontSize: 13, lineHeight: 1.55, color: "var(--ink2)", flex: 1 }}>
+                    {h.label ? <><strong style={{ color: "var(--ink)" }}>{h.label}</strong> — </> : null}{h.text}
+                  </span>
+                  <span style={{
+                    fontFamily: "var(--m)", fontSize: 9, letterSpacing: ".08em",
+                    textTransform: "uppercase", color: "var(--muted)", flexShrink: 0,
+                  }}>
+                    {h.status}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </section>
 

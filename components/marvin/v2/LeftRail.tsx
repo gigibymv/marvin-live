@@ -217,39 +217,51 @@ function DeliverablesRail({ deliverables }: { deliverables: LeftRailDeliverable[
 
 // ─── AgentsRail ───────────────────────────────────────────────────────────────
 
+const AGENT_ACTIVE_COLORS: Record<string, string> = {
+  dora: "#3B7FE0",
+  merlin: "#7C5CBF",
+  adversus: "#C0614A",
+  papyrus: "#B07D1A",
+  calculus: "#2D8A5A",
+};
+
 function AgentsRail({ agents }: { agents: AgentData[] }): React.ReactElement {
   return (
     <div style={{ padding: "14px 16px" }}>
       <Mono size={9} weight={700} spacing=".16em" color="var(--ink)" style={{ marginBottom: 10, display: "block" }}>Agents</Mono>
-      {agents.map(a => (
-        <div
-          key={a.id}
-          style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "5px 0", borderBottom: "1px solid var(--rule)",
-            opacity: a.state === "idle" ? 0.25 : 1,
-          }}
-        >
-          <Icon
-            id={a.id}
-            size={12}
-            color={a.state === "running" ? "var(--green)" : a.state === "waiting" ? "var(--amber)" : "var(--muted)"}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={{
-              fontFamily: "var(--m)",
-              fontSize: 11,
-              fontWeight: a.state === "running" ? 700 : 500,
-              lineHeight: 1.6,
-              textTransform: "uppercase",
-              letterSpacing: ".08em",
-            }}>
-              {a.name}
-            </span>
+      {agents.map(a => {
+        const activeColor = AGENT_ACTIVE_COLORS[a.id];
+        const iconColor = a.state === "running"
+          ? (activeColor ?? "var(--green)")
+          : a.state === "waiting" ? "var(--amber)" : "var(--muted)";
+        const nameColor = a.state === "running" ? (activeColor ?? "var(--ink)") : undefined;
+        return (
+          <div
+            key={a.id}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "5px 0", borderBottom: "1px solid var(--rule)",
+              opacity: a.state === "idle" ? 0.25 : 1,
+            }}
+          >
+            <Icon id={a.id} size={12} color={iconColor} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <span style={{
+                fontFamily: "var(--m)",
+                fontSize: 11,
+                fontWeight: a.state === "running" ? 700 : 500,
+                lineHeight: 1.6,
+                textTransform: "uppercase",
+                letterSpacing: ".08em",
+                color: nameColor,
+              }}>
+                {a.name}
+              </span>
+            </div>
+            <StateTag state={a.state} />
           </div>
-          <StateTag state={a.state} />
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

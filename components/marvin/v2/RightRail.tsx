@@ -18,6 +18,7 @@ export interface RightRailProps {
   onGateApprove?: (gateId: string) => void;
   onGateReject?: (gateId: string) => void;
   onGateReview?: (gateId: string) => void;
+  gateHypotheses?: Array<{ id: string; label?: string | null; text: string; status: string }>;
 }
 
 // ─── RightRail ────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ export function RightRail({
   onGateApprove,
   onGateReject,
   onGateReview,
+  gateHypotheses,
 }: RightRailProps): React.ReactElement {
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
