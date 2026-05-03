@@ -2430,8 +2430,15 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         # driver with this payload so the graph still advances.
         pending_recovery_payload: dict[str, Any] | None = None
         graph_pass_in_flight = False
+        resume_steps = 0
+        continued_terminal_phases: set[str] = set()
+        if isinstance(next_input, dict):
+            phase = next_input.get("phase")
+            if isinstance(phase, str):
+                continued_terminal_phases.add(phase)
 
-        while True:
+        while resume_steps < 8:
+            resume_steps += 1
             interrupted = False
             clearing_resume_payload = resume_payload_to_clear
             resume_payload_to_clear = None
@@ -2478,6 +2485,40 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                 yield s
 
             if not interrupted:
+                post_gate_payload = _open_gate_payload_from_store(store, mission_id)
+                if post_gate_payload is not None:
+                    yield await _emit_gate_pending(post_gate_payload, mission_id=mission_id)
+                    yield await _emit_narration("workflow", _gate_narration(post_gate_payload))
+                    yield await _emit_run_end()
+                    return
+                try:
+                    post_snapshot = await graph.aget_state(config)
+                except Exception:  # noqa: BLE001 - best-effort continuation
+                    post_snapshot = None
+                post_continuation = _continuation_input_from_snapshot(post_snapshot)
+                post_phase = (
+                    post_continuation.get("phase")
+                    if post_continuation is not None
+                    else None
+                )
+                if isinstance(post_phase, str) and post_phase not in continued_terminal_phases:
+                    continued_terminal_phases.add(post_phase)
+                    logger.warning(
+                        "Resume continuing from routable terminal checkpoint: "
+                        "mission=%s phase=%s",
+                        mission_id,
+                        post_phase,
+                    )
+                    next_input = post_continuation
+                    continue
+                if post_snapshot is not None and getattr(post_snapshot, "next", None):
+                    logger.warning(
+                        "Resume continuing from runnable checkpoint: mission=%s next=%s",
+                        mission_id,
+                        getattr(post_snapshot, "next", None),
+                    )
+                    next_input = None
+                    continue
                 break
 
             fut = _register_pending_resume(mission_id)
@@ -2494,6 +2535,8 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
 
             resume_payload_to_clear = resume_payload
             next_input = Command(resume=resume_payload)
+        else:
+            logger.warning("Resume step limit reached for mission=%s", mission_id)
 
         if current_agent is not None:
             yield await _emit_agent_done(current_agent)

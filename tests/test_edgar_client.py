@@ -125,16 +125,38 @@ def test_resolve_cik_by_name_substring(monkeypatch):
 
 def test_resolve_cik_uses_common_company_aliases(monkeypatch):
     import marvin.tools.edgar_client as ec
-    handler = _make_handler({"https://www.sec.gov/files/company_tickers.json": SAMPLE_TICKERS})
+    tickers = {
+        **SAMPLE_TICKERS,
+        "4": {"cik_str": 1543151, "ticker": "UBER", "title": "Uber Technologies, Inc."},
+    }
+    handler = _make_handler({"https://www.sec.gov/files/company_tickers.json": tickers})
     monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
 
     meta = ec.resolve_cik("Meta, social media / digital advertising, global")
     nvidia = ec.resolve_cik("Nvidia, semiconductors / AI infrastructure, global")
+    uber = ec.resolve_cik("Uber, mobility and delivery platform, global")
 
     assert meta is not None
     assert meta["ticker"] == "META"
     assert nvidia is not None
     assert nvidia["ticker"] == "NVDA"
+    assert uber is not None
+    assert uber["ticker"] == "UBER"
+
+
+def test_resolve_cik_normalizes_company_suffixes(monkeypatch):
+    import marvin.tools.edgar_client as ec
+    tickers = {
+        **SAMPLE_TICKERS,
+        "4": {"cik_str": 1543151, "ticker": "UBER", "title": "Uber Technologies, Inc."},
+    }
+    handler = _make_handler({"https://www.sec.gov/files/company_tickers.json": tickers})
+    monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
+
+    out = ec.resolve_cik("Uber Technologies Inc")
+
+    assert out is not None
+    assert out["ticker"] == "UBER"
 
 
 def test_resolve_cik_missing(monkeypatch):
@@ -201,7 +223,7 @@ def test_search_sec_filings_matches_fiscal_year_when_10k_filed_next_year(monkeyp
     })
     monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
 
-    out = search_sec_filings("Uber", year=2024)
+    out = search_sec_filings("Uber Technologies Inc.", year=2024)
 
     assert out.get("error") in (None, "")
     assert out["ticker"] == "UBER"

@@ -91,6 +91,57 @@ async def test_stream_resume_continues_routable_terminal_checkpoint(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_stream_resume_keeps_driving_after_new_routable_checkpoint(monkeypatch):
+    store = MissionStore(":memory:")
+    store.save_mission(
+        Mission(
+            id="m-resume-chain",
+            client="Client",
+            target="Target",
+            ic_question="Should IC invest?",
+            status="active",
+        )
+    )
+
+    class FakeGraph:
+        def __init__(self):
+            self.inputs: list[dict] = []
+            self.stream_calls = 0
+
+        async def aget_state(self, config):
+            phase = "confirmed" if self.stream_calls == 0 else "research_done"
+            return SimpleNamespace(
+                values={"mission_id": "m-resume-chain", "phase": phase},
+                next=(),
+                tasks=[],
+            )
+
+        async def astream(self, graph_input, config, stream_mode):
+            self.inputs.append(graph_input)
+            self.stream_calls += 1
+            if self.stream_calls == 1:
+                yield {"research_join": {"phase": "research_done", "messages": []}}
+            else:
+                yield {"gate_entry": {"phase": "research_done", "messages": []}}
+
+    fake_graph = FakeGraph()
+
+    async def get_fake_graph():
+        return fake_graph
+
+    monkeypatch.setattr(srv, "get_store", lambda: store)
+    monkeypatch.setattr(srv, "get_graph", get_fake_graph)
+
+    chunks = [chunk async for chunk in srv._stream_resume("m-resume-chain")]
+
+    assert fake_graph.inputs == [
+        {"mission_id": "m-resume-chain", "phase": "confirmed"},
+        {"mission_id": "m-resume-chain", "phase": "research_done"},
+    ]
+    assert any(chunk.startswith("event: run_end") for chunk in chunks)
+
+
+@pytest.mark.asyncio
 async def test_stream_resume_surfaces_open_gate_without_rerunning_graph(monkeypatch):
     store = MissionStore(":memory:")
     store.save_mission(

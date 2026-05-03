@@ -41,10 +41,38 @@ _COMPANY_ALIASES: dict[str, str] = {
     "facebook": "META",
     "nvidia": "NVDA",
     "nvidia corporation": "NVDA",
+    "uber": "UBER",
+    "uber technologies": "UBER",
+    "uber technologies inc": "UBER",
     "google": "GOOGL",
     "alphabet": "GOOGL",
     "alphabet inc": "GOOGL",
 }
+
+_COMPANY_SUFFIXES = {
+    "co",
+    "company",
+    "corp",
+    "corporation",
+    "inc",
+    "incorporated",
+    "ltd",
+    "limited",
+    "plc",
+}
+
+
+def _normalize_company_key(value: str) -> str:
+    """Normalize company names for EDGAR title matching.
+
+    EDGAR's ticker list uses formal registrant names such as
+    "Uber Technologies, Inc." while mission briefs often pass
+    "Uber Technologies Inc" or "Uber, mobility platform". Keep this narrow:
+    punctuation/suffix cleanup only, no fuzzy similarity or fallback company.
+    """
+    raw_tokens = re.findall(r"[a-z0-9]+", value.lower())
+    tokens = [tok for tok in raw_tokens if tok not in _COMPANY_SUFFIXES]
+    return " ".join(tokens)
 
 
 def _user_agent() -> str:
@@ -101,16 +129,29 @@ def resolve_cik(company_name_or_ticker: str) -> dict[str, Any] | None:
 
     upper = needle.upper()
     needle_lower = needle.lower()
-    alias = _COMPANY_ALIASES.get(needle_lower)
+    normalized_needle = _normalize_company_key(needle)
+    alias = _COMPANY_ALIASES.get(needle_lower) or _COMPANY_ALIASES.get(normalized_needle)
     if alias and alias in _TICKER_CACHE:
         return _TICKER_CACHE[alias]
     if upper in _TICKER_CACHE:
         return _TICKER_CACHE[upper]
     for alias_name, alias_ticker in _COMPANY_ALIASES.items():
-        if alias_name in needle_lower and alias_ticker in _TICKER_CACHE:
+        if (
+            alias_name in needle_lower
+            or alias_name in normalized_needle
+            or _normalize_company_key(alias_name) in normalized_needle
+        ) and alias_ticker in _TICKER_CACHE:
             return _TICKER_CACHE[alias_ticker]
     for entry in _TICKER_CACHE.values():
-        if needle_lower in entry["title"].lower():
+        title_lower = entry["title"].lower()
+        normalized_title = _normalize_company_key(entry["title"])
+        if needle_lower in title_lower:
+            return entry
+        if normalized_needle and (
+            normalized_needle == normalized_title
+            or normalized_needle in normalized_title
+            or normalized_title in normalized_needle
+        ):
             return entry
     return None
 
