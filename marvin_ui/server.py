@@ -2676,21 +2676,6 @@ async def create_mission(body: CreateMissionRequest):
     )
 
 
-@app.post("/api/v1/admin/vacuum-db")
-async def admin_vacuum_db(secret: str = ""):
-    """Temporary admin endpoint: VACUUM the SQLite DB to free disk space."""
-    import os
-    if secret != os.environ.get("ADMIN_SECRET", "marvin-vacuum-2026"):
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Forbidden")
-    import sqlite3, pathlib
-    db_path = os.environ.get("MARVIN_DB_PATH", str(pathlib.Path.home() / ".marvin" / "marvin.db"))
-    conn = sqlite3.connect(db_path)
-    conn.execute("VACUUM")
-    conn.close()
-    stat = pathlib.Path(db_path).stat()
-    return {"status": "ok", "db_path": db_path, "size_bytes": stat.st_size}
-
 
 @app.get("/api/v1/missions", response_model=ListMissionsResponse)
 async def list_missions():
