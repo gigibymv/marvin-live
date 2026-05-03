@@ -2228,7 +2228,6 @@ export default function MissionControl({
     if (tab === "ws3" || tab === "ws4") return "W3_4";
     return tab.replace(/^ws/i, "W");
   };
-  const selectedSectionId = selectedTab ? tabToSectionId(selectedTab) : "brief";
   const sectionMatches = (outputSectionId: string | null | undefined, selected: string): boolean => {
     if (!outputSectionId) return false;
     if (selected === "W3_4") return outputSectionId === "W3" || outputSectionId === "W4";
@@ -2243,7 +2242,6 @@ export default function MissionControl({
     W4: "Stress test",
     final: "Final deliverables",
   };
-  const workstreamLabel = sectionLabelById[selectedSectionId] ?? "section";
   // Lifted so both `normalizeFinding` (output filter) and
   // `workstreamContent.findings` (per-tab content) agree on which agent
   // owns which workstream. Without this, merlin/adversus findings with a
@@ -2275,10 +2273,9 @@ export default function MissionControl({
     };
   };
   const allFindings = (progress?.findings ?? []).map(normalizeFinding);
-  // Newest-on-top: the rail is a live feed; users want the most recent event
-  // visible without scrolling. liveFindings is appended in arrival order;
-  // reverse for display.
-  const activity = liveFindings.slice().reverse().map(normalizeFinding);
+  // Activity arrives in chronological order; keep it raw here and let the
+  // V2 view own the single newest-first sort so we don't double-reverse.
+  const activity = liveFindings.map(normalizeFinding);
   // Tab id "ws1" maps to backend workstream id "W1", etc.
   // Strict filter: only show outputs tagged/routed to the selected workstream.
   // Untagged findings are intentionally excluded so per-tab content stays
@@ -2438,21 +2435,6 @@ export default function MissionControl({
         workstream_id: a.workstream_id ?? AGENT_TO_WS[agentRaw] ?? null,
       };
     });
-  const allSectionOutputs = dedupeByKey([
-    ...liveFindingOutputs,
-    ...agentMessageOutputs,
-    ...allFindings,
-    ...synthesisOutputs,
-    ...deliverableOutputs,
-    ...milestoneOutputs,
-  ], (output) => `${output.kind}:${output.id}`);
-  const findings = allSectionOutputs.filter((output) => {
-    const sectionId = routeOutputToSectionId(output);
-    return sectionMatches(sectionId, selectedSectionId);
-  });
-  const completedTitle = `${workstreamLabel} outputs`;
-  const completedEmptyText = `No outputs for ${workstreamLabel} yet.`;
-
   // Build per-workstream content for the center tabs from real findings.
   // Bug 6 (chantier 2.6): tabs are content-driven (DB findings), not the
   // SSE meta-event stream. Fall back to the agent → workstream map so a
@@ -2638,12 +2620,23 @@ export default function MissionControl({
   // run as an effect here (early returns above). Pure derivation only.
   const effectiveSelectedTab: WorkspaceTab =
     userPickedTabRef.current || !activeStep ? selectedTab : activeStep.id;
-  const selectedTabId = selectedSectionId === "brief" || selectedSectionId === "final"
-    ? selectedSectionId
-    : selectedSectionId === "W3_4"
-      ? ("ws3" as WorkspaceTab)
-      : (`ws${selectedSectionId.replace(/^W/i, "")}` as WorkspaceTab);
-  const showWaitInSelectedOutputs = showTyping && activeStep?.id === selectedTabId;
+  const effectiveSelectedSectionId = effectiveSelectedTab ? tabToSectionId(effectiveSelectedTab) : "brief";
+  const showWaitInSelectedOutputs = showTyping && activeStep?.id === effectiveSelectedTab;
+  const allSectionOutputs = dedupeByKey([
+    ...liveFindingOutputs,
+    ...agentMessageOutputs,
+    ...allFindings,
+    ...synthesisOutputs,
+    ...deliverableOutputs,
+    ...milestoneOutputs,
+  ], (output) => `${output.kind}:${output.id}`);
+  const findings = allSectionOutputs.filter((output) => {
+    const sectionId = routeOutputToSectionId(output);
+    return sectionMatches(sectionId, effectiveSelectedSectionId);
+  });
+  const effectiveWorkstreamLabel = sectionLabelById[effectiveSelectedSectionId] ?? "section";
+  const completedTitle = `${effectiveWorkstreamLabel} outputs`;
+  const completedEmptyText = `No outputs for ${effectiveWorkstreamLabel} yet.`;
   const waitHeadline = activeAgent
     ? `${activeAgent} is working${activeAgentSince ? ` · ${activeAgentElapsed}s` : ""}`
     : "MARVIN is working";
