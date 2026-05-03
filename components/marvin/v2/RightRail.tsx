@@ -21,6 +21,34 @@ export interface RightRailProps {
   gateHypotheses?: Array<{ id: string; label?: string | null; text: string; status: string }>;
 }
 
+// ─── Agent colors (mirrors CenterPane / LeftRail) ─────────────────────────────
+
+const AGENT_COLORS: Record<string, string> = {
+  dora: "#3B7FE0",
+  merlin: "#7C5CBF",
+  adversus: "#C0614A",
+  papyrus: "#B07D1A",
+  calculus: "#2D8A5A",
+};
+
+const AGENT_NAME_RE = /^(MARVIN|Adversus|Dora|Calculus|Merlin|Papyrus)\s*[—–-]\s*/i;
+
+function renderMessageText(raw: string): React.ReactNode {
+  const text = humanizeText(raw);
+  const m = AGENT_NAME_RE.exec(text);
+  if (!m) return <span style={{ whiteSpace: "pre-wrap" }}>{text}</span>;
+  const name = m[1];
+  const rest = text.slice(m[0].length);
+  const color = AGENT_COLORS[name.toLowerCase()] ?? "var(--ink)";
+  return (
+    <span style={{ whiteSpace: "pre-wrap" }}>
+      <span style={{ fontWeight: 700, color }}>{name}</span>
+      <span style={{ color: "var(--ink3)" }}> — </span>
+      {rest}
+    </span>
+  );
+}
+
 // ─── RightRail ────────────────────────────────────────────────────────────────
 
 export function RightRail({
@@ -160,7 +188,7 @@ export function RightRail({
                     : "0 1px 3px rgba(26,24,20,.06)",
                 display: "flex", flexDirection: "column", gap: 8,
               }}>
-                <span style={{ whiteSpace: "pre-wrap" }}>{isUser ? m.text : humanizeText(m.text)}</span>
+                {isUser ? <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span> : renderMessageText(m.text)}
                 {!isUser && m.deliverableId && onOpenDeliverable && (
                   <button
                     type="button"

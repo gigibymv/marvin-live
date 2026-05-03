@@ -5,6 +5,21 @@ import type { WorkspaceTab } from "@/lib/missions/types";
 import { humanizeText } from "@/lib/missions/humanize";
 import { Mono, Badge, StatusDot, PulsingM } from "./Primitives";
 
+// ─── Agent colors (mirrors LeftRail AGENT_ACTIVE_COLORS) ──────────────────────
+
+const AGENT_COLORS: Record<string, string> = {
+  dora: "#3B7FE0",
+  merlin: "#7C5CBF",
+  adversus: "#C0614A",
+  papyrus: "#B07D1A",
+  calculus: "#2D8A5A",
+};
+
+function agentColor(agent: string | undefined, fallback = "var(--ink3)"): string {
+  if (!agent) return fallback;
+  return AGENT_COLORS[agent.toLowerCase()] ?? fallback;
+}
+
 // ─── Prop types ───────────────────────────────────────────────────────────────
 
 export interface CenterFinding {
@@ -107,7 +122,7 @@ function FindingRow({ f, isHighlighted }: { f: CenterFinding; isHighlighted?: bo
       onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = highlightBg; }}
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
-        <Mono size={9} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 52, flexShrink: 0, paddingTop: 1 }}>
+        <Mono size={9} weight={700} color={agentColor(f.agent)} spacing=".06em" style={{ minWidth: 52, flexShrink: 0, paddingTop: 1 }}>
           {f.agent}
         </Mono>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -165,7 +180,7 @@ function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolea
         alignItems: "center",
         gap: 10,
       }}>
-        <Mono size={8} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 52, flexShrink: 0 }}>
+        <Mono size={8} weight={700} color={agentColor(f.agent)} spacing=".06em" style={{ minWidth: 52, flexShrink: 0 }}>
           {agentLabel}
         </Mono>
         <span style={{ flex: 1, fontSize: 11, fontWeight: 500, color: "var(--ink2)", lineHeight: 1.5 }}>
@@ -241,7 +256,7 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
       gap: 10,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <Mono size={9} weight={700} color="rgba(244,240,234,.45)" spacing=".06em" style={{ minWidth: 52 }}>
+        <Mono size={9} weight={700} color={agentColor(f.agent ?? "MARVIN", "rgba(244,240,234,.45)")} spacing=".06em" style={{ minWidth: 52 }}>
           {f.agent ?? "MARVIN"}
         </Mono>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--paper)", lineHeight: 1.6 }}>
@@ -374,7 +389,7 @@ function ActivityItem({ e, isLast }: { e: CenterActivityItem; isLast: boolean })
         marginBottom: isLast ? 0 : 4,
         opacity: 0.65,
       }}>
-        <Mono size={8} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
+        <Mono size={8} weight={700} color={agentColor(e.agent)} spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
           {e.agent ?? ""}
         </Mono>
         <span style={{ fontFamily: "var(--m)", fontSize: 8.5, letterSpacing: ".01em", color: "var(--ink3)", flex: 1, minWidth: 0 }}>
@@ -393,7 +408,7 @@ function ActivityItem({ e, isLast }: { e: CenterActivityItem; isLast: boolean })
       borderBottom: isLast ? "none" : "1px solid rgba(26,24,20,.04)",
       opacity: isTool ? 0.55 : 0.85,
     }}>
-      <Mono size={9} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
+      <Mono size={9} weight={700} color={agentColor(e.agent)} spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
         {e.agent ?? ""}
       </Mono>
       <span style={{
@@ -670,7 +685,7 @@ export function CenterPane({
                     flexShrink: 0,
                   }}
                 />
-                <Mono size={9} weight={700} spacing=".10em" color="rgba(244,240,234,.65)">
+                <Mono size={9} weight={700} spacing=".10em" color={agentColor(latestTrace.agent || "MARVIN", "rgba(244,240,234,.65)")}>
                   {latestTrace.agent || "MARVIN"}
                 </Mono>
                 <span
@@ -704,7 +719,7 @@ export function CenterPane({
                         opacity: 0.6,
                       }}
                     >
-                      <Mono size={8} weight={700} color="var(--ink3)" spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
+                      <Mono size={8} weight={700} color={agentColor(e.agent)} spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
                         {e.agent.toUpperCase()}
                       </Mono>
                       <span style={{ fontFamily: "var(--m)", fontSize: 8.5, color: "var(--ink3)" }}>
