@@ -43,6 +43,8 @@ export interface CenterActivityItem {
   agent?: string;
   text?: string;
   ts?: string;
+  workstream_id?: string | null;
+  section_id?: string | null;
 }
 
 export interface CenterTab {

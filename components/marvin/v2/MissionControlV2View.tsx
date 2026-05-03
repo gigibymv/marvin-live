@@ -48,7 +48,17 @@ export interface MissionControlV2ViewProps {
       supporting: number;
     };
   }[];
-  activity?: Array<{ id: string; ag?: string; text?: string; ts?: string; claim_text?: string; confidence?: string; kind?: string }>;
+  activity?: Array<{
+    id: string;
+    ag?: string;
+    text?: string;
+    ts?: string;
+    claim_text?: string;
+    confidence?: string;
+    kind?: string;
+    workstream_id?: string | null;
+    section_id?: string | null;
+  }>;
   findings: Array<{
     id: string;
     kind?: "finding" | "milestone" | "deliverable";
@@ -264,37 +274,38 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
     return map;
   }, [findings, completedTabIds]);
 
-  // Activity is a single live tape today — assign to whichever tab the user
-  // is on so it remains visible. (When backend gains per-tab activity, this
-  // is the place to route it properly.) Drop `deliverable` and `milestone`
-  // echoes from the activity tape — they already render as full rows in
-  // Outputs, and the duplicate compact mono row was confusing (count went
-  // up but visually nothing new appeared because the eye expects the
-  // larger top-of-pane row).
+  // Route activity per tab using the same section/workstream truth as outputs.
+  // This prevents W1/Papyrus chatter from leaking into the Financial Analysis
+  // pane merely because the user happened to have that tab selected.
   const activityMap = useMemo<Record<WorkspaceTab, CenterActivityItem[]>>(() => {
     const map = emptyTabMap<CenterActivityItem>();
     if (!activity) return map;
-    // Bug 5: server returns activity in chronological order, so a 97-item
-    // feed pushed the latest entries below the viewport and the user only
-    // saw stale items. Surface newest first so the most recent step is
-    // always visible at the top of the activity pane.
-    const items: CenterActivityItem[] = activity
-      .map((a, idx) => ({
+    const routed = activity.map((a, idx) => {
+      const normalized: CenterActivityItem & { _idx: number } = {
         id: a.id,
         kind: a.kind,
         agent: a.ag,
         text: a.claim_text ?? a.text ?? "",
         ts: a.ts ?? "",
+        workstream_id: a.workstream_id ?? null,
+        section_id: a.section_id ?? null,
         _idx: idx,
-      }))
-      .sort((a, b) => {
-        if (a.ts && b.ts && a.ts !== b.ts) return a.ts < b.ts ? 1 : -1;
-        return b._idx - a._idx;
-      })
-      .map(({ _idx, ...rest }) => rest);
-    map[selectedTab] = items;
+      };
+      const tab = routeToTab(normalized.section_id, normalized.workstream_id);
+      return { tab, item: normalized };
+    });
+    for (const tab of TAB_IDS) {
+      map[tab] = routed
+        .filter((entry) => entry.tab === tab)
+        .map((entry) => entry.item)
+        .sort((a, b) => {
+          if (a.ts && b.ts && a.ts !== b.ts) return a.ts < b.ts ? 1 : -1;
+          return b._idx - a._idx;
+        })
+        .map(({ _idx, ...rest }) => rest);
+    }
     return map;
-  }, [activity, selectedTab]);
+  }, [activity]);
 
   const tabs = useMemo(() => {
     if (sectionTabs && sectionTabs.length > 0) return sectionTabs;

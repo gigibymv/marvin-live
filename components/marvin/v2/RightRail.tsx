@@ -33,17 +33,19 @@ const AGENT_COLORS: Record<string, string> = {
 
 const AGENT_NAME_RE = /^(MARVIN|Adversus|Dora|Calculus|Merlin|Papyrus)\s*[—–-]\s*/i;
 
-function renderMessageText(raw: string): React.ReactNode {
+function renderMessageText(raw: string, opts?: { onDark?: boolean }): React.ReactNode {
   const text = humanizeText(raw);
   const m = AGENT_NAME_RE.exec(text);
   if (!m) return <span style={{ whiteSpace: "pre-wrap" }}>{text}</span>;
   const name = m[1];
   const rest = text.slice(m[0].length);
-  const color = AGENT_COLORS[name.toLowerCase()] ?? "var(--ink)";
+  const onDark = opts?.onDark ?? false;
+  const color = AGENT_COLORS[name.toLowerCase()] ?? (onDark ? "rgba(244,240,234,.82)" : "var(--ink)");
+  const separatorColor = onDark ? "rgba(244,240,234,.55)" : "var(--ink3)";
   return (
     <span style={{ whiteSpace: "pre-wrap" }}>
       <span style={{ fontWeight: 700, color }}>{name}</span>
-      <span style={{ color: "var(--ink3)" }}> — </span>
+      <span style={{ color: separatorColor }}> — </span>
       {rest}
     </span>
   );
@@ -188,7 +190,7 @@ export function RightRail({
                     : "0 1px 3px rgba(26,24,20,.06)",
                 display: "flex", flexDirection: "column", gap: 8,
               }}>
-                {isUser ? <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span> : renderMessageText(m.text)}
+                {isUser ? <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span> : renderMessageText(m.text, { onDark: Boolean(m.deliverableId) })}
                 {!isUser && m.deliverableId && onOpenDeliverable && (
                   <button
                     type="button"
