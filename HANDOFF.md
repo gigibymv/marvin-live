@@ -1,7 +1,9 @@
 # Marvin Project Handoff Document
 
-> **Last updated:** 2026-05-01 — end of Phase F live test, Phase G in flight.
+> **Last updated:** 2026-05-04 — Phase G live runtime hardening (G1 loop, stale banner, resume stall).
 > CLAUDE.md (root) is the source of truth on architecture invariants. Read it first.
+> See DEBUG_LOG.md for the 2026-05-04 bug ledger and `docs/graph-advance-paths.md` for the
+> resume-path cartography that drove the targeted stall-guard fix in commit `a6cc35c`.
 
 ## Target Vision (source of truth for UX intent)
 

@@ -4,6 +4,75 @@ Bugs found and fixed during development. Most recent first.
 
 ---
 
+## 2026-05-04 — Live runtime hardening (Phase G)
+
+Five bugs surfaced during a live Netflix CDD run. Each diagnosed from runtime evidence (Render logs, SQLite checkpoint inspection, /progress endpoint poll), then fixed with the smallest-possible change. Adversarial review pass via `architect-reviewer` rejected three larger refactors before they were attempted — see `docs/graph-advance-paths.md`.
+
+### G1 loop: gate spun forever waiting for missing workstream report
+
+**Symptom:** Live Render mission `m-netflix-20260504-x-5922d6e1` froze at 33% with chat banner "Deliverable writing in progress." Backend logs (every ~3s):
+```
+gate_node: gate gate-...-G1 not opened after 3 attempts;
+missing material: deliverable_writing_in_progress; returning to phase=research_done
+```
+
+**Root cause:** `research_join` runs Papyrus to generate W1/W2 workstream reports. If the LLM call silently failed (caught by bare `except Exception` at `runner.py:504`), the deliverable was never persisted as `ready`. Phase advanced to `research_done` regardless. `evaluate_gate_material` for `manager_review` requires a ready `workstream_report` per workstream (`gate_material.py:200-208`); missing → `missing_material=['deliverable_writing_in_progress']`. The retry path (`_gate_to_retry_phase("manager_review") → "research_done"`) routed straight back to `gate_entry`, never re-running Papyrus → infinite loop.
+
+**Fix:** Added `papyrus_recover_workstreams_node` (one-shot) and `papyrus_recovery_attempts` counter in `MarvinState`. On first G1 failure with `deliverable_writing_in_progress`, gate routes to recovery instead of looping; recovery re-runs `_generate_workstream_report_impl` for W1+W2 idempotently, then back through gate_entry. Cap = 1 attempt. Second failure → `phase=blocked_terminal` with `phase_blocked` SSE so the user sees a real error instead of a 33% spinner.
+
+**Files touched:** `marvin/graph/runner.py`, `marvin/graph/gates.py`, `marvin/graph/state.py`. Regression tests in `tests/test_gate_papyrus_recovery.py`. **Commit:** `65f8022`.
+
+### Stale "Gate pending — Manager review" banner persisted across page reload
+
+**Symptom:** After approving G1 in the UI, reloading the page resurrected the gate-pending message with active APPROVE/REJECT buttons. `progress.gates` returned correctly (gate `completed`/`failed`, not `open`), but the chat panel still rendered buttons against the resolved gate.
+
+**Root cause:** `mission_chat_messages` rows persist `gate_action='pending'` from when the gate was first opened. The frontend's live state correctly transitions via `markGateChatMessageResolved` on the user's click, but the persisted row was never updated. On reload, `getMissionChatMessages` returned the original `pending` row → `RightRail.tsx:213` rendered buttons whenever `m.gateAction === "pending"`.
+
+**Fix:** Added `MissionStore.resolve_persisted_gate_chat(mission_id, gate_id, verdict)` which UPDATEs `gate_action` to approved/rejected and rewrites the row text to match the live in-memory transition. Called from `validate_gate` before `_deliver_resume`.
+
+**Files touched:** `marvin/mission/store.py`, `marvin_ui/server.py`. **Commit:** `eefc307`.
+
+### TypeError "Failed to fetch" promoted to Next.js dev-mode runtime overlay
+
+**Symptom:** Restarting the backend mid-mission crashed the frontend with a red Next.js error overlay: `Console TypeError: Failed to fetch` at `lib/missions/api.ts:240` in `getMissionProgress`.
+
+**Root cause:** `getMissionProgress` only caught HTTP status errors (`!response.ok`). Network-layer rejection (`fetch()` throws `TypeError`) propagated raw. `MissionControl.tsx:534` caught it and called `console.error`, which Next.js dev mode promotes to a runtime overlay.
+
+**Fix:** Wrapped `fetch()` in try/catch, converted `TypeError` to existing `BackendOfflineError`. `refreshProgress` skips `console.error` when `isBackendOfflineError(error)` returns true → silent recovery on next poll tick.
+
+**Files touched:** `lib/missions/api.ts`, `components/marvin/MissionControl.tsx`. **Commit:** `eefc307`.
+
+### Dead-air window between gate approval and first agent narration
+
+**Symptom:** After approving a gate, ~10–30s of silence before any agent message appeared. The agent IS running its first LLM call; UI shows nothing.
+
+**Root cause:** Heartbeat narration (`server.py:1320`, 15s interval) only fires AFTER the first node update. Long-running entry nodes (`adversus_node`, `merlin_node`, `papyrus_stress_report_node`, `papyrus_recover_workstreams_node`, `research_rebuttal_node`) called `log_node_entry` (logger only, not user-visible) then immediately invoked the LLM.
+
+**Fix:** Added `_emit_entry_narration(mission_id, agent, intent)` helper in `runner.py` (mirrors `_join_narrate` shape from research_join). Called at the entry of each long-running node, emits a `narration` SSE event before the LLM call.
+
+**Files touched:** `marvin/graph/runner.py`. **Commit:** `eefc307`.
+
+### Resume loop figé at next=('research_join',) — burned all 8 steps doing nothing
+
+**Symptom:** Live mission `m-netflix-20260504-x-20beb7b0` stalled at 50% with `next=('research_join',)`. Backend logs:
+```
+Resume continuing from runnable checkpoint: next=('research_join',)   x5
+Resume step limit reached
+```
+Manually invoking `graph.astream(None, config)` from a script ran `research_join` successfully on the first pass — so the graph itself worked.
+
+**Root cause:** The resume loop in `_stream_resume` (`server.py:2458-2540`) had no guard for "did `next` change?" between iterations. When `astream(None)` yields zero events on a runnable checkpoint (subgraph recursion-limit exhausted, or any other condition that prevents the queued node from executing), the loop saw `post_snapshot.next` non-empty, logged `Resume continuing from runnable checkpoint`, and re-entered with `next_input=None` — same state, same outcome, 8 times. Step limit reached without progress.
+
+**Investigation discipline:** First diagnosis ("lock contention from concurrent `_stream_chat` / `_drive_detached_resume`") was wrong. The architect-reviewer adversarial pass against `docs/graph-advance-paths.md` proved the real cause was the zero-event loop, not lock contention. The 8-step limit was a symptom amplifier, not the source.
+
+**Fix:** Track `prev_runnable_next` + `events_yielded_in_pass` per iteration. If a pass yields 0 events AND `post_snapshot.next` equals the previous iteration's `next`, log at ERROR level and break. The user sees a visible stall instead of a silent 33% spinner; re-running cannot make progress on this state, so retry burns budget for nothing.
+
+**Files touched:** `marvin_ui/server.py`. Test in `tests/test_resume_loop_stall_guard.py` (3 cases: confirms current loop burns 8 steps, guarded loop breaks at iter 2, guard does NOT fire when astream is making progress). **Commit:** `a6cc35c`.
+
+**Lessons captured in `docs/graph-advance-paths.md`:** the resume/recovery layer has accumulated 8 overlapping mechanisms (3 lock-holders + 5 ancillary). Three larger refactors (remove detached driver, drop step limit, drop sync `evaluate_gate_material`) were rejected by the adversarial review — the simple stall guard was the only operation that addressed the confirmed bug without introducing new ones.
+
+---
+
 ## 2026-05-03 — Investment-decision migration runtime regressions
 
 Surfaced live while testing the new verdict enums (`INVEST / INVEST_WITH_CONDITIONS / DO_NOT_INVEST / INSUFFICIENT_EVIDENCE`). Three real bugs and one pre-existing schema drift.
