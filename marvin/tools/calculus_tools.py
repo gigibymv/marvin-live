@@ -348,11 +348,13 @@ def search_sec_filings(
         resolved["cik"],
         forms=("10-K", "10-Q", "20-F", "8-K"),
         since_year=year_int or None,
-        limit=20,
+        limit=300,
+        max_scan=1000,
     )
     filings = filings_result["filings"]
     if year_int:
         filings = [f for f in filings if _filing_matches_requested_year(f, year_int)]
+    filings = filings[:20]
     result = {
         "company_name": resolved["title"],
         "ticker": resolved["ticker"],
@@ -409,11 +411,12 @@ def fetch_filing_section(
         }
 
     filings_result = list_filings_result(
-        resolved["cik"], forms=(form,), since_year=year_int or None, limit=10
+        resolved["cik"], forms=(form,), since_year=year_int or None, limit=300, max_scan=1000
     )
     filings = filings_result["filings"]
     if year_int:
         filings = [f for f in filings if _filing_matches_requested_year(f, year_int)]
+    filings = filings[:10]
     if filings_result["error"]:
         return {
             "company_name": resolved["title"],

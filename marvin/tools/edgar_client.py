@@ -222,8 +222,15 @@ def list_filings_result(
     forms: tuple[str, ...] = ("10-K", "10-Q", "20-F", "8-K"),
     since_year: int | None = None,
     limit: int = 20,
+    max_scan: int | None = None,
 ) -> dict[str, Any]:
-    """Fetch recent filings while preserving why a result set is empty."""
+    """Fetch recent filings while preserving why a result set is empty.
+
+    ``max_scan`` bounds how many recent EDGAR rows we inspect before applying
+    form/year filters. It intentionally differs from ``limit`` so active
+    registrants with many 8-K/Form 4 rows do not hide the relevant 10-K/10-Q
+    before fiscal-year matching happens upstream.
+    """
     cik10 = cik.zfill(10)
     url = _SUBMISSIONS_URL.format(cik10=cik10)
     try:
@@ -251,7 +258,11 @@ def list_filings_result(
 
     filings: list[dict[str, Any]] = []
     cik_int = str(int(cik))
-    for acc, form, fdate, rdate, doc in zip(accs, forms_arr, dates, report_dates, docs):
+    for scanned, (acc, form, fdate, rdate, doc) in enumerate(
+        zip(accs, forms_arr, dates, report_dates, docs)
+    ):
+        if max_scan is not None and scanned >= max_scan:
+            break
         if form not in forms:
             continue
         if since_year is not None and fdate:

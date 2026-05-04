@@ -55,6 +55,31 @@ UBER_FY2024_FILED_2025_SUBMISSIONS = {
     }
 }
 
+
+def _noisy_recent_filings_with_late_10k(
+    *,
+    accession: str = "0001065280-25-000044",
+    filing_date: str = "2025-01-27",
+    report_date: str = "2024-12-31",
+    doc: str = "nflx-20241231.htm",
+) -> dict:
+    """Build a Netflix-like submissions feed where the useful filing is late."""
+    noise_count = 350
+    return {
+        "filings": {
+            "recent": {
+                "accessionNumber": [
+                    *[f"0001065280-26-{i:06d}" for i in range(noise_count)],
+                    accession,
+                ],
+                "form": [*["4" for _ in range(noise_count)], "10-K"],
+                "filingDate": [*["2026-04-22" for _ in range(noise_count)], filing_date],
+                "reportDate": [*["2026-04-22" for _ in range(noise_count)], report_date],
+                "primaryDocument": [*["nflx-20260422.htm" for _ in range(noise_count)], doc],
+            }
+        }
+    }
+
 SAMPLE_10K_HTML = """
 <html><body>
 <h1>Apple Inc. Annual Report</h1>
@@ -232,6 +257,29 @@ def test_search_sec_filings_matches_fiscal_year_when_10k_filed_next_year(monkeyp
     assert out["filings"][0]["report_date"] == "2024-12-31"
 
 
+def test_search_sec_filings_scans_past_noisy_recent_events(monkeypatch):
+    import marvin.tools.edgar_client as ec
+    from marvin.tools.calculus_tools import search_sec_filings
+
+    tickers = {
+        **SAMPLE_TICKERS,
+        "4": {"cik_str": 1065280, "ticker": "NFLX", "title": "Netflix, Inc."},
+    }
+    handler = _make_handler({
+        "https://www.sec.gov/files/company_tickers.json": tickers,
+        "https://data.sec.gov/submissions/CIK0001065280.json": _noisy_recent_filings_with_late_10k(),
+    })
+    monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
+
+    out = search_sec_filings("Netflix", year=2024)
+
+    assert out.get("error") in (None, "")
+    assert out["ticker"] == "NFLX"
+    assert len(out["filings"]) == 1
+    assert out["filings"][0]["accession"] == "0001065280-25-000044"
+    assert out["filings"][0]["report_date"] == "2024-12-31"
+
+
 def test_search_sec_filings_unknown_company_returns_error(monkeypatch):
     import marvin.tools.edgar_client as ec
     from marvin.tools.calculus_tools import search_sec_filings
@@ -310,6 +358,30 @@ def test_fetch_filing_section_surfaces_edgar_fetch_failures(monkeypatch):
     assert out["ticker"] == "NFLX"
     assert out["text"] is None
     assert out["error"] == "edgar_rate_limited"
+
+
+def test_fetch_filing_section_scans_past_noisy_recent_events(monkeypatch):
+    import marvin.tools.edgar_client as ec
+    from marvin.tools.calculus_tools import fetch_filing_section
+
+    tickers = {
+        **SAMPLE_TICKERS,
+        "4": {"cik_str": 1065280, "ticker": "NFLX", "title": "Netflix, Inc."},
+    }
+    archive_prefix = "https://www.sec.gov/Archives/edgar/data/1065280/"
+    handler = _make_handler({
+        "https://www.sec.gov/files/company_tickers.json": tickers,
+        "https://data.sec.gov/submissions/CIK0001065280.json": _noisy_recent_filings_with_late_10k(),
+        archive_prefix: SAMPLE_10K_HTML,
+    })
+    monkeypatch.setattr(ec, "_HTTP_CLIENT_FACTORY", _factory(handler))
+
+    out = fetch_filing_section("NFLX", form="10-K", year=2024, section="mdna")
+
+    assert out["error"] is None
+    assert out["ticker"] == "NFLX"
+    assert out["accession"] == "0001065280-25-000044"
+    assert out["text"] is not None
 
 
 def test_fetch_filing_section_matches_fiscal_year_when_10k_filed_next_year(monkeypatch):
