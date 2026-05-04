@@ -44,6 +44,13 @@ const TEMPLATES = [
     modules: ["Thesis","Calculus","Merlin","Papyrus"],
     active: false,
   },
+  {
+    id: "meta",
+    name: "Meta-agent",
+    desc: "Conversational mission. 4 channels: Research, Documents, Analyse, War Room. No fixed phases.",
+    modules: ["Research","Documents","Analyse","War Room"],
+    active: true,
+  },
 ];
 
 const MORE_TILE = {

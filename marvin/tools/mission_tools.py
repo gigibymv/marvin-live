@@ -258,18 +258,28 @@ HYPOTHESIS_STATUSES = ("NOT_STARTED", "TESTING", "SUPPORTED", "WEAKENED", "CHALL
 
 def consultant_verdict_label(verdict: str | None) -> str:
     labels = {
-        "SHIP": "Ready to present",
-        "MINOR_FIXES": "Additional diligence needed",
-        "BACK_TO_DRAWING_BOARD": "Evidence gaps — not ready",
+        "INVEST": "Invest",
+        "INVEST_WITH_CONDITIONS": "Invest with conditions",
+        "DO_NOT_INVEST": "Do not invest",
+        "INSUFFICIENT_EVIDENCE": "Insufficient evidence",
+        # legacy
+        "SHIP": "Invest",
+        "MINOR_FIXES": "Invest with conditions",
+        "BACK_TO_DRAWING_BOARD": "Insufficient evidence",
     }
     return labels.get(str(verdict or "").strip(), str(verdict or "").replace("_", " ").title())
 
 
 def consultant_verdict_action(verdict: str | None) -> str:
     actions = {
-        "SHIP": "Approve to finalize the IC memo and deliverables.",
-        "MINOR_FIXES": "Approve with caveats after targeted diligence on the open points.",
-        "BACK_TO_DRAWING_BOARD": "Run targeted follow-up diligence on the evidence gaps before finalizing the IC memo.",
+        "INVEST": "Approve recommendation and proceed.",
+        "INVEST_WITH_CONDITIONS": "Approve subject to listed conditions.",
+        "DO_NOT_INVEST": "Pass at current terms.",
+        "INSUFFICIENT_EVIDENCE": "Run targeted diligence on listed gaps before deciding.",
+        # legacy
+        "SHIP": "Approve recommendation and proceed.",
+        "MINOR_FIXES": "Approve subject to listed conditions.",
+        "BACK_TO_DRAWING_BOARD": "Run targeted diligence on listed gaps before deciding.",
     }
     return actions.get(str(verdict or "").strip(), "Review the synthesis before deciding.")
 
@@ -1029,6 +1039,9 @@ def set_merlin_verdict(
     hypothesis_updates: list[dict[str, Any]] | None = None,
     recommended_actions: list[str] | None = None,
     ship_risk: str | None = None,
+    conditions: list[str] | None = None,
+    deal_breakers: list[str] | None = None,
+    final_thesis: str | None = None,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
     """Record Merlin's final verdict for the mission."""
@@ -1059,6 +1072,13 @@ def set_merlin_verdict(
         if str(action or "").strip()
     ]
     normalized_ship_risk = str(ship_risk or "").strip().lower() or None
+    normalized_conditions = [
+        str(c).strip() for c in (conditions or []) if str(c or "").strip()
+    ]
+    normalized_deal_breakers = [
+        str(d).strip() for d in (deal_breakers or []) if str(d or "").strip()
+    ]
+    normalized_final_thesis = str(final_thesis or "").strip() or None
     latest = store.get_latest_merlin_verdict(mission_id)
     if (
         latest is not None
@@ -1068,8 +1088,19 @@ def set_merlin_verdict(
         and list(latest.recommended_actions or []) == normalized_actions
         and (latest.ship_risk or None) == normalized_ship_risk
         and (latest.gate_id or None) == (g3_gate.id if g3_gate else None)
+        and list(latest.conditions or []) == normalized_conditions
+        and list(latest.deal_breakers or []) == normalized_deal_breakers
+        and (latest.final_thesis or None) == normalized_final_thesis
     ):
-        return {"verdict": latest.verdict, "verdict_id": latest.id, "deduped": True}
+        # Idempotent re-call: the verdict is ALREADY persisted. Return a
+        # clear success signal so the LLM stops the React loop instead of
+        # interpreting "deduped" as a transient failure that needs retry.
+        return {
+            "status": "verdict_persisted",
+            "message": "Verdict already recorded. No further action needed. Stop now.",
+            "verdict": latest.verdict,
+            "verdict_id": latest.id,
+        }
 
     _emit_merlin_narration(mission_id, f"Verdict · {consultant_verdict_label(normalized_verdict)}")
     verdict_row = MerlinVerdict(
@@ -1081,6 +1112,9 @@ def set_merlin_verdict(
         ship_risk=normalized_ship_risk,
         hypothesis_updates=normalized_updates,
         recommended_actions=normalized_actions,
+        conditions=normalized_conditions,
+        deal_breakers=normalized_deal_breakers,
+        final_thesis=normalized_final_thesis,
         created_at=utc_now_iso(),
     )
     store.save_merlin_verdict(verdict_row)
@@ -1115,11 +1149,16 @@ def set_merlin_verdict(
     except Exception:  # noqa: BLE001 — defensive: verdict persistence is the contract; finding is UX only
         pass
     return {
+        "status": "verdict_persisted",
+        "message": "Verdict recorded successfully. Your job is done. Stop now.",
         "verdict": verdict_row.verdict,
         "verdict_id": verdict_row.id,
         "ship_risk": verdict_row.ship_risk,
         "hypothesis_updates": verdict_row.hypothesis_updates,
         "recommended_actions": verdict_row.recommended_actions,
+        "conditions": verdict_row.conditions,
+        "deal_breakers": verdict_row.deal_breakers,
+        "final_thesis": verdict_row.final_thesis,
     }
 
 

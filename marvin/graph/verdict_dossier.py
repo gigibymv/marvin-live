@@ -102,6 +102,26 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
     for deliverable in deliverables:
         deliverable_by_workstream[deliverable.workstream_id].append(deliverable)
 
+    # Rebuttal heuristic: any finding from calculus/dora created after the latest
+    # adversus finding timestamp is treated as a potential rebuttal candidate.
+    adversus_findings = [f for f in findings if f.agent_id == "adversus"]
+    latest_adversus_ts: str | None = (
+        max(f.created_at for f in adversus_findings if f.created_at)
+        if adversus_findings
+        else None
+    )
+    rebuttal_candidates = [
+        f
+        for f in findings
+        if f.agent_id in {"calculus", "dora"}
+        and f.created_at
+        and latest_adversus_ts
+        and f.created_at > latest_adversus_ts
+    ]
+    rebuttals_by_hypothesis: dict[str | None, list[Finding]] = defaultdict(list)
+    for f in rebuttal_candidates:
+        rebuttals_by_hypothesis[f.hypothesis_id].append(f)
+
     hypothesis_sections: list[dict[str, Any]] = []
     gaps: list[str] = []
     contradicting_hypotheses = 0
@@ -111,8 +131,72 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
     for index, hypothesis in enumerate(hypotheses, start=1):
         scoped = list(by_hypothesis.get(hypothesis.id, []))
         scoped.extend(unlinked_redteam)
-        supporting = [finding for finding in scoped if finding.agent_id != "adversus"]
-        contradicting = [finding for finding in scoped if finding.agent_id == "adversus"]
+        supporting = [
+            f for f in scoped
+            if (
+                f.agent_id != "adversus"
+                and (
+                    f.agent_id not in {"calculus", "dora"}
+                    or not (latest_adversus_ts and f.created_at and f.created_at > latest_adversus_ts)
+                )
+            )
+        ]
+        attacks_raw = [f for f in scoped if f.agent_id == "adversus"]
+        hyp_rebuttals = rebuttals_by_hypothesis.get(hypothesis.id, [])
+
+        # Build attack dicts with rebuttal detection
+        attack_dicts: list[dict[str, Any]] = []
+        for attack in attacks_raw:
+            rebutted_by = [
+                r.claim_text
+                for r in hyp_rebuttals
+            ]
+            attack_dicts.append({
+                "claim": attack.claim_text,
+                "confidence": attack.confidence,
+                "has_primary_source": bool(attack.source_id),
+                "rebutted_by": rebutted_by,
+            })
+
+        # attack_strength
+        unrebutted_strong = [
+            a for a in attack_dicts
+            if a["confidence"] == "KNOWN" and a["has_primary_source"] and not a["rebutted_by"]
+        ]
+        unrebutted_any = [a for a in attack_dicts if not a["rebutted_by"]]
+        if not attack_dicts:
+            attack_strength = "none"
+        elif unrebutted_strong:
+            attack_strength = "strong"
+        elif any(a["confidence"] == "REASONED" for a in unrebutted_any) or (
+            [a for a in attack_dicts if a["confidence"] == "KNOWN" and a["has_primary_source"] and a["rebutted_by"]]
+        ):
+            attack_strength = "moderate"
+        elif all(a["confidence"] == "LOW_CONFIDENCE" for a in attack_dicts) or all(a["rebutted_by"] for a in attack_dicts):
+            attack_strength = "weak"
+        else:
+            attack_strength = "moderate"
+
+        # support_strength
+        support_known = sum(1 for f in supporting if f.confidence == "KNOWN")
+        support_reasoned = sum(1 for f in supporting if f.confidence == "REASONED")
+        if not supporting:
+            support_strength = "none"
+        elif support_known >= 2:
+            support_strength = "strong"
+        elif support_known >= 1 or support_reasoned >= 2:
+            support_strength = "moderate"
+        else:
+            support_strength = "weak"
+
+        # net_position
+        if support_strength in {"strong", "moderate"} and attack_strength in {"weak", "none"}:
+            net_position = "supports_thesis"
+        elif attack_strength == "strong" and support_strength != "strong":
+            net_position = "undermines_thesis"
+        else:
+            net_position = "ambiguous"
+
         counts = _counts_by_confidence(scoped)
         computed = compute_hypothesis_status(scoped)
         if computed["status"] == "CHALLENGED":
@@ -141,8 +225,11 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
                 "text": hypothesis.text,
                 "status": computed["status"],
                 "status_rationale": computed["rationale"],
-                "supporting_findings": [_finding_summary(finding) for finding in supporting[-8:]],
-                "contradicting_findings": [_finding_summary(finding) for finding in contradicting[-8:]],
+                "supporting": [_finding_summary(f) for f in supporting[-8:]],
+                "attacks": attack_dicts,
+                "attack_strength": attack_strength,
+                "support_strength": support_strength,
+                "net_position": net_position,
                 "primary_sourced_count": counts["KNOWN"],
                 "reasoned_count": counts["REASONED"],
                 "low_confidence_count": counts["LOW_CONFIDENCE"],
@@ -163,11 +250,21 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
     if any(not section["has_material"] for section in coverage if section["id"] in {"W1", "W2", "W4"}):
         gaps.append("One or more visible workstreams still have no user-facing material.")
 
-    ship_risk = "low"
+    # python_signal is a mechanical hint for Merlin, NOT a final verdict.
+    # Merlin must weigh qualitative attack/support strength per hypothesis and
+    # issue its own bounded verdict. This field should inform, not override.
+    python_signal = "low"
     if contradicting_hypotheses >= 2 or unsupported_hypotheses > 0:
-        ship_risk = "high"
+        python_signal = "high"
     elif low_confidence_hypotheses > 0:
-        ship_risk = "medium"
+        python_signal = "medium"
+
+    # Aggregate attack/support strength across all hypothesis sections
+    strength_rank = {"strong": 3, "moderate": 2, "weak": 1, "none": 0}
+    all_attack_strengths = [s["attack_strength"] for s in hypothesis_sections]
+    all_support_strengths = [s["support_strength"] for s in hypothesis_sections]
+    attack_strength_overall = max(all_attack_strengths, key=lambda s: strength_rank[s]) if all_attack_strengths else "none"
+    support_strength_overall = max(all_support_strengths, key=lambda s: strength_rank[s]) if all_support_strengths else "none"
 
     return {
         "mission": {
@@ -179,7 +276,9 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
         "hypotheses": hypothesis_sections,
         "coverage": coverage,
         "gaps": gaps,
-        "ship_risk": ship_risk,
+        "python_signal": python_signal,
+        "attack_strength_overall": attack_strength_overall,
+        "support_strength_overall": support_strength_overall,
         "redteam_findings": [
             _finding_summary(finding)
             for finding in findings

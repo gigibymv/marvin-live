@@ -156,15 +156,9 @@ def test_papyrus_never_called_without_ship():
     assert result != "papyrus_delivery"
 
 
-def test_phase_router_synthesis_retry_routes_to_adversus():
-    """When merlin's verdict is not SHIP and retry budget remains, merlin returns
-    phase='synthesis_retry'. The router must route that back to adversus, NOT
-    back to merlin — merlin's outgoing conditional-edge path map intentionally
-    has no self-loop entry, and routing 'merlin' there raises
-    `KeyError: 'merlin'` at the Pregel step. Regression test for the post-G1
-    crash observed in real run m-acmeh3-20260426."""
-    result = runner.phase_router({"phase": "synthesis_retry", "mission_id": "m-test", "messages": []})
-    assert result == "adversus"
+# test_phase_router_synthesis_retry_routes_to_adversus removed: synthesis_retry
+# branch was removed in Wave 2 / T3. Adversus runs once; Merlin always advances
+# to synthesis_done in a single pass. No retry routing path exists.
 
 
 def test_merlin_outgoing_path_map_does_not_self_loop():

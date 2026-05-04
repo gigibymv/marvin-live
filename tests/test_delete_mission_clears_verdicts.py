@@ -25,7 +25,7 @@ def _make_verdict(mid: str) -> MerlinVerdict:
     return MerlinVerdict(
         id="v-test-1",
         mission_id=mid,
-        verdict="SHIP",
+        verdict="INVEST",
         gate_id=None,
         notes="prior-run verdict",
     )

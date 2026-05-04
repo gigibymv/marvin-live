@@ -106,7 +106,7 @@ def test_merlin_advances_when_verdict_persisted(
         MerlinVerdict(
             id="mv-1",
             mission_id="m-test",
-            verdict="SHIP",
+            verdict="INVEST",
             created_at=datetime.now(UTC).isoformat(),
         )
     )

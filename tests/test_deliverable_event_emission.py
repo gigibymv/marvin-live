@@ -271,7 +271,7 @@ def test_placeholder_pdf_is_not_marked_ready(store: MissionStore):
         MerlinVerdict(
             id="mv-dlv",
             mission_id="m-dlv",
-            verdict="SHIP",
+            verdict="INVEST",
             created_at=datetime.now(UTC).isoformat(),
         )
     )

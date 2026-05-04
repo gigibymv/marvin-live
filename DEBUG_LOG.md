@@ -4,6 +4,52 @@ Bugs found and fixed during development. Most recent first.
 
 ---
 
+## 2026-05-03 — Investment-decision migration runtime regressions
+
+Surfaced live while testing the new verdict enums (`INVEST / INVEST_WITH_CONDITIONS / DO_NOT_INVEST / INSUFFICIENT_EVIDENCE`). Three real bugs and one pre-existing schema drift.
+
+### `database is locked` blocking framing_node and all writes
+
+**Symptom:** After restarting the backend post-migration, the brief stayed at 0% indefinitely. uvicorn log showed `sqlite3.OperationalError: database is locked` raised from `save_mission_brief` during `framing_node`. Subsequent writes from any path failed the same way.
+
+**Root cause:** `~/.marvin/marvin.db` was in `journal_mode = delete`, which serializes all writers and blocks readers during a write. With `MissionStore` (sync) and `AsyncSqliteSaver` (async, via LangGraph) competing on the same file, contention was already at the limit; the merlin_verdicts rebuild inside `_apply_additive_migrations` pushed it over. A leftover `marvin.db-journal` file confirmed an aborted transaction holding the lock. Default 5s `busy_timeout` was too short for the rebuild window.
+
+**Fix:** Switched the DB to `journal_mode = WAL` (concurrent reader + writer), bumped connection `timeout` to 30s, and pinned `busy_timeout = 30000` in `MissionStore.__init__`. Setting is persistent at the database level. Ran a one-off `PRAGMA journal_mode = WAL` to fix the existing file.
+
+**Files touched:** `marvin/mission/store.py`
+
+### Merlin verdict never persisted; G3 never opened; Papyrus never ran
+
+**Symptom:** A live Netflix mission emitted "Merlin — Verdict · Do not invest" via SSE narration but the verdict row never appeared in the DB. Mission stayed at `synthesis_state = running` with `active_agent = research_rebuttal`. G3 `final_review` gate stayed `pending` indefinitely; Papyrus never produced an exec summary.
+
+**Root cause:** Existing `~/.marvin/marvin.db` still had the legacy `CHECK (verdict IN ('SHIP','MINOR_FIXES','BACK_TO_DRAWING_BOARD'))` constraint on `merlin_verdicts.verdict`. The investment-decision migration updated `001_init.sql` for fresh DBs but SQLite has no `ALTER TABLE ... DROP CHECK`, so existing DBs kept the old constraint. `set_merlin_verdict()` raised `sqlite3.IntegrityError` on every insert, the LangGraph tool retry exhausted, and the mission silently parked at the rebuttal phase.
+
+**Fix:** Added a table-rebuild step at the end of `_apply_additive_migrations` that detects the legacy CHECK (`'BACK_TO_DRAWING_BOARD' in sql and 'INVEST' not in sql`), drops FKs temporarily, recreates the table with a CHECK accepting both new (4) and legacy (3) enums, copies non-orphan rows (filter by `EXISTS missions`), drops the old table, renames. Idempotent; runs once per DB.
+
+**Files touched:** `marvin/mission/store.py`
+
+### Pre-existing schema drift: `parent_mission_id` and `channel_id`
+
+**Symptom:** `GET /api/v1/missions` returned HTTP 500 with `pydantic_core.ValidationError: Extra inputs are not permitted` on `parent_mission_id`. Backend log spam from chat persistence: `chat message persistence failed: 1 validation error for MissionChatMessage / channel_id / Extra inputs are not permitted`.
+
+**Root cause:** Previous schema work added DB columns (`missions.parent_mission_id`, `mission_chat_messages.channel_id`) without adding the corresponding fields to the Pydantic models. With `model_config = ConfigDict(extra="forbid")`, every read raised. The migration didn't introduce the columns but surfaced the warnings on every chat write because the new flow exercised more chat persistence paths.
+
+**Fix:** Added `parent_mission_id: str | None = None` to `Mission` and `channel_id: str | None = None` to `MissionChatMessage`.
+
+**Files touched:** `marvin/mission/schema.py`
+
+### G1 chat showed "Approve recommendation" instead of "Approve"
+
+**Symptom:** At G0 (hypothesis confirmation) and G1 (manager review), the chat-bubble CTAs showed "Approve recommendation →" / "Request review" — investment-decision branding that belongs only to G3 (final review).
+
+**Root cause:** During the migration, `RightRail.tsx` chat-bubble buttons were renamed unconditionally for all gates. The component has no `gate_type` context for chat-bubble gates.
+
+**Fix:** Reverted the chat-bubble labels to generic "Approve →" / "Reject". The investment-decision branding ("Approve recommendation", final_thesis / conditions / deal_breakers display) remains in the G3 full-screen modal in `MissionControl.tsx`, which is G3-scoped by construction.
+
+**Files touched:** `components/marvin/v2/RightRail.tsx`
+
+---
+
 ## 2026-05-02 — Worktree `codex/mission-flow-hardening` bug ledger
 
 Scope reconstructed from commits:
@@ -241,5 +287,23 @@ render deploys create srv-d7p2l8vavr4c73d1gnvg  # frontend
 ```
 
 **Permanent fix needed:** Reconnect repo in Render dashboard → Settings → Build & Deploy for both services.
+
+---
+
+## 2026-05-03 — Netflix EDGAR false block from early filing limit
+
+**Symptom:** `Financial Analysis` could block for Netflix with `no matching filings`, even though Netflix has a FY2024 10-K on EDGAR (`0001065280-25-000044`, report date `2024-12-31`).
+
+**Root cause:** `list_filings_result` used one `limit` for both scanning recent EDGAR rows and returning filtered results. For active companies, many recent non-target filings can appear before the relevant annual report, so the FY2024 10-K was never inspected before fiscal-year filtering ran.
+
+**Fix:** `list_filings_result` now separates `max_scan` from `limit`. `search_sec_filings` and `fetch_filing_section` scan up to 1000 recent EDGAR rows, apply form/year matching, then cap returned results. Error taxonomy remains honest: if no filing matches after the wider bounded scan, the result still returns `no_matching_filing`.
+
+**Why it prevents repeats:** The fix is company-agnostic. It protects any high-volume filer where the relevant 10-K/10-Q appears deep in the submissions feed, not only Netflix.
+
+**Regression coverage:** Added Netflix-like tests where the valid FY2024 10-K appears after 350 noisy recent filings; both `search_sec_filings` and `fetch_filing_section` must find it.
+
+**Validation:** `tests/test_edgar_client.py` passed, typecheck passed, smoke passed, and a live SEC read confirmed Netflix FY2024 returns the correct 10-K.
+
+**Files touched:** `marvin/tools/edgar_client.py`, `marvin/tools/calculus_tools.py`, `tests/test_edgar_client.py`
 
 ---

@@ -16,12 +16,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _STORE_FACTORY = MissionStore
 _PAPYRUS_PROMPT_PATH = Path(__file__).resolve().parent.parent / "subagents" / "prompts" / "papyrus.md"
 
-_VERDICT_ENUM_REPLACEMENTS = {
-    "BACK_TO_DRAWING_BOARD": "Evidence gaps — not ready",
-    "MINOR_FIXES": "Additional diligence needed",
-    "SHIP": "Ready to present",
-}
-
 
 def _hypothesis_label(h: Hypothesis, index: int) -> str:
     """Return H1/H2/... label, falling back to position when unset."""
@@ -123,7 +117,38 @@ def _build_papyrus_context(
     if extra:
         verdict = extra.pop("verdict", None) if isinstance(extra, dict) else None
         if isinstance(verdict, MerlinVerdict):
+            _next_status_labels: dict[str, str] = {
+                "confirmed": "Confirmed by evidence",
+                "adjusted": "Adjusted",
+                "refuted": "Refuted",
+                "unjudgeable": "Not judgeable",
+                # legacy values
+                "SUPPORTED": "Supported",
+                "WEAKENED": "Weakened",
+                "CHALLENGED": "Challenged",
+                "TESTING": "Under test",
+            }
+            label_by_id = {h.id: _hypothesis_label(h, i) for i, h in enumerate(hypotheses)}
+            hypothesis_conclusions = []
+            for upd in (verdict.hypothesis_updates or []):
+                h_id = upd.get("hypothesis_id", "")
+                h_label = label_by_id.get(h_id, h_id)
+                raw_status = upd.get("next_status", "")
+                status_label = _next_status_labels.get(raw_status, raw_status)
+                hypothesis_conclusions.append({
+                    "label": h_label,
+                    "status_label": status_label,
+                    "why": upd.get("why", ""),
+                })
             payload["verdict"] = {
+                "recommendation_label": consultant_verdict_label(verdict.verdict),
+                "recommendation_enum": verdict.verdict,
+                "decision_action": consultant_verdict_action(verdict.verdict),
+                "final_thesis": verdict.final_thesis or verdict.notes or "",
+                "conditions": verdict.conditions or [],
+                "deal_breakers": verdict.deal_breakers or [],
+                "hypothesis_conclusions": hypothesis_conclusions,
+                # keep legacy fields for backward compatibility with existing prompts
                 "label": consultant_verdict_label(verdict.verdict),
                 "recommended_action": consultant_verdict_action(verdict.verdict),
                 "notes": verdict.notes or "",
@@ -141,8 +166,6 @@ def _build_papyrus_context(
 def _sanitize_user_facing_markdown(body: str) -> str:
     """Remove workflow enums from generated markdown before persistence."""
     out = str(body or "")
-    for raw, replacement in _VERDICT_ENUM_REPLACEMENTS.items():
-        out = out.replace(raw, replacement)
     out = out.replace("CDD cdd", "CDD")
     return out
 
@@ -593,8 +616,11 @@ def _generate_report_pdf_impl(mission_id: str) -> dict[str, Any]:
     store = get_store(_STORE_FACTORY)
     verdict = store.get_latest_merlin_verdict(mission_id)
     g3_completed = any(gate.scheduled_day == 10 and gate.status == "completed" for gate in store.list_gates(mission_id))
-    if not ((verdict and verdict.verdict == "SHIP") or g3_completed):
-        raise ValueError("generate_report_pdf requires SHIP verdict or completed G3 gate")
+    if not ((verdict and verdict.verdict in ("INVEST", "INVEST_WITH_CONDITIONS", "DO_NOT_INVEST", "SHIP")) or g3_completed):
+        raise ValueError(
+            "generate_report_pdf requires a completed G3 gate or a final investment verdict "
+            "(INVEST, INVEST_WITH_CONDITIONS, or DO_NOT_INVEST)"
+        )
     return {
         "mission_id": mission_id,
         "deliverable_type": "report_pdf",

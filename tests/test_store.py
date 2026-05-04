@@ -396,7 +396,7 @@ def test_save_and_get_latest_merlin_verdict():
         MerlinVerdict(
             id="mv-1",
             mission_id="m-test",
-            verdict="MINOR_FIXES",
+            verdict="INVEST_WITH_CONDITIONS",
             created_at="2026-01-01T00:00:00",
         )
     )
@@ -404,13 +404,13 @@ def test_save_and_get_latest_merlin_verdict():
         MerlinVerdict(
             id="mv-2",
             mission_id="m-test",
-            verdict="SHIP",
+            verdict="INVEST",
             created_at="2026-01-02T00:00:00",
         )
     )
     latest = store.get_latest_merlin_verdict("m-test")
     assert latest is not None
-    assert latest.verdict == "SHIP"
+    assert latest.verdict == "INVEST"
     store.close()
 
 

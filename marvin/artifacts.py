@@ -34,7 +34,7 @@ DELIVERABLE_REQUIRED_STRUCTURE = {
         "## Hypotheses to Test",
     ),
     "exec_summary": (
-        "## Key Findings",
+        "## Recommendation",
     ),
     "data_book": (
         "## H1",
@@ -53,10 +53,6 @@ FORBIDDEN_PATTERNS = (
     re.compile(r"Source ID:\s*unassigned", re.IGNORECASE),
     re.compile(r"Agent:\s*(dora|calculus|adversus|merlin|papyrus)", re.IGNORECASE),
 )
-
-# exec_summary may use either "## Headline" or "## Verdict" as the lead
-# section — accept either, plus the always-required "## Key Findings".
-EXEC_SUMMARY_LEAD_ALTERNATES = ("## Headline", "## Verdict")
 
 PLACEHOLDER_LINE_MARKERS = frozenset(
     {
@@ -88,14 +84,7 @@ def _body_is_new_structure(body: str, deliverable_type: str | None) -> bool:
     structure = DELIVERABLE_REQUIRED_STRUCTURE.get(deliverable_type or "")
     if not structure:
         return False
-    if not _has_all_markers(body, structure):
-        return False
-    if deliverable_type == "exec_summary":
-        # Either "## Headline" or "## Verdict" must accompany the always-
-        # required "## Key Findings".
-        if not any(alt in body for alt in EXEC_SUMMARY_LEAD_ALTERNATES):
-            return False
-    return True
+    return _has_all_markers(body, structure)
 
 
 def _body_is_legacy_structure(body: str, deliverable_type: str | None) -> bool:

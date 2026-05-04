@@ -6,6 +6,16 @@ import sqlite3
 from pathlib import Path
 
 
+def _normalize_legacy_verdict(raw: str) -> str:
+    """Map old CDD verdict values to new investment-decision values."""
+    mapping = {
+        "SHIP": "INVEST",
+        "MINOR_FIXES": "INVEST_WITH_CONDITIONS",
+        "BACK_TO_DRAWING_BOARD": "INSUFFICIENT_EVIDENCE",
+    }
+    return mapping.get((raw or "").strip().upper(), raw)
+
+
 def _decode_json_list(value: object) -> list[str]:
     """Decode a JSON-encoded TEXT column into a list of strings, defensively."""
     if value is None or value == "":
@@ -208,9 +218,15 @@ class MissionStore:
         if self.db_path != ":memory:":
             Path(self.db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
         connection_target = ":memory:" if self.db_path == ":memory:" else str(Path(self.db_path).expanduser())
-        self._conn = sqlite3.connect(connection_target)
+        self._conn = sqlite3.connect(connection_target, timeout=30.0)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON;")
+        # WAL allows concurrent reader (MissionStore) + writer (AsyncSqliteSaver
+        # via LangGraph). Default 'delete' journal mode serializes all I/O and
+        # produces 'database is locked' errors under load. Persistent setting.
+        if self.db_path != ":memory:":
+            self._conn.execute("PRAGMA journal_mode = WAL;")
+        self._conn.execute("PRAGMA busy_timeout = 30000;")
         self._initialize_schema()
 
     def close(self) -> None:
@@ -291,10 +307,69 @@ class MissionStore:
                 "synthesis_complete_at",
                 "ALTER TABLE merlin_verdicts ADD COLUMN synthesis_complete_at TEXT",
             ),
+            (
+                "merlin_verdicts",
+                "conditions",
+                "ALTER TABLE merlin_verdicts ADD COLUMN conditions TEXT DEFAULT '[]'",
+            ),
+            (
+                "merlin_verdicts",
+                "deal_breakers",
+                "ALTER TABLE merlin_verdicts ADD COLUMN deal_breakers TEXT DEFAULT '[]'",
+            ),
+            (
+                "merlin_verdicts",
+                "final_thesis",
+                "ALTER TABLE merlin_verdicts ADD COLUMN final_thesis TEXT",
+            ),
         ):
             cols = {row["name"] for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
             if column not in cols:
                 self._conn.execute(ddl)
+        # Investment-decision migration: rebuild merlin_verdicts if its CHECK
+        # constraint still references only the legacy enum (SHIP / MINOR_FIXES /
+        # BACK_TO_DRAWING_BOARD). SQLite has no ALTER TABLE DROP CHECK, so we
+        # rebuild. Idempotent: triggers only when the new INVEST enum is absent.
+        verdict_table_sql_row = self._conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='merlin_verdicts'"
+        ).fetchone()
+        verdict_table_sql = (verdict_table_sql_row["sql"] if verdict_table_sql_row else "") or ""
+        if "'BACK_TO_DRAWING_BOARD'" in verdict_table_sql and "'INVEST'" not in verdict_table_sql:
+            # Disable FK during rebuild — orphan verdicts (mission deleted with
+            # cascade not propagated historically) would otherwise abort the migration.
+            self._conn.execute("PRAGMA foreign_keys = OFF")
+            self._conn.executescript(
+                """
+                DROP TABLE IF EXISTS merlin_verdicts__new;
+                CREATE TABLE merlin_verdicts__new (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+                    verdict TEXT NOT NULL CHECK (verdict IN (
+                        'INVEST','INVEST_WITH_CONDITIONS','DO_NOT_INVEST','INSUFFICIENT_EVIDENCE',
+                        'SHIP','MINOR_FIXES','BACK_TO_DRAWING_BOARD'
+                    )),
+                    gate_id TEXT,
+                    notes TEXT,
+                    created_at TEXT,
+                    ship_risk TEXT,
+                    hypothesis_updates TEXT DEFAULT '[]',
+                    recommended_actions TEXT DEFAULT '[]',
+                    synthesis_complete_at TEXT,
+                    conditions TEXT DEFAULT '[]',
+                    deal_breakers TEXT DEFAULT '[]',
+                    final_thesis TEXT
+                );
+                INSERT INTO merlin_verdicts__new
+                  SELECT v.id, v.mission_id, v.verdict, v.gate_id, v.notes, v.created_at,
+                         v.ship_risk, v.hypothesis_updates, v.recommended_actions,
+                         v.synthesis_complete_at, v.conditions, v.deal_breakers, v.final_thesis
+                  FROM merlin_verdicts v
+                  WHERE EXISTS (SELECT 1 FROM missions m WHERE m.id = v.mission_id);
+                DROP TABLE merlin_verdicts;
+                ALTER TABLE merlin_verdicts__new RENAME TO merlin_verdicts;
+                """
+            )
+            self._conn.execute("PRAGMA foreign_keys = ON")
         # C-CONV: mission_steering table is additive on existing DBs that
         # were created before the table appeared in 001_init.sql.
         existing_tables = {
@@ -398,6 +473,11 @@ class MissionStore:
                 default=[],
             )
             data["recommended_actions"] = _decode_json_list(data.get("recommended_actions"))
+            data["conditions"] = _decode_json_list(data.get("conditions"))
+            data["deal_breakers"] = _decode_json_list(data.get("deal_breakers"))
+            # backward-compat: normalize legacy verdict values before model validation
+            if "verdict" in data and data["verdict"] is not None:
+                data["verdict"] = _normalize_legacy_verdict(str(data["verdict"]))
         return model_cls.model_validate(data)
 
     def save_mission(self, mission: Mission) -> Mission:
@@ -1212,8 +1292,9 @@ class MissionStore:
             """
             INSERT OR REPLACE INTO merlin_verdicts
             (id, mission_id, verdict, gate_id, notes, ship_risk, hypothesis_updates,
-             recommended_actions, synthesis_complete_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             recommended_actions, conditions, deal_breakers, final_thesis,
+             synthesis_complete_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 verdict.id,
@@ -1224,6 +1305,9 @@ class MissionStore:
                 verdict.ship_risk,
                 json.dumps(list(verdict.hypothesis_updates or [])),
                 json.dumps(list(verdict.recommended_actions or [])),
+                json.dumps(list(verdict.conditions or [])),
+                json.dumps(list(verdict.deal_breakers or [])),
+                verdict.final_thesis,
                 verdict.synthesis_complete_at,
                 verdict.created_at,
             ),

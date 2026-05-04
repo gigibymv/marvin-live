@@ -274,7 +274,7 @@ def test_final_review_opens_only_after_synthesis_complete(store: MissionStore):
         MerlinVerdict(
             id="mv-progress",
             mission_id="m-progress",
-            verdict="SHIP",
+            verdict="INVEST",
             synthesis_complete_at=datetime.now(UTC).isoformat(),
             created_at=datetime.now(UTC).isoformat(),
         )
@@ -298,7 +298,7 @@ def test_final_review_opens_only_after_synthesis_complete(store: MissionStore):
 
     assert gates["final_review"]["lifecycle_status"] == "open"
     assert gates["final_review"]["is_open"] is True
-    assert gates["final_review"]["review_payload"]["merlin_verdict"]["verdict"] == "SHIP"
+    assert gates["final_review"]["review_payload"]["merlin_verdict"]["verdict"] == "INVEST"
     assert gates["final_review"]["review_payload"]["redteam_findings"][0]["id"] == "f-redteam"
 
 
@@ -308,7 +308,7 @@ def test_final_review_stays_scheduled_while_synthesis_running(store: MissionStor
         MerlinVerdict(
             id="mv-progress-running",
             mission_id="m-progress",
-            verdict="SHIP",
+            verdict="INVEST",
             created_at=datetime.now(UTC).isoformat(),
         )
     )

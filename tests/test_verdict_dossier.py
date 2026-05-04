@@ -64,10 +64,10 @@ def test_verdict_dossier_is_deterministic_and_flags_gaps(tmp_path):
     second = build_verdict_dossier(store, mission.id)
 
     assert first == second
-    assert first["ship_risk"] == "high"
+    assert first["python_signal"] == "high"
     assert any("H1 has unresolved red-team contradiction" in gap for gap in first["gaps"])
     assert any("H2 has no linked evidence yet." in gap for gap in first["gaps"])
     by_label = {row["label"]: row for row in first["hypotheses"]}
     assert by_label["H1"]["primary_sourced_count"] == 1
-    assert len(by_label["H1"]["contradicting_findings"]) == 1
+    assert len(by_label["H1"]["attacks"]) == 1
     assert by_label["H2"]["status"] == "NOT_STARTED"

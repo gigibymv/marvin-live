@@ -89,10 +89,24 @@ _MILESTONE_COVERAGE_PATTERNS: dict[str, tuple[str, ...]] = {
         r"\bcustom (?:ai )?chip",
     ),
     "W1.3": (
+        # generic moat indicators
         r"\bmoat\b",
         r"\bswitching cost",
         r"\block-?in\b",
         r"\becosystem\b",
+        r"\bnetwork effect",
+        r"\bbrand\b",
+        r"\bretention\b",
+        r"\bchurn\b",
+        r"\bsubscriber\b",
+        r"\bcontent librar",
+        r"\bstreaming\b",
+        r"\boriginal",
+        r"\bpersonali[sz]ation",
+        r"\brecommendation\b",
+        r"\bscale advantage\b",
+        r"\bplatform\b",
+        # NVIDIA-shaped (kept for prior missions)
         r"\bcuda\b",
         r"\bdeveloper",
         r"\bsupply chain\b",
@@ -260,12 +274,18 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         mission = store.get_mission(mission_id)
         hypotheses = store.list_hypotheses(mission_id)
         hyp_text = "\n".join([f"- [{hypothesis.id}] {hypothesis.text}" for hypothesis in hypotheses])
+        w1_milestones = [m for m in store.list_milestones(mission_id) if m.workstream_id == "W1"]
+        milestone_text = "\n".join(
+            f"- {m.id} {m.label}" for m in sorted(w1_milestones, key=lambda x: x.id)
+        ) or "- (no W1 milestones seeded)"
 
         w1_msg = HumanMessage(
             content=(
                 f"Mission: {mission.client} - {mission.target}\n"
                 f"IC: {mission.ic_question}\n"
-                "Task: W1 Market & Competitive Analysis (W1.1, W1.2, W1.3)\n"
+                "Task: W1 Market & Competitive Analysis. Cover EACH milestone below; "
+                "every finding you persist must set milestone_id to the matching W1.x.\n"
+                f"W1 milestones (mandatory coverage):\n{milestone_text}\n"
                 f"Hypotheses to test (use the bracketed id verbatim for any tool that takes hypothesis_id):\n{hyp_text}\n"
                 "Deliver each milestone via mark_milestone_delivered()."
             )
@@ -319,14 +339,6 @@ def phase_router(state: MarvinState) -> str | list[Send]:
 
     if phase == "rebuttal_done":
         return "merlin"
-
-    if phase == "synthesis_retry":
-        # Merlin asked for another red-team pass before re-evaluating.
-        # Bounce through adversus first; adversus will return redteam_done,
-        # which routes back to merlin for a fresh verdict. Returning "merlin"
-        # here would map to merlin's own conditional-edge path map, which
-        # intentionally does not include a "merlin" key (no self-loop).
-        return "adversus"
 
     if phase == "synthesis_done":
         return "gate_entry"
@@ -803,7 +815,7 @@ async def adversus_node(state: MarvinState) -> dict:
         _persist_transient_gate_failure(mission_id, failure, gate_type="manager_review")
         return {"phase": "llm_transient_failure", "failed_agent": "adversus"}
     except Exception as exc:  # P13: any non-transient failure must not leave
-        # the mission stuck at phase="synthesis_retry". Surface as a gate
+        # the mission stuck in an intermediate phase. Surface as a gate
         # failure so the UI can render a recovery card and the graph advances
         # to a terminal phase instead of silently parking the coroutine.
         synthetic = LLMTransientFailure(
@@ -877,32 +889,13 @@ def _next_phase_after_merlin(
 ) -> dict:
     """Pure decision for what comes after a merlin verdict.
 
-    Three circuit breakers prevent the post-cap retry loop seen on the Mistral
-    mission (Bug 6 — chantier 2.5):
-      1. retry_count has reached SYNTHESIS_MAX_RETRIES.
-      2. retry produced no new findings since the last verdict.
-      3. adversus has hit its 12-finding cap (any further pass is identical).
-
-    Any breaker forces phase=synthesis_done with forced_advance=True so the
-    UI surfaces a transparent "advanced after {force_reason}" line instead of
-    silently looping. SHIP advances cleanly with no retry counter reset noise.
+    Wave 2 / T3: Adversus runs once per mission; Merlin decides in a single
+    pass. All valid verdicts (INVEST / INVEST_WITH_CONDITIONS / DO_NOT_INVEST /
+    INSUFFICIENT_EVIDENCE) advance to synthesis_done. The synthesis_retry loop
+    has been removed.
     """
-    if verdict == "SHIP":
-        return {"phase": "synthesis_done"}
-
-    base = {"phase": "synthesis_done", "synthesis_retry_count": 0, "forced_advance": True}
-    if retry_count >= SYNTHESIS_MAX_RETRIES:
-        return {**base, "force_reason": "max_retries"}
-    if retry_count > 0 and current_finding_count == last_finding_count:
-        return {**base, "force_reason": "no_new_findings"}
-    if adversus_finding_count >= ADVERSUS_FINDING_CAP:
-        return {**base, "force_reason": "adversus_cap_reached"}
-
-    return {
-        "phase": "synthesis_retry",
-        "synthesis_retry_count": retry_count + 1,
-        "last_verdict_at_finding_count": current_finding_count,
-    }
+    # All verdicts advance to synthesis_done — no retry loop.
+    return {"phase": "synthesis_done"}
 
 
 async def merlin_node(state: MarvinState) -> dict:
@@ -938,9 +931,9 @@ async def merlin_node(state: MarvinState) -> dict:
     msg = HumanMessage(
         content=(
             f"Mission: {mission_id}\n"
-            "Task: Judge the synthesis dossier and issue one bounded verdict.\n"
+            "Task: Judge the synthesis dossier and issue one investment verdict.\n"
             "Use only the dossier below. Do not explore with tools beyond set_merlin_verdict.\n"
-            "Verdict options: SHIP | MINOR_FIXES | BACK_TO_DRAWING_BOARD\n\n"
+            "Verdict options: INVEST | INVEST_WITH_CONDITIONS | DO_NOT_INVEST | INSUFFICIENT_EVIDENCE\n\n"
             f"VERDICT_DOSSIER:\n{json.dumps(dossier, indent=2, sort_keys=True)}"
         )
     )
@@ -988,23 +981,13 @@ async def merlin_node(state: MarvinState) -> dict:
         return {**result, "phase": "merlin_failed", "messages": [err]}
     verdict = verdict_row.verdict
 
-    findings = store.list_findings(mission_id)
-    adversus_count = sum(1 for f in findings if f.agent_id == "adversus")
-    decision = _next_phase_after_merlin(
-        verdict=verdict,
-        retry_count=int(state.get("synthesis_retry_count", 0) or 0),
-        current_finding_count=len(findings),
-        last_finding_count=int(state.get("last_verdict_at_finding_count", 0) or 0),
-        adversus_finding_count=adversus_count,
-    )
-    if decision.get("phase") == "synthesis_done":
-        completed_at = datetime.now(UTC).isoformat()
-        if verdict_row.synthesis_complete_at != completed_at:
-            verdict_row = verdict_row.model_copy(update={"synthesis_complete_at": completed_at})
-            store.save_merlin_verdict(verdict_row)
-        store.update_mission_synthesis_state(mission_id, "complete", completed_at)
-    else:
-        store.update_mission_synthesis_state(mission_id, "retry_pending", None)
+    # Wave 2 / T3: Merlin always advances to synthesis_done in a single pass.
+    decision = {"phase": "synthesis_done"}
+    completed_at = datetime.now(UTC).isoformat()
+    if verdict_row.synthesis_complete_at != completed_at:
+        verdict_row = verdict_row.model_copy(update={"synthesis_complete_at": completed_at})
+        store.save_merlin_verdict(verdict_row)
+    store.update_mission_synthesis_state(mission_id, "complete", completed_at)
     return {**result, **decision}
 
 

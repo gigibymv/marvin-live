@@ -93,6 +93,10 @@ export interface MissionGateMerlinVerdict {
   id: string;
   verdict: string;
   label?: string | null;
+  recommendation_enum?: string | null;
+  conditions?: string[];
+  deal_breakers?: string[];
+  final_thesis?: string | null;
   recommendedAction?: string | null;
   notes?: string | null;
   shipRisk?: string | null;

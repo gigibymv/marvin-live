@@ -165,7 +165,7 @@ CREATE TABLE IF NOT EXISTS merlin_verdicts (
     id TEXT PRIMARY KEY,
     mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
     verdict TEXT NOT NULL
-        CHECK (verdict IN ('SHIP','MINOR_FIXES','BACK_TO_DRAWING_BOARD')),
+        CHECK (verdict IN ('INVEST','INVEST_WITH_CONDITIONS','DO_NOT_INVEST','INSUFFICIENT_EVIDENCE')),
     gate_id TEXT,
     notes TEXT,
     ship_risk TEXT,

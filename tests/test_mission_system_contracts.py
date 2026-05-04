@@ -75,7 +75,10 @@ def test_langgraph_gate_phases_route_through_gate_entry():
     assert ("merlin", "merlin") not in edges
 
 
-def test_phase_router_keeps_merlin_retry_on_adversus_path():
+def test_phase_router_synthesis_retry_phase_is_gone():
+    # synthesis_retry routing branch was removed in Wave 2 / T3.
+    # Merlin always advances to synthesis_done; synthesis_retry is no longer
+    # a valid phase. Confirm the router does NOT route it to adversus.
     route = runner.phase_router(
         {
             "mission_id": "m-contract",
@@ -83,8 +86,7 @@ def test_phase_router_keeps_merlin_retry_on_adversus_path():
             "messages": [],
         }
     )
-
-    assert route == "adversus"
+    assert route != "adversus"
 
 
 def test_canonical_completion_requires_financial_report(tmp_path, monkeypatch):

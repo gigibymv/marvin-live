@@ -41,7 +41,11 @@ def test_gate_node_does_not_interrupt_without_required_material(store: MissionSt
         )
     )
 
-    assert result["phase"] == "idle"
+    # Returns the gate-triggering retry phase (not "idle") so a future
+    # validate POST can spawn a detached_resume that re-runs gate_entry +
+    # gate_node — recovers from transient missing material instead of
+    # leaving the LangGraph checkpoint terminal.
+    assert result["phase"] == "awaiting_confirmation"
     assert result["pending_gate_id"] is None
     blocked = result["phase_blocked"]
     assert blocked["gate_id"] == "gate-m-gate-hyp-confirm"
@@ -348,7 +352,7 @@ def test_final_gate_findings_total_counts_all_findings(store: MissionStore):
         MerlinVerdict(
             id="mv-gate",
             mission_id="m-gate",
-            verdict="SHIP",
+            verdict="INVEST",
             synthesis_complete_at=now,
             created_at=now,
         )
@@ -396,7 +400,7 @@ def test_final_gate_blocked_while_manager_gate_pending(store: MissionStore):
     Adversus."""
     now = datetime.now(UTC).isoformat()
     store.save_merlin_verdict(
-        MerlinVerdict(id="mv-interim", mission_id="m-gate", verdict="MINOR_FIXES", created_at=now)
+        MerlinVerdict(id="mv-interim", mission_id="m-gate", verdict="INVEST_WITH_CONDITIONS", created_at=now)
     )
     store.save_finding(
         Finding(

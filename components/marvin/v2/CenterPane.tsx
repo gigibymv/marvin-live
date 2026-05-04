@@ -162,9 +162,12 @@ function FindingRow({ f, isHighlighted }: { f: CenterFinding; isHighlighted?: bo
 
 function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolean }): React.ReactElement | null {
   const agentLabel = (f.agent ?? "MARVIN").toUpperCase();
-  const statusLabel = String(f.confidence ?? "").toLowerCase() === "blocked"
-    ? "BLOCKED"
-    : "WRITING";
+  const conf = String(f.confidence ?? "").toLowerCase();
+  const statusLabel =
+    conf === "blocked" ? "BLOCKED" :
+    conf === "delivered" || conf === "done" ? "DONE" :
+    conf === "pending" ? "IN PROGRESS" :
+    "WRITING";
   // P17: when the tab is completed but no backing file has landed yet, show an
   // inline "IN PROGRESS" status label rather than hiding the row entirely.
   // This surfaces that the report is still generating vs. silently absent.
@@ -188,7 +191,7 @@ function MilestoneRow({ f, isTerminal }: { f: CenterFinding; isTerminal?: boolea
         <span style={{ flex: 1, fontSize: 11, fontWeight: 500, color: "var(--ink2)", lineHeight: 1.5 }}>
           {humanizeText(f.text ?? "")}
         </span>
-        <Mono size={8} color={statusLabel === "BLOCKED" ? "var(--amber)" : "var(--muted)"} spacing=".06em">{statusLabel}</Mono>
+        <Mono size={8} color={statusLabel === "BLOCKED" ? "var(--amber)" : statusLabel === "DONE" ? "var(--green)" : "var(--muted)"} spacing=".06em">{statusLabel}</Mono>
         <Mono size={8} color="var(--muted)">{formatRowTime(f.ts)}</Mono>
       </div>
     );

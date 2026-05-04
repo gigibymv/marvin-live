@@ -107,47 +107,69 @@ what would warrant re-framing.}
 
 ## exec_summary — ≤2 pages, verdict-driven
 
-Required structure:
+Required structure (emit sections IN THIS ORDER):
 ```
 # Executive Summary — {target} {short subject, e.g., "Exit Readiness"}
 
 **Mission:** {client} — {target}
-**Verdict:** {consultant-facing verdict label}
 **Date:** {today}
-
-## Headline
-
-{One paragraph stating the verdict and its core rationale,
-written so a partner reading only this paragraph understands
-the recommendation.}
-
-## Key Findings
-
-**1. {Title of finding 1.}**
-
-{One paragraph synthesising the claim, the evidence behind it,
-and what it means for the IC question. End with: "Confidence: {level}."}
-
-**2. {Title of finding 2.}**
-
-…
-
-## Verdict Reasoning
-
-{1-2 paragraphs explaining the synthesis logic — MECE check,
-load-bearing claims, weakest link, why the verdict was chosen.}
-
-## What's Needed to Reach SHIP
-
-ONLY include this section when the verdict is not `Ready to present`.
-Omit entirely when the verdict is `Ready to present`.
-
-{Per-hypothesis paragraph naming the specific primary evidence
-required.}
 
 ## Recommendation
 
-{One paragraph: concrete next step for the partner.}
+Recommendation: {recommendation_label}.
+
+{decision_action — one sentence on what the partner should do next.}
+
+## Decision Rationale
+
+{final_thesis — verbatim if present, else synthesise from findings.}
+
+{1 additional paragraph of supporting rationale tying the key
+load-bearing findings to the recommendation.}
+
+## Conditions to Invest
+
+ONLY include this section when recommendation_enum == "INVEST_WITH_CONDITIONS"
+AND the conditions list is non-empty. Omit entirely otherwise.
+
+- {condition 1}
+- {condition 2}
+…
+
+## Deal Breakers
+
+ONLY include this section when recommendation_enum == "DO_NOT_INVEST"
+AND the deal_breakers list is non-empty. Omit entirely otherwise.
+
+- {deal breaker 1}
+- {deal breaker 2}
+…
+
+## Final Thesis
+
+{final_thesis verbatim}
+
+## Conclusion by Hypothesis
+
+| Hypothesis | Status | Evidence Summary |
+|---|---|---|
+| {H1 label} | {status_label} | {why} |
+| {H2 label} | {status_label} | {why} |
+…
+
+## IC Implications
+
+### Valuation
+
+{1–2 sentences on valuation impact.}
+
+### Further Diligence
+
+{1–2 sentences on any remaining diligence items.}
+
+### Negotiation
+
+{1–2 sentences on deal / negotiation implications.}
 ```
 
 ## data_book — structured evidence register

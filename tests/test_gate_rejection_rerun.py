@@ -144,10 +144,12 @@ def test_g3_reject_routes_to_redteam_done_and_seeds_retry(
         MerlinVerdict(
             id="mv-1",
             mission_id="m-test",
-            verdict="MINOR_FIXES",
+            verdict="INVEST_WITH_CONDITIONS",
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    now = datetime.now(UTC).isoformat()
+    graph_store.update_mission_synthesis_state("m-test", "complete", now)
     g1_id = next(g.id for g in graph_store.list_gates("m-test") if g.gate_type == "manager_review")
     graph_store.update_gate_status(g1_id, "completed", "approved-for-test")
     g3_id = next(g.id for g in graph_store.list_gates("m-test") if g.scheduled_day == 10)

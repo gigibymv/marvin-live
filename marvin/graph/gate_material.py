@@ -40,15 +40,15 @@ GATE_COPY = {
         "unlocks_on_reject": "Workstreams loop back for additional research.",
     },
     "final_review": {
-        "title": "Final IC memo review",
+        "title": "Investment decision review",
         "stage": "Pre-delivery (G3)",
         "summary": (
-            "Synthesis is complete after the red-team pass. "
-            "Approve to finalize the IC memo and deliverables. "
-            "Reject to run targeted follow-up diligence before finalization."
+            "Synthesis is complete. Merlin has issued an investment recommendation. "
+            "Approve to lock the recommendation and produce final deliverables. "
+            "Reject to request review of the conclusions before finalization."
         ),
         "unlocks_on_approve": "Papyrus produces the final memo and deliverable set.",
-        "unlocks_on_reject": "The team revisits the unresolved evidence gaps.",
+        "unlocks_on_reject": "The team revisits the recommendation and conclusions.",
     },
 }
 

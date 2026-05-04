@@ -30,6 +30,10 @@ export interface LeftRailHypothesis {
     contradicting: number;
     supporting: number;
   };
+  merlinVerdict?: {
+    nextStatus: string;
+    why: string;
+  } | null;
 }
 
 export interface LeftRailDeliverable {
@@ -108,6 +112,29 @@ function MissionCard({ mission }: { mission: MissionCardData }): React.ReactElem
 
 type HypothesisStatus = "SUPPORTED" | "TESTING" | "WEAKENED" | "CHALLENGED" | "NOT_STARTED";
 
+function merlinNextStatusLabel(s: string): string {
+  const map: Record<string, string> = {
+    confirmed:      "Confirmed by evidence",
+    adjusted:       "Adjusted",
+    refuted:        "Refuted",
+    unjudgeable:    "Not judgeable",
+    // legacy
+    SUPPORTED:      "Confirmed by evidence",
+    TESTING:        "Under review",
+    WEAKENED:       "Adjusted",
+    CHALLENGED:     "Refuted",
+  };
+  return map[s] ?? map[s.toUpperCase()] ?? s;
+}
+
+function merlinNextStatusColor(s: string): string {
+  const lc = s.toLowerCase();
+  if (lc === "confirmed" || lc === "supported") return "var(--green)";
+  if (lc === "refuted" || lc === "challenged") return "var(--red)";
+  if (lc === "adjusted" || lc === "weakened") return "var(--amber)";
+  return "var(--muted)";
+}
+
 function statusStyle(s: HypothesisStatus | string): { c: string; l: string } {
   const map: Record<string, { c: string; l: string }> = {
     SUPPORTED:   { c: "var(--green)", l: "Supported" },
@@ -175,6 +202,32 @@ function HypothesesRail({
               >
                 {c.rationale}
               </span>
+            )}
+            {h.merlinVerdict && (
+              <div
+                style={{
+                  flexBasis: "100%",
+                  marginLeft: 30,
+                  marginTop: 2,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                }}
+              >
+                <Mono
+                  size={9}
+                  weight={600}
+                  color={merlinNextStatusColor(h.merlinVerdict.nextStatus)}
+                  spacing=".08em"
+                >
+                  Merlin: {merlinNextStatusLabel(h.merlinVerdict.nextStatus)}
+                </Mono>
+                {isSelected && h.merlinVerdict.why && (
+                  <span style={{ fontSize: 10.5, lineHeight: 1.45, color: "var(--ink3)" }}>
+                    {h.merlinVerdict.why}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         );

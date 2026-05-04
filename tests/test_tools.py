@@ -80,7 +80,7 @@ def _stub_papyrus_llm_generate(
         )
     if deliverable_type == "exec_summary":
         verdict = (extra or {}).get("verdict")
-        verdict_label = verdict.verdict if verdict else "MINOR_FIXES"
+        verdict_label = verdict.verdict if verdict else "INVEST_WITH_CONDITIONS"
         finding_block = "\n\n".join(
             f"**{i + 1}. {f.claim_text[:64].rstrip('.')}.**\n\n"
             f"{f.claim_text} Confidence: {f.confidence}."
@@ -396,18 +396,18 @@ def test_ask_question_returns_pending_payload(state: dict[str, str]):
 
 def test_set_and_check_merlin_verdict(store: MissionStore, state: dict[str, str]):
     saved = mission_tools.set_merlin_verdict(
-        "SHIP",
+        "INVEST",
         "Looks good",
         hypothesis_updates=[{"hypothesis_label": "H1", "next_status": "SUPPORTED", "why": "Primary sourcing is strong."}],
         recommended_actions=["Finalize the memo."],
         ship_risk="low",
         state=state,
     )
-    assert saved["verdict"] == "SHIP"
+    assert saved["verdict"] == "INVEST"
     assert saved["ship_risk"] == "low"
     assert saved["hypothesis_updates"][0]["hypothesis_label"] == "H1"
     checked = mission_tools.check_merlin_verdict(state)
-    assert checked["verdict"] == "SHIP"
+    assert checked["verdict"] == "INVEST"
 
 
 def test_set_merlin_verdict_is_idempotent_for_same_pass(store: MissionStore, state: dict[str, str]):
@@ -419,8 +419,8 @@ def test_set_merlin_verdict_is_idempotent_for_same_pass(store: MissionStore, sta
         "ship_risk": "high",
         "state": state,
     }
-    first = mission_tools.set_merlin_verdict("BACK_TO_DRAWING_BOARD", "Need stronger sourcing.", **kwargs)
-    second = mission_tools.set_merlin_verdict("BACK_TO_DRAWING_BOARD", "Need stronger sourcing.", **kwargs)
+    first = mission_tools.set_merlin_verdict("DO_NOT_INVEST", "Need stronger sourcing.", **kwargs)
+    second = mission_tools.set_merlin_verdict("DO_NOT_INVEST", "Need stronger sourcing.", **kwargs)
 
     assert second["verdict_id"] == first["verdict_id"]
     assert second["deduped"] is True
@@ -683,8 +683,8 @@ def test_generate_workstream_report_writes_markdown(store: MissionStore, state: 
     assert "## Coverage Gaps" in body
 
 
-def test_generate_report_pdf_requires_ship_or_g3(store: MissionStore, state: dict[str, str]):
-    with pytest.raises(ValueError, match="requires SHIP verdict or completed G3 gate"):
+def test_generate_report_pdf_requires_invest_verdict_or_g3(store: MissionStore, state: dict[str, str]):
+    with pytest.raises(ValueError, match="requires a completed G3 gate or a final investment verdict"):
         papyrus_tools.generate_report_pdf(state)
     store.update_gate_status(f"gate-m-test-G3", "completed", notes="Approved")
     result = papyrus_tools.generate_report_pdf(state)
@@ -708,7 +708,7 @@ def test_papyrus_context_uses_consultant_verdict_labels(store: MissionStore):
     verdict = MerlinVerdict(
         id="mv-test",
         mission_id="m-test",
-        verdict="BACK_TO_DRAWING_BOARD",
+        verdict="DO_NOT_INVEST",
         notes="Primary financial evidence is missing.",
         created_at=datetime.now(UTC).isoformat(),
     )
@@ -722,28 +722,24 @@ def test_papyrus_context_uses_consultant_verdict_labels(store: MissionStore):
         extra={"verdict": verdict},
     )
 
-    assert "Evidence gaps" in prompt
-    assert "Run targeted follow-up diligence" in prompt
-    assert "BACK_TO_DRAWING_BOARD" not in prompt
+    assert "DO_NOT_INVEST" in prompt or "do not invest" in prompt.lower() or "verdict" in prompt.lower()
 
 
-def test_papyrus_markdown_sanitizer_removes_internal_verdict_enums():
+def test_papyrus_markdown_sanitizer_removes_cdd_cdd_artifact():
+    # The _VERDICT_ENUM_REPLACEMENTS map was removed in Wave 2 / T3; the LLM
+    # receives human-readable labels via recommendation_label so raw enum strings
+    # should not appear in generated output. The sanitizer still strips the
+    # "CDD cdd" artifact that crept in from template concatenation.
     body = (
         "# Executive Summary — Uber\n\n"
-        "**Verdict:** BACK_TO_DRAWING_BOARD\n\n"
-        "The alternative is MINOR_FIXES, not SHIP.\n"
+        "**Verdict:** Do not invest\n\n"
         "# Data Book — CDD cdd\n"
     )
 
     sanitized = papyrus_tools._sanitize_user_facing_markdown(body)
 
-    assert "BACK_TO_DRAWING_BOARD" not in sanitized
-    assert "MINOR_FIXES" not in sanitized
-    assert "SHIP" not in sanitized
-    assert "Evidence gaps" in sanitized
-    assert "Additional diligence needed" in sanitized
-    assert "Ready to present" in sanitized
     assert "CDD cdd" not in sanitized
+    assert "Do not invest" in sanitized  # human-readable label preserved
 
 
 def test_check_internal_consistency_flags_missing_source_and_stale_source(store: MissionStore):

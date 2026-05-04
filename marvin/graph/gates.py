@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -49,28 +50,56 @@ async def gate_node(state: MarvinState, config=None) -> dict:
         return {"phase": "idle", "pending_gate_id": None}
 
     arbiter_flags = arbiter_result.get("inconsistencies", []) + arbiter_result.get("flags", [])
-    material = evaluate_gate_material(
-        store,
-        mission_id,
-        gate,
-        hypotheses=hypotheses,
-        findings=findings,
-        mission_brief=mission_brief,
-        workstreams=workstreams,
-        milestones=milestones,
-        arbiter_flags=arbiter_flags,
-    )
+
+    # Retry material check with exponential backoff to absorb transient races
+    # on post-agent state cleanup (e.g., active_phase_agents not yet drained
+    # when validate POST arrives immediately after Adversus / Merlin finish).
+    # Without this, gate_node returned phase="idle" on transient gaps and
+    # stranded the LangGraph checkpoint at a terminal state — no future
+    # validate POST could ever recover the run.
+    material = None
+    for attempt in range(3):
+        # Refetch state on each attempt so cleanup writes from concurrent
+        # nodes are observed (active_phase_agents, synthesis_state, etc.).
+        if attempt > 0:
+            await asyncio.sleep(2 ** (attempt - 1))  # 1s, 2s
+            findings = store.list_findings(mission_id)
+            milestones = store.list_milestones(mission_id)
+        material = evaluate_gate_material(
+            store,
+            mission_id,
+            gate,
+            hypotheses=hypotheses,
+            findings=findings,
+            mission_brief=mission_brief,
+            workstreams=workstreams,
+            milestones=milestones,
+            arbiter_flags=arbiter_flags,
+        )
+        if material.is_open:
+            if attempt > 0:
+                logger.info(
+                    "gate_node: gate %s opened on retry %d after transient missing material",
+                    gate_id, attempt,
+                )
+            break
     if not material.is_open:
-        logger.info(
-            "gate_node: gate %s not opened; missing material: %s",
+        # Genuine missing-material (not a race). Map gate type back to the
+        # phase that triggers gate_entry, so the next validate POST spawns a
+        # detached_resume that re-evaluates instead of terminating at idle.
+        # Phase mapping mirrors phase_router (runner.py): the inverse of the
+        # phase → gate_entry transitions. Without this, returning idle made
+        # the LangGraph checkpoint terminal and no recovery path existed.
+        retry_phase = _gate_to_retry_phase(gate.gate_type)
+        logger.warning(
+            "gate_node: gate %s not opened after 3 attempts; missing material: %s; "
+            "returning to phase=%s so a future validate POST can recover",
             gate_id,
             ", ".join(material.missing_material),
+            retry_phase,
         )
-        # Surface the blocker through the standard updates stream so the SSE
-        # handler can emit an explicit phase_blocked event instead of letting
-        # the run terminate silently (CLAUDE.md §1: no silent degradation).
         return {
-            "phase": "idle",
+            "phase": retry_phase,
             "pending_gate_id": None,
             "phase_blocked": {
                 "gate_id": gate_id,
@@ -89,7 +118,6 @@ async def gate_node(state: MarvinState, config=None) -> dict:
 
     if config and gate_id not in _GATE_PENDING_NOTIFIED:
         from langchain_core.callbacks import adispatch_custom_event
-        import asyncio
 
         _GATE_PENDING_NOTIFIED.add(gate_id)
         await adispatch_custom_event("gate_pending", payload, config=config)
@@ -218,6 +246,25 @@ def _seed_retry_gate(store: MissionStore, original_gate: Gate) -> str:
         )
     )
     return new_id
+
+
+def _gate_to_retry_phase(gate_type: str) -> str:
+    """Phase a gate falls back to when material is transiently missing.
+
+    Each value MUST route to gate_entry via phase_router so the next
+    detached_resume re-runs gate_node with hopefully-now-ready material.
+    See runner.py:phase_router. Returning "idle" here is forbidden — it
+    leaves the LangGraph checkpoint terminal with no recovery path.
+    """
+    if gate_type == "hypothesis_confirmation":
+        return "awaiting_confirmation"
+    if gate_type == "manager_review":
+        return "research_done"
+    if gate_type == "final_review":
+        return "synthesis_done"
+    # Unknown gate types fall back to research_done — the most common gate-
+    # triggering phase. Better to loop than to terminate silently.
+    return "research_done"
 
 
 def _gate_to_next_phase(gate_id: str, gate, approved: bool) -> str:

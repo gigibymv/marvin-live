@@ -13,10 +13,15 @@
 // chat bubbles, deliverable preview.
 
 const VERDICT_LABELS: Record<string, string> = {
-  SHIP: "Ready to present",
-  MINOR_FIXES: "Additional diligence needed",
+  INVEST: "Invest",
+  INVEST_WITH_CONDITIONS: "Invest with conditions",
+  DO_NOT_INVEST: "Do not invest",
+  INSUFFICIENT_EVIDENCE: "Insufficient evidence",
+  // legacy
+  SHIP: "Invest",
+  MINOR_FIXES: "Invest with conditions",
+  BACK_TO_DRAWING_BOARD: "Insufficient evidence",
   MAJOR_FIXES: "Significant revisions needed",
-  BACK_TO_DRAWING_BOARD: "Evidence gaps — not ready",
   READY_FOR_REVIEW: "Ready for review",
   BLOCKED: "Blocked",
   APPROVED: "Approved",
@@ -37,16 +42,21 @@ export function humanizeVerdict(raw: string | null | undefined): string {
 // "What's needed to reach SHIP" matches before bare "SHIP" does.
 const REPLACEMENTS: Array<[RegExp, string]> = [
   // ── Compound phrases ────────────────────────────────────────────────
-  [/What['\u2019]s\s+Needed\s+to\s+Reach\s+SHIP/gi, "What's needed before sign-off"],
-  [/to\s+Reach\s+SHIP\b/gi, "to reach sign-off"],
-  [/Reach\s+SHIP\b/gi, "reach sign-off"],
+  [/What['\u2019]s\s+Needed\s+to\s+Reach\s+SHIP/gi, "What's needed to reach a decision"],
+  [/to\s+Reach\s+SHIP\b/gi, "to reach a decision"],
+  [/Reach\s+SHIP\b/gi, "reach a decision"],
+  [/\bto\s+reach\s+(?:MINOR[_\s]FIXES|BACK[_\s]TO[_\s]DRAWING[_\s]BOARD)\b/gi, "to reach a decision"],
 
   // ── Verdict enums (uppercase tokens, bare or with underscores) ──────
-  [/\bBACK[_\s]TO[_\s]DRAWING[_\s]BOARD\b/g, "Evidence gaps — not ready"],
+  [/\bINVEST[_\s]WITH[_\s]CONDITIONS\b/g, "Invest with conditions"],
+  [/\bDO[_\s]NOT[_\s]INVEST\b/g, "Do not invest"],
+  [/\bINSUFFICIENT[_\s]EVIDENCE\b/g, "Insufficient evidence"],
+  [/\bINVEST\b/g, "Invest"],
+  [/\bBACK[_\s]TO[_\s]DRAWING[_\s]BOARD\b/g, "Insufficient evidence"],
   [/\bMAJOR[_\s]FIXES\b/g, "Significant revisions needed"],
-  [/\bMINOR[_\s]FIXES\b/g, "Additional diligence needed"],
+  [/\bMINOR[_\s]FIXES\b/g, "Invest with conditions"],
   [/\bREADY[_\s]FOR[_\s]REVIEW\b/g, "Ready for review"],
-  [/\bSHIP\b/g, "Ready to present"],
+  [/\bSHIP\b/g, "Invest"],
 
   // ── Internal IDs (finding / hypothesis / mission / gate) ────────────
   // Strip the inline `[f-xxxxxxxx]` / `(f-xxxxxxxx)` / bare `f-xxxxxx`

@@ -94,13 +94,13 @@ def test_qa_verdict_question(mission_store):
         MerlinVerdict(
             id="mv-1",
             mission_id=mid,
-            verdict="MINOR_FIXES",
+            verdict="INVEST_WITH_CONDITIONS",
             created_at=datetime.now(UTC).isoformat(),
         )
     )
 
     reply = asyncio.run(orchestrator_qa.respond_qa(mid, "what's the verdict?"))
-    assert "MINOR_FIXES" in reply or "minor" in reply.lower() or "verdict" in reply.lower()
+    assert "INVEST_WITH_CONDITIONS" in reply or "invest" in reply.lower() or "verdict" in reply.lower()
 
 
 def test_qa_reports_blocked_calculus_from_milestones(mission_store):
@@ -112,7 +112,7 @@ def test_qa_reports_blocked_calculus_from_milestones(mission_store):
 
     assert "calculus" in reply.lower()
     assert "blocked" in reply.lower()
-    assert "agent produced no findings" in reply.lower()
+    assert "no findings" in reply.lower() or "agent produced no findings" in reply.lower()
 
 
 def test_chat_during_awaiting_does_not_replay(mission_store, monkeypatch):

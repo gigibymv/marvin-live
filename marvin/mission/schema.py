@@ -11,7 +11,7 @@ HypothesisStatus = Literal["active", "validated", "invalidated", "abandoned"]
 WorkstreamStatus = Literal["pending", "in_progress", "delivered"]
 MilestoneStatus = Literal["pending", "in_progress", "delivered", "skipped", "blocked"]
 GateStatus = Literal["pending", "completed", "failed"]
-MerlinVerdictValue = Literal["SHIP", "MINOR_FIXES", "BACK_TO_DRAWING_BOARD"]
+MerlinVerdictValue = Literal["INVEST", "INVEST_WITH_CONDITIONS", "DO_NOT_INVEST", "INSUFFICIENT_EVIDENCE"]
 
 
 class MarvinModel(BaseModel):
@@ -34,6 +34,7 @@ class Mission(MarvinModel):
     clarification_rounds_used: int = 0
     clarification_answers: list[str] = Field(default_factory=list)
     data_room_path: str | None = None  # Bug 3 (chantier 2.6): user-provided primary data room
+    parent_mission_id: str | None = None
 
 
 class MissionBrief(MarvinModel):
@@ -58,6 +59,7 @@ class MissionChatMessage(MarvinModel):
     gate_action: str | None = None
     seq: int | None = None
     created_at: str | None = None
+    channel_id: str | None = None
 
 
 class Hypothesis(MarvinModel):
@@ -233,5 +235,8 @@ class MerlinVerdict(MarvinModel):
     ship_risk: Literal["low", "medium", "high"] | None = None
     hypothesis_updates: list[dict] = Field(default_factory=list)
     recommended_actions: list[str] = Field(default_factory=list)
+    conditions: list[str] = Field(default_factory=list)
+    deal_breakers: list[str] = Field(default_factory=list)
+    final_thesis: str | None = None
     synthesis_complete_at: str | None = None
     created_at: str | None = None

@@ -540,6 +540,17 @@ export default function MissionControl({
     void refreshProgress();
   }, [refreshProgress]);
 
+  // Sync pausedForGate from persisted progress.gates so a page reload while a
+  // gate is pending doesn't lose the pause flag. Without this, "Agents are
+  // working" renders falsely on reload because pausedForGate resets to its
+  // useState default and the event-driven gate_pending isn't replayed.
+  useEffect(() => {
+    const pending = (progress?.gates ?? []).some(
+      (g) => g.lifecycle_status === "open" || g.is_open,
+    );
+    setPausedForGate(pending);
+  }, [progress]);
+
   // P15: Bootstrap currentPhase from REST on mount so a page-reload mid-mission
   // does not show "Mission starting…" while waiting for the first phase_changed SSE.
   // TODO(backend): add `current_phase: string | null` to GET /progress response so
@@ -1907,11 +1918,7 @@ export default function MissionControl({
       if (!update) return hypothesis;
       return {
         ...hypothesis,
-        computed: {
-          ...(hypothesis.computed ?? {}),
-          status: update.nextStatus || hypothesis.computed?.status || "TESTING",
-          rationale: update.why,
-        },
+        merlinVerdict: { nextStatus: update.nextStatus, why: update.why },
       };
     });
   }, [progress?.hypotheses, (progress as any)?.merlin_verdict?.hypothesis_updates]);
@@ -2377,6 +2384,18 @@ export default function MissionControl({
     };
     const prose = sanitizeVerdictNotes(v.notes ?? "");
     const verdictLabel = v.label || humanizeVerdict(v.verdict);
+    const conditions: string[] = Array.isArray(v.conditions) ? v.conditions : [];
+    const dealBreakers: string[] = Array.isArray(v.deal_breakers) ? v.deal_breakers : [];
+    const finalThesis: string | null = typeof v.final_thesis === "string" ? v.final_thesis : null;
+    // Build the body block: final_thesis first, then conditions / deal-breakers
+    // subsections, then the prose notes. Displayed expanded in the synthesis tab.
+    const bodyParts: string[] = [];
+    if (finalThesis) bodyParts.push(`"${finalThesis}"`);
+    if (conditions.length) bodyParts.push(`Conditions:\n${conditions.map((c) => `• ${c}`).join("\n")}`);
+    if (dealBreakers.length) bodyParts.push(`Deal breakers:\n${dealBreakers.map((d) => `• ${d}`).join("\n")}`);
+    if (v.recommended_action) bodyParts.push(v.recommended_action);
+    if (Array.isArray(v.recommended_actions)) bodyParts.push(...v.recommended_actions);
+    if (prose) bodyParts.push(prose);
     // Single dark deliverable row carrying the verdict label as title and
     // the prose as a multi-line body. Stuffed into `source_id` because
     // CenterFinding already exposes it as a body block on expand; doubles
@@ -2390,13 +2409,7 @@ export default function MissionControl({
       confidence: verdictLabel,
       agent_id: "merlin",
       ts: v.created_at ?? "",
-      source_id: stripVerdictScaffolding(
-        [
-          v.recommended_action,
-          ...(Array.isArray(v.recommended_actions) ? v.recommended_actions : []),
-          prose,
-        ].filter(Boolean).join("\n\n"),
-      ) || null,
+      source_id: stripVerdictScaffolding(bodyParts.filter(Boolean).join("\n\n")) || null,
     };
     return [
       { ...baseRow, id: `synthesis-verdict-w3-${v.created_at ?? "current"}`, section_id: null, workstream_id: "W3" },
@@ -2560,7 +2573,8 @@ export default function MissionControl({
   const workstreamStatus = (workstreamId: string): WorkstreamViewStatus =>
     workstreamContent.find((ws) => ws.id === workstreamId)?.status ?? "pending";
   const hasFinalDeliverables = deliverableOutputs.some((d) => d.section_id === "final");
-  const missionIsWorking = (runState.isStreaming || resolvingGateIds.size > 0) && !pausedForGate;
+  const missionIsWorking =
+    (runState.isStreaming || resolvingGateIds.size > 0) && !pausedForGate && !hasPendingGate;
   // Combined W3+W4 status: completed only if BOTH legs are completed;
   // active if either is active; in_progress if either has surfaced output.
   const w3Status = workstreamStatus("W3");
@@ -3032,6 +3046,35 @@ export default function MissionControl({
                   <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
                     Merlin verdict · {gateModal.merlinVerdict.label || humanizeVerdict(gateModal.merlinVerdict.verdict)}
                   </div>
+                  {gateModal.merlinVerdict.final_thesis && (
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", fontStyle: "italic", borderLeft: "2px solid #2D6E4E", paddingLeft: "8px", marginBottom: "8px" }}>
+                      &ldquo;{gateModal.merlinVerdict.final_thesis}&rdquo;
+                    </div>
+                  )}
+                  {gateModal.merlinVerdict.conditions && gateModal.merlinVerdict.conditions.length > 0 && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#5a5854", marginBottom: "4px" }}>
+                        Conditions
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11px", lineHeight: 1.5, color: "#3a362f" }}>
+                        {gateModal.merlinVerdict.conditions.map((c, i) => (
+                          <li key={`cond-${i}`}>{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {gateModal.merlinVerdict.deal_breakers && gateModal.merlinVerdict.deal_breakers.length > 0 && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#8B3A3A", marginBottom: "4px" }}>
+                        Deal breakers
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11px", lineHeight: 1.5, color: "#3a362f" }}>
+                        {gateModal.merlinVerdict.deal_breakers.map((d, i) => (
+                          <li key={`db-${i}`}>{d}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {gateModal.merlinVerdict.recommendedAction && (
                     <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: gateModal.merlinVerdict.notes ? "6px" : 0 }}>
                       {gateModal.merlinVerdict.recommendedAction}
