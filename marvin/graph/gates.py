@@ -90,6 +90,61 @@ async def gate_node(state: MarvinState, config=None) -> dict:
         # Phase mapping mirrors phase_router (runner.py): the inverse of the
         # phase → gate_entry transitions. Without this, returning idle made
         # the LangGraph checkpoint terminal and no recovery path existed.
+
+        recovery_attempts = int(state.get("papyrus_recovery_attempts") or 0)
+        ws_report_missing = "deliverable_writing_in_progress" in material.missing_material
+
+        # If the only thing blocking the gate is a missing workstream/milestone
+        # report, that is a Papyrus generation failure inside research_join
+        # (LLM timeout or transient error). Looping back through gate_entry
+        # never re-runs Papyrus — the phase router maps research_done →
+        # gate_entry directly. Route to a one-shot recovery node that re-runs
+        # _generate_workstream_report_impl (idempotent: skips if file exists)
+        # and then returns to the gate. Cap at 1 attempt so a permanent
+        # failure surfaces phase_blocked instead of looping forever.
+        if (
+            ws_report_missing
+            and gate.gate_type == "manager_review"
+            and recovery_attempts < 1
+        ):
+            logger.warning(
+                "gate_node: gate %s missing workstream report — routing to "
+                "papyrus_recover_workstreams (attempt %d)",
+                gate_id, recovery_attempts + 1,
+            )
+            return {
+                "phase": "papyrus_recover_workstreams",
+                "pending_gate_id": gate_id,
+                "papyrus_recovery_attempts": recovery_attempts + 1,
+            }
+
+        # Recovery exhausted (or a different missing-material category).
+        # Surface phase_blocked and terminate the run so the user sees a real
+        # error instead of a 33% spinner. The chat already humanizes
+        # "deliverable_writing_in_progress" → "Deliverable writing in
+        # progress." via _humanize_blocked_message in server.py.
+        if ws_report_missing and recovery_attempts >= 1:
+            logger.error(
+                "gate_node: gate %s still missing workstream report after "
+                "papyrus recovery; terminating run with phase_blocked",
+                gate_id,
+            )
+            return {
+                "phase": "blocked_terminal",
+                "pending_gate_id": None,
+                "phase_blocked": {
+                    "gate_id": gate_id,
+                    "gate_type": gate.gate_type,
+                    "missing_material": material.missing_material,
+                    "message": (
+                        "Workstream reports could not be generated after "
+                        "recovery attempt. Re-run the mission or check "
+                        "Papyrus logs for the underlying LLM failure."
+                    ),
+                    "terminal": True,
+                },
+            }
+
         retry_phase = _gate_to_retry_phase(gate.gate_type)
         logger.warning(
             "gate_node: gate %s not opened after 3 attempts; missing material: %s; "

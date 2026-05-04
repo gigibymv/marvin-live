@@ -27,3 +27,4 @@ class MarvinState(TypedDict, total=False):
     pivot_reason: Annotated[Optional[str], last_value]
     data_decision: Annotated[Optional[str], last_value]  # Bug 3 (chantier 2.6)
     phase_blocked: Annotated[Optional[dict], last_value]
+    papyrus_recovery_attempts: Annotated[int, last_value]

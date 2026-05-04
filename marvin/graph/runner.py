@@ -326,6 +326,12 @@ def phase_router(state: MarvinState) -> str | list[Send]:
     if phase == "research_done":
         return "gate_entry"
 
+    if phase == "papyrus_recover_workstreams":
+        return "papyrus_recover_workstreams"
+
+    if phase == "blocked_terminal":
+        return END
+
     if phase == "gate_g1_passed":
         return "adversus"
 
@@ -1012,6 +1018,70 @@ async def merlin_node(state: MarvinState) -> dict:
     return {**result, **decision}
 
 
+async def papyrus_recover_workstreams_node(state: MarvinState) -> dict:
+    """Re-run W1 + W2 workstream report generation after a G1 gate failure
+    caused by `deliverable_writing_in_progress`.
+
+    Why this exists: research_join attempts these reports once, swallows
+    Papyrus LLM failures (timeout / transient OpenRouter error), and advances
+    phase=research_done regardless. The G1 gate then loops indefinitely
+    against missing material because phase_router routes research_done →
+    gate_entry, not back to Papyrus. This node breaks that loop with a
+    one-shot retry; gate_node caps recovery to a single attempt before
+    surfacing phase_blocked.
+
+    Idempotent: _generate_workstream_report_impl short-circuits if the file
+    already exists, so a partial first pass is safe to re-enter.
+    """
+    mission_id = state.get("mission_id", "")
+    log_node_entry("papyrus_recover_workstreams", state)
+    pending_gate_id = state.get("pending_gate_id")
+
+    from marvin.tools.papyrus_tools import (
+        _generate_milestone_report_impl,
+        _generate_workstream_report_impl,
+    )
+    from marvin.mission.store import MissionStore
+
+    store = MissionStore()
+    for workstream_id in ("W1", "W2"):
+        try:
+            report = _generate_workstream_report_impl(workstream_id, mission_id)
+        except Exception as exc:  # noqa: BLE001 — recovery is best-effort
+            logger.warning(
+                "papyrus_recover_workstreams: %s failed: %s",
+                workstream_id, exc,
+            )
+            continue
+        if report.get("status") not in ("blocked",):
+            try:
+                store.mark_workstream_delivered(mission_id, workstream_id)
+            except Exception as exc:  # noqa: BLE001 — already-delivered is fine
+                logger.debug(
+                    "mark_workstream_delivered noop for %s: %s",
+                    workstream_id, exc,
+                )
+
+    # Per-milestone reports for delivered milestones — same pattern as
+    # research_join. Failures are logged, not raised.
+    for milestone in store.list_milestones(mission_id):
+        if milestone.workstream_id not in ("W1", "W2"):
+            continue
+        if (milestone.status or "").lower() != "delivered":
+            continue
+        try:
+            _generate_milestone_report_impl(milestone.id, mission_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "papyrus_recover_workstreams: milestone %s report failed: %s",
+                milestone.id, exc,
+            )
+
+    # gate_entry_node will re-resolve pending_gate_id from phase=research_done.
+    del pending_gate_id
+    return {"phase": "research_done"}
+
+
 async def papyrus_stress_report_node(state: MarvinState) -> dict:
     """Generate the W4 stress testing report BEFORE the G3 gate.
 
@@ -1115,6 +1185,7 @@ def build_graph(checkpointer=None):
     builder.add_node("adversus", adversus_node)
     builder.add_node("research_rebuttal", research_rebuttal_node)
     builder.add_node("merlin", merlin_node)
+    builder.add_node("papyrus_recover_workstreams", papyrus_recover_workstreams_node)
     builder.add_node("papyrus_stress_report", papyrus_stress_report_node)
     builder.add_node("papyrus_delivery", papyrus_delivery_node)
     builder.add_node("orchestrator", orchestrator_agent_node)
@@ -1171,6 +1242,7 @@ def build_graph(checkpointer=None):
         "adversus": "adversus",
         "merlin": "merlin",
         "papyrus_delivery": "papyrus_delivery",
+        "papyrus_recover_workstreams": "papyrus_recover_workstreams",
         "orchestrator": "orchestrator",
         # After a clarification gate completes, gate_node returns
         # phase=framing → router routes to framing_orchestrator (since
@@ -1217,6 +1289,12 @@ def build_graph(checkpointer=None):
         "adversus": "adversus",
         "papyrus_stress_report": "papyrus_stress_report",
         "papyrus_delivery": "papyrus_delivery",
+        "orchestrator": "orchestrator",
+        END: END,
+    })
+
+    builder.add_conditional_edges("papyrus_recover_workstreams", phase_router, {
+        "gate_entry": "gate_entry",
         "orchestrator": "orchestrator",
         END: END,
     })
