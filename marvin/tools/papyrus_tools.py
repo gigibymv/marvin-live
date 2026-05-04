@@ -194,10 +194,15 @@ def _papyrus_llm_generate(
         deliverable_type, mission, hypotheses, findings, mission_brief, extra
     )
 
-    response = llm.invoke([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=human_prompt),
-    ])
+    from marvin.llm.transient import sync_invoke_with_retry
+
+    response = sync_invoke_with_retry(
+        lambda: llm.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=human_prompt),
+        ]),
+        agent="papyrus",
+    )
     body = _sanitize_user_facing_markdown((response.content or "").strip())
     # Strip accidental code fences around the whole document.
     if body.startswith("```"):

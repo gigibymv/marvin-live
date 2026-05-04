@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Awaitable, Callable, Sequence, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,56 @@ async def async_invoke_with_retry(
                 error=last_error,
             ) from exc
     # Unreachable — loop either returns or raises.
+    raise LLMTransientFailure(
+        agent=agent, cause=last_cause or "unknown", attempts=attempts, error=last_error
+    )
+
+
+def sync_invoke_with_retry(
+    func: Callable[[], T],
+    *,
+    agent: str,
+    backoffs: Sequence[float] = DEFAULT_BACKOFFS,
+) -> T:
+    """Sync sibling of :func:`async_invoke_with_retry`.
+
+    Used by Papyrus deliverable generators that run inside synchronous
+    LangGraph nodes (e.g. ``research_join``) where introducing an async
+    boundary would force a much wider refactor. Same retry budget and
+    same transient classification.
+    """
+    attempts = 0
+    last_cause = ""
+    last_error = ""
+    total = len(backoffs) + 1
+    for attempt in range(total):
+        attempts = attempt + 1
+        try:
+            return func()
+        except Exception as exc:  # noqa: BLE001 — classifier decides
+            cause = _classify(exc)
+            if cause is None:
+                raise
+            last_cause = cause
+            last_error = type(exc).__name__
+            if attempt < len(backoffs):
+                delay = backoffs[attempt]
+                logger.warning(
+                    "[%s] transient (%s): %s — retry %d/%d in %.1fs",
+                    agent, cause, exc, attempt + 1, total - 1, delay,
+                )
+                time.sleep(delay)
+                continue
+            logger.error(
+                "[%s] transient (%s) exhausted after %d attempts: %s",
+                agent, cause, attempts, exc,
+            )
+            raise LLMTransientFailure(
+                agent=agent,
+                cause=cause,
+                attempts=attempts,
+                error=last_error,
+            ) from exc
     raise LLMTransientFailure(
         agent=agent, cause=last_cause or "unknown", attempts=attempts, error=last_error
     )

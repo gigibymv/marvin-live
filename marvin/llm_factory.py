@@ -38,9 +38,16 @@ def get_chat_llm(role: str) -> ChatOpenAI:
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
 
+    # Hard wall-clock cap on every LLM round-trip. Without this, a stalled
+    # OpenRouter response (rare 5xx HTML or hung TLS) freezes any sync graph
+    # node calling llm.invoke (e.g. Papyrus inside research_join), which has
+    # surfaced as 30-min mission stalls in prod. The bounded retry helpers
+    # in marvin.llm.transient classify ReadTimeout as transient and retry.
     return ChatOpenAI(
         model=model,
         api_key=api_key,
         base_url=OPENROUTER_BASE_URL,
         temperature=0,
+        timeout=120,
+        max_retries=0,
     )

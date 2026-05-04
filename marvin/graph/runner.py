@@ -499,7 +499,22 @@ def research_join(state: MarvinState) -> dict:
 
     for workstream_id in ("W1", "W2"):
         _join_narrate(f"Compiling {workstream_id} workstream report")
-        report = _generate_workstream_report_impl(workstream_id, mission_id)
+        try:
+            report = _generate_workstream_report_impl(workstream_id, mission_id)
+        except Exception as exc:  # noqa: BLE001 — never freeze the graph
+            # 30-min hang repro: a single Papyrus LLM call stalled and froze
+            # research_join because this loop had no try/except. Surface the
+            # failure as narration, leave the workstream undelivered, and let
+            # the graph advance to research_done so the user can re-trigger
+            # generation post-G1 instead of being stuck forever.
+            logger.warning(
+                "research_join: %s workstream report failed: %s",
+                workstream_id, exc,
+            )
+            _join_narrate(
+                f"{workstream_id} workstream report could not be generated — continuing"
+            )
+            continue
         if report.get("status") == "blocked":
             continue
         store.mark_workstream_delivered(mission_id, workstream_id)

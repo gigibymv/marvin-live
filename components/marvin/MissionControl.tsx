@@ -2561,10 +2561,11 @@ export default function MissionControl({
         })
       : null;
   // Brief tab progression: stays "pending" until the user has actually
-  // submitted a brief (any user message OR the graph has progressed past
-  // setup). Avoids the spinner-at-0% on a freshly-created mission with
-  // no input yet. "now" only once framing is genuinely working.
-  const briefSubmitted = messages.some((m) => m.from === "u") || (currentPhase !== null && currentPhase !== "setup");
+  // sent the first brief message. The previous fallback on currentPhase
+  // mis-fired because a freshly created mission lands on phase=framing
+  // server-side, which would flip the tab to spinner ("now") before any
+  // user input — confusing for the user.
+  const briefSubmitted = messages.some((m) => m.from === "u");
   const briefStatus: "pending" | "now" | "completed" = progress?.framing
     ? "completed"
     : briefSubmitted
