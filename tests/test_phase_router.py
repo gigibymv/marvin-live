@@ -270,10 +270,21 @@ def test_build_graph_compiles():
 def test_phase_router_routes_gate_phases_through_gate_entry():
     """Phases that need a gate gate_id must route through gate_entry first
     so pending_gate_id is set before gate_node runs. Otherwise gate_node
-    returns phase='idle' and the run loops in the orchestrator."""
-    for phase in ("awaiting_confirmation", "research_done", "synthesis_done"):
+    returns phase='idle' and the run loops in the orchestrator.
+
+    synthesis_done is intentionally excluded: it now routes through
+    papyrus_stress_report first so the W4 deliverable is materialized
+    BEFORE the G3 gate appears (see papyrus_stress_report_node)."""
+    for phase in ("awaiting_confirmation", "research_done", "stress_report_done"):
         result = runner.phase_router({"phase": phase, "mission_id": "m-test", "messages": []})
         assert result == "gate_entry", f"phase={phase!r} routed to {result!r}, expected 'gate_entry'"
+
+
+def test_synthesis_done_routes_through_papyrus_stress_report():
+    """After Merlin synthesis, the W4 stress testing report must be generated
+    BEFORE G3 so the gate presents a real document, not just verdict text."""
+    result = runner.phase_router({"phase": "synthesis_done", "mission_id": "m-test", "messages": []})
+    assert result == "papyrus_stress_report"
 
 
 def test_gate_entry_node_sets_pending_gate_id_for_awaiting_confirmation(graph_store: MissionStore):

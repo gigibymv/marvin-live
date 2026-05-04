@@ -341,6 +341,12 @@ def phase_router(state: MarvinState) -> str | list[Send]:
         return "merlin"
 
     if phase == "synthesis_done":
+        # Generate the W4 stress testing report BEFORE G3 so the user reviews
+        # a real document at the gate, not just verdict text. Tab status for
+        # Stress Test then reaches "completed" before the gate appears.
+        return "papyrus_stress_report"
+
+    if phase == "stress_report_done":
         return "gate_entry"
 
     if phase == "merlin_failed":
@@ -991,6 +997,35 @@ async def merlin_node(state: MarvinState) -> dict:
     return {**result, **decision}
 
 
+async def papyrus_stress_report_node(state: MarvinState) -> dict:
+    """Generate the W4 stress testing report BEFORE the G3 gate.
+
+    Rationale: previously the gate fired the moment Merlin emitted a verdict,
+    while the Stress Test tab still showed a spinner because the W4 deliverable
+    document was only written by papyrus_delivery_node AFTER G3 approval. The
+    user reviewed a verdict without a backing document, then deliverables
+    appeared "by magic" post-approval. Generating the W4 report here closes
+    the gap: tab status flips to ✓ and the gate presents an actual artifact.
+
+    Idempotent: _generate_workstream_report_impl short-circuits if the file
+    already exists, so re-entry through papyrus_delivery_node is safe.
+    """
+    mission_id = state.get("mission_id", "")
+    log_node_entry("papyrus_stress_report", state)
+
+    from marvin.tools.papyrus_tools import _generate_workstream_report_impl
+
+    try:
+        _generate_workstream_report_impl("W4", mission_id)
+    except Exception as exc:  # noqa: BLE001 — surface but don't block gate
+        logger.warning(
+            "papyrus_stress_report_node W4 generation failed for %s: %s",
+            mission_id, exc,
+        )
+
+    return {"phase": "stress_report_done"}
+
+
 async def papyrus_delivery_node(state: MarvinState) -> dict:
     """Generate final deliverables, mark mission complete, and emit completion message."""
     mission_id = state.get("mission_id", "")
@@ -1065,6 +1100,7 @@ def build_graph(checkpointer=None):
     builder.add_node("adversus", adversus_node)
     builder.add_node("research_rebuttal", research_rebuttal_node)
     builder.add_node("merlin", merlin_node)
+    builder.add_node("papyrus_stress_report", papyrus_stress_report_node)
     builder.add_node("papyrus_delivery", papyrus_delivery_node)
     builder.add_node("orchestrator", orchestrator_agent_node)
     
@@ -1164,11 +1200,18 @@ def build_graph(checkpointer=None):
         "gate_entry": "gate_entry",
         "gate": "gate",
         "adversus": "adversus",
+        "papyrus_stress_report": "papyrus_stress_report",
         "papyrus_delivery": "papyrus_delivery",
         "orchestrator": "orchestrator",
         END: END,
     })
-    
+
+    builder.add_conditional_edges("papyrus_stress_report", phase_router, {
+        "gate_entry": "gate_entry",
+        "orchestrator": "orchestrator",
+        END: END,
+    })
+
     builder.add_conditional_edges("papyrus_delivery", phase_router, {
         "orchestrator": "orchestrator",
         END: END,
