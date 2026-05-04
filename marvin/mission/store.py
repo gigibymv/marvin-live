@@ -444,6 +444,39 @@ class MissionStore:
         )
         return message
 
+    def resolve_persisted_gate_chat(
+        self,
+        mission_id: str,
+        gate_id: str,
+        verdict: str,
+    ) -> None:
+        """Update a persisted gate-pending chat message after gate resolution.
+
+        Without this, the chat history reloaded from DB on page refresh keeps
+        showing "🔔 Gate pending" with active APPROVE/REJECT buttons even
+        though the gate is already approved/rejected. The frontend renders
+        buttons whenever gate_action="pending" (RightRail.tsx:213); flipping
+        gate_action away from "pending" hides them and the rewritten text
+        reflects the actual outcome.
+
+        verdict must be one of: "approved", "rejected".
+        """
+        if verdict not in ("approved", "rejected"):
+            return
+        status_text = (
+            "Gate approved. The mission is continuing."
+            if verdict == "approved"
+            else "Gate rejected. MARVIN is revising the prior work."
+        )
+        self._execute(
+            """
+            UPDATE mission_chat_messages
+            SET gate_action = ?, text = ?
+            WHERE mission_id = ? AND gate_id = ? AND gate_action = 'pending'
+            """,
+            (verdict, status_text, mission_id, gate_id),
+        )
+
     def list_chat_messages(self, mission_id: str) -> list[MissionChatMessage]:
         rows = self._execute(
             """

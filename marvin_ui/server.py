@@ -3669,6 +3669,20 @@ async def validate_gate(mission_id: str, gate_id: str, body: GateValidateRequest
         verdict=verdict_label,
         resume_id=resume_id,
     )
+
+    # Resolve the persisted gate-pending chat message NOW so a page reload
+    # mid-resume doesn't replay stale APPROVE/REJECT buttons. Frontend reads
+    # mission_chat_messages from DB on hydrate (MissionControl.tsx:786) and
+    # renders buttons when gate_action='pending'. Flipping the row to
+    # approved/rejected matches the live in-memory transition that
+    # markGateChatMessageResolved performs on the user's click.
+    if not is_clarification and not is_data_decision:
+        chat_verdict = "approved" if expected_status == "completed" else "rejected"
+        try:
+            store.resolve_persisted_gate_chat(mission_id, gate_id, chat_verdict)
+        except Exception as exc:  # noqa: BLE001 — chat resolution must not break gate flow
+            logger.warning("resolve_persisted_gate_chat failed for %s: %s", gate_id, exc)
+
     delivered = _deliver_resume(mission_id, resume_payload)
 
     if delivered:

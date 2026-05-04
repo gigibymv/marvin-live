@@ -532,7 +532,13 @@ export default function MissionControl({
         return { ...data, deliverables: merged };
       });
     } catch (error) {
-      console.error("Failed to load mission progress:", error);
+      // Network-blip during backend restart: surface as BackendOfflineError
+      // (api.ts converts TypeError "Failed to fetch" → BackendOfflineError).
+      // Silent recovery prevents Next.js dev mode from promoting console.error
+      // to a runtime overlay; the next refreshProgress tick will succeed.
+      if (!isBackendOfflineError(error)) {
+        console.error("Failed to load mission progress:", error);
+      }
     }
   }, [missionId, repository.kind]);
 

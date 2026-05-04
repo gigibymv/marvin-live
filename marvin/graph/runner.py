@@ -34,6 +34,32 @@ from marvin.graph.state import MarvinState
 from marvin.mission.store import MissionStore
 from marvin.runtime_debug import log_node_entry
 
+
+def _emit_entry_narration(mission_id: str, agent: str, intent: str) -> None:
+    """Emit a user-visible "starting" narration on node entry.
+
+    Closes the dead-air window between gate approval and the first LLM
+    response (5-30s). The live-feed heartbeat in server.py only fires on
+    silence after the first node emission, so without this the user sees
+    nothing for the first window. Best-effort: never raise, never block
+    graph progression.
+    """
+    if not mission_id:
+        return
+    try:
+        from datetime import UTC, datetime
+        import json as _json
+
+        from marvin.events import emit_graph_event
+
+        ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        payload = {"agent": agent, "intent": intent, "ts": ts}
+        emit_graph_event(
+            mission_id, f"event: narration\ndata: {_json.dumps(payload)}\n\n"
+        )
+    except Exception:  # noqa: BLE001 — UX best-effort
+        pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -744,6 +770,9 @@ async def research_rebuttal_node(state: MarvinState) -> dict:
     """
     log_node_entry("research_rebuttal", state)
     mission_id = state.get("mission_id", "")
+    _emit_entry_narration(
+        mission_id, "MARVIN", "Reviewing red-team findings for rebuttal"
+    )
     messages = state.get("messages", [])
     store = MissionStore()
 
@@ -807,6 +836,9 @@ async def adversus_node(state: MarvinState) -> dict:
     """
     log_node_entry("adversus", state)
     mission_id = state.get("mission_id", "")
+    _emit_entry_narration(
+        mission_id, "Adversus", "Preparing the red-team challenge"
+    )
     store = MissionStore()
     hypotheses = store.list_hypotheses(mission_id, status="active")
     hyp_text = "\n".join([f"[{hypothesis.id}] {hypothesis.text}" for hypothesis in hypotheses])
@@ -929,6 +961,7 @@ async def merlin_node(state: MarvinState) -> dict:
     """Run merlin agent and determine next phase based on verdict."""
     log_node_entry("merlin", state)
     mission_id = state.get("mission_id", "")
+    _emit_entry_narration(mission_id, "Merlin", "Synthesizing the verdict")
     store = MissionStore()
     store.update_mission_synthesis_state(mission_id, "running", None)
     latest_verdict = store.get_latest_merlin_verdict(mission_id)
@@ -1035,6 +1068,9 @@ async def papyrus_recover_workstreams_node(state: MarvinState) -> dict:
     """
     mission_id = state.get("mission_id", "")
     log_node_entry("papyrus_recover_workstreams", state)
+    _emit_entry_narration(
+        mission_id, "Papyrus", "Regenerating the workstream reports"
+    )
     pending_gate_id = state.get("pending_gate_id")
 
     from marvin.tools.papyrus_tools import (
@@ -1097,6 +1133,9 @@ async def papyrus_stress_report_node(state: MarvinState) -> dict:
     """
     mission_id = state.get("mission_id", "")
     log_node_entry("papyrus_stress_report", state)
+    _emit_entry_narration(
+        mission_id, "Papyrus", "Drafting the stress test report"
+    )
 
     from marvin.tools.papyrus_tools import _generate_workstream_report_impl
 

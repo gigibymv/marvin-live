@@ -237,7 +237,17 @@ export async function getMissionProgress(missionId: string): Promise<{
     created_at: string | null;
   } | null;
 }> {
-  const response = await fetch(`${API_BASE}/missions/${missionId}/progress`);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/missions/${missionId}/progress`);
+  } catch {
+    // Network-layer rejection (DNS failure, dropped connection, backend
+    // restarting). fetch() throws TypeError "Failed to fetch" here, which
+    // Next.js dev mode promotes to a runtime error overlay if it bubbles
+    // up to console.error. Convert to BackendOfflineError so callers can
+    // recognise this and recover silently.
+    throw new BackendOfflineError();
+  }
 
   if (!response.ok) {
     if (response.status === 0 || response.status >= 500) {
