@@ -2450,6 +2450,12 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         graph_pass_in_flight = False
         resume_steps = 0
         continued_terminal_phases: set[str] = set()
+        # Stall guard: if astream yields 0 events AND aget_state.next is
+        # unchanged from the prior iteration, the checkpoint is stalled
+        # (subgraph recursion-limit exhausted, etc.). Re-running cannot
+        # make progress; break instead of burning all 8 resume_steps.
+        # Reproduced in tests/test_resume_loop_stall_guard.py.
+        prev_runnable_next: tuple | None = None
         if isinstance(next_input, dict):
             phase = next_input.get("phase")
             if isinstance(phase, str):
@@ -2458,6 +2464,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         while resume_steps < 8:
             resume_steps += 1
             interrupted = False
+            events_yielded_in_pass = 0
             clearing_resume_payload = resume_payload_to_clear
             resume_payload_to_clear = None
             pending_recovery_payload = clearing_resume_payload
@@ -2471,6 +2478,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                         yield payload
                         continue
                     event = payload
+                    events_yielded_in_pass += 1
                     heartbeat_counter += 1
                     if heartbeat_counter % 10 == 0:
                         yield _sse_heartbeat()
@@ -2530,10 +2538,26 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                     next_input = post_continuation
                     continue
                 if post_snapshot is not None and getattr(post_snapshot, "next", None):
+                    current_next = getattr(post_snapshot, "next", None)
+                    if (
+                        events_yielded_in_pass == 0
+                        and current_next == prev_runnable_next
+                    ):
+                        # Stall: previous astream pass also yielded 0 events
+                        # against the same `next`. Re-running won't fix it.
+                        # Don't burn all 8 resume_steps — surface the stall
+                        # and let the user reconnect or escalate.
+                        logger.error(
+                            "Resume stall detected: mission=%s next=%s unchanged "
+                            "after astream yielded 0 events; breaking instead of looping",
+                            mission_id, current_next,
+                        )
+                        break
+                    prev_runnable_next = current_next
                     logger.warning(
                         "Resume continuing from runnable checkpoint: mission=%s next=%s",
                         mission_id,
-                        getattr(post_snapshot, "next", None),
+                        current_next,
                     )
                     next_input = None
                     continue
