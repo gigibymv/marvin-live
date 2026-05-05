@@ -157,6 +157,7 @@ _CONTINUABLE_CHECKPOINT_PHASES = {
     "rebuttal_done",
     "synthesis_retry",
     "synthesis_done",
+    "stress_report_done",
     "gate_g3_passed",
 }
 
@@ -169,6 +170,69 @@ def _continuation_input_from_snapshot(snapshot: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(mission_id, str) or not mission_id:
         return None
+    return values
+
+
+def _gate_resume_recovery_input(
+    mission_id: str,
+    resume_payload: dict,
+    snapshot: Any,
+) -> dict[str, Any] | None:
+    """Recover a detached gate approval when no parked interrupt is reachable.
+
+    validate_gate intentionally does not pre-write standard gate verdicts:
+    gate_node owns the normal write after LangGraph interrupt() returns. A
+    cancelled or terminal checkpoint can still leave an already-open gate in
+    the store with no runnable interrupt for the detached driver to consume.
+    In that orphaned case, and only after the driver has tried the graph path,
+    persist the same deterministic transition gate_node would have made and
+    continue from the next phase.
+    """
+    gate_id = resume_payload.get("gate_id")
+    if not isinstance(gate_id, str) or not gate_id:
+        return None
+    verdict = resume_payload.get("verdict")
+    if verdict not in ("APPROVED", "REJECTED"):
+        return None
+
+    store = get_store()
+    gate = next((g for g in store.list_gates(mission_id) if g.id == gate_id), None)
+    if gate is None or gate.status != "pending":
+        return None
+
+    material = evaluate_gate_material(
+        store,
+        mission_id,
+        gate,
+        hypotheses=store.list_hypotheses(mission_id),
+        findings=store.list_findings(mission_id),
+        mission_brief=store.get_mission_brief(mission_id),
+        workstreams=store.list_workstreams(mission_id),
+        milestones=store.list_milestones(mission_id),
+    )
+    if not material.is_open:
+        return None
+
+    approved = verdict == "APPROVED"
+    store.update_gate_status(
+        gate_id,
+        "completed" if approved else "failed",
+        notes=resume_payload.get("notes", ""),
+    )
+    _clear_gate_decision_in_flight(gate_id)
+
+    values = dict(getattr(snapshot, "values", None) or {})
+    values["mission_id"] = mission_id
+    values["pending_gate_id"] = None
+    values["gate_passed"] = approved
+    if gate.gate_type == "hypothesis_confirmation":
+        values["phase"] = "confirmed" if approved else "framing"
+    elif gate.scheduled_day <= 3:
+        values["phase"] = "gate_g1_passed" if approved else "confirmed"
+    elif gate.scheduled_day <= 10:
+        values["phase"] = "gate_g3_passed" if approved else "redteam_done"
+    else:
+        values["phase"] = "idle"
     return values
 
 _TRACE_ONLY_TOOLS = {
@@ -516,6 +580,7 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
         current_phase: str | None = None
         throttle_state: dict[tuple[str, str], float] = {}
         continued_terminal_phases: set[str] = set()
+        recovered_gate_ids: set[str] = set()
         try:
             emit_graph_event(mission_id, await _emit_run_start())
             # Bounded loop. We pass through framing/gate_entry on the first
@@ -603,12 +668,34 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                         )
                         next_input = None
                         continue
+                    if (
+                        has_target_gate
+                        and isinstance(target_gate_id, str)
+                        and target_gate_id not in recovered_gate_ids
+                    ):
+                        recovery_input = _gate_resume_recovery_input(
+                            mission_id,
+                            resume_payload,
+                            snapshot,
+                        )
+                        if recovery_input is not None:
+                            recovered_gate_ids.add(target_gate_id)
+                            logger.warning(
+                                "Detached resume recovered orphaned gate "
+                                "approval: mission=%s gate=%s phase=%s",
+                                mission_id,
+                                target_gate_id,
+                                recovery_input.get("phase"),
+                            )
+                            next_input = recovery_input
+                            continue
                 # Either no interrupt (graph completed) or interrupt on a
                 # different gate (next workflow checkpoint) — exit and let
                 # the user's next /resume attach to the new parked frame.
                 break
             if current_agent is not None:
-                emit_graph_event(mission_id, await _emit_agent_done(current_agent))
+                emit_graph_event(mission_id, await _emit_agent_done_and_clear(current_agent, mission_id))
+                current_agent = None
             emit_graph_event(mission_id, await _emit_run_end())
             logger.info(
                 "Detached resume finished: mission=%s gate=%s",
@@ -625,6 +712,7 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                 resume_payload.get("gate_id"),
                 exc,
             )
+            _clear_runtime_agents(mission_id)
     finally:
         lock.release()
         existing = _detached_drivers.get(mission_id)
@@ -1146,6 +1234,19 @@ def _clear_runtime_agents(mission_id: str | None) -> None:
         set_active_agent(mission_id, None)
     except Exception:  # noqa: BLE001 - cleanup is best effort
         logger.debug("_clear_runtime_agents failed for %s", mission_id, exc_info=True)
+
+
+async def _emit_agent_done_and_clear(agent: str | None, mission_id: str | None) -> str:
+    """Close the visible agent and clear the persisted runtime truth.
+
+    The UI treats /progress.mission.active_phase_agents as authoritative.
+    Emitting agent_done without clearing that persisted list lets the next
+    progress poll resurrect a finished agent as RUNNING.
+    """
+    _clear_runtime_agents(mission_id)
+    if agent is None:
+        return ""
+    return await _emit_agent_done(agent)
 
 
 _MISSION_COMPLETE_TEXT = (
@@ -1991,7 +2092,8 @@ async def _stream_chat(
             next_input = Command(resume=resume_payload)
 
         if current_agent is not None:
-            yield await _emit_agent_done(current_agent)
+            yield await _emit_agent_done_and_clear(current_agent, mission_id)
+            current_agent = None
 
         # Bug 7: skip the defensive completion emit if the phase=="done"
         # transition already pushed the closing bubble during the update
@@ -2000,6 +2102,7 @@ async def _stream_chat(
             completion = await _maybe_emit_mission_complete(mission_id)
             if completion:
                 yield completion
+        _clear_runtime_agents(mission_id)
         yield await _emit_run_end()
 
     except Exception as e:
@@ -2010,6 +2113,7 @@ async def _stream_chat(
         # failures can be diagnosed from client-side capture (no log file
         # access required). Truncate to keep payload small.
         last_frames = "\n".join(tb_text.splitlines()[-12:])
+        _clear_runtime_agents(mission_id)
         yield await _emit_error(f"{type(e).__name__}: {e}\n{last_frames}")
     
     finally:
@@ -2581,12 +2685,14 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             logger.warning("Resume step limit reached for mission=%s", mission_id)
 
         if current_agent is not None:
-            yield await _emit_agent_done(current_agent)
+            yield await _emit_agent_done_and_clear(current_agent, mission_id)
+            current_agent = None
         # Bug 7: skip if the phase=="done" transition already emitted the
         # closing bubble during this stream's update loop.
         completion = "" if current_phase == "done" else await _maybe_emit_mission_complete(mission_id)
         if completion:
             yield completion
+        _clear_runtime_agents(mission_id)
         yield await _emit_run_end()
 
     except Exception as e:
@@ -2594,6 +2700,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         tb_text = _tb.format_exc()
         logger.exception(f"Error in resume stream: {e}")
         last_frames = "\n".join(tb_text.splitlines()[-12:])
+        _clear_runtime_agents(mission_id)
         yield await _emit_error(f"{type(e).__name__}: {e}\n{last_frames}")
 
     finally:
@@ -3256,6 +3363,9 @@ async def get_mission_progress(mission_id: str):
                 "ship_risk": v.ship_risk,
                 "hypothesis_updates": list(v.hypothesis_updates or []),
                 "recommended_actions": list(v.recommended_actions or []),
+                "conditions": list(v.conditions or []),
+                "deal_breakers": list(v.deal_breakers or []),
+                "final_thesis": v.final_thesis,
                 "synthesis_complete_at": v.synthesis_complete_at,
                 "created_at": v.created_at,
             }

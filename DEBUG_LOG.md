@@ -4,6 +4,44 @@ Bugs found and fixed during development. Most recent first.
 
 ---
 
+## 2026-05-04 — Stale runtime agents kept mission steps spinning
+
+**Symptom:** The UI could show `Dora`, `Papyrus`, or `Merlin` as `RUNNING` after the activity feed already showed the agent finished. Tabs stayed in an apparent spin, especially around Market Analysis and Stress Test.
+
+**Root cause:** The live SSE stream emitted `agent_done`, but the persisted runtime truth (`missions.active_agent` / `missions.active_phase_agents`) was not cleared on every normal stream end, resume end, detached resume end, or recovered exception. The frontend correctly treated `/progress.mission.active_phase_agents` as authoritative, so a later progress poll resurrected stale agents.
+
+**Fix:** Added a shared `agent_done + clear runtime agents` server helper and used it on stream/resume/detached completion paths, plus explicit cleanup before `run_end` and recovered stream errors. The UI now also treats an empty `active_phase_agents` list as authoritative and refuses to revive an agent from a late `finding_added` event unless `/progress` still lists that agent as active.
+
+**Regression coverage:** Added tests for the clear helper, `/progress` runtime-agent truth, and G3 staying scheduled while a real active agent remains open.
+
+**Files touched:** `marvin_ui/server.py`, `components/marvin/MissionControl.tsx`, `tests/test_server_narration.py`, `tests/test_progress_truthfulness.py`
+
+---
+
+## 2026-05-04 — G3 verdict payload missing investment-decision details
+
+**Symptom:** G3 and Stress Test could show the verdict label, but the richer investment-decision fields (`final_thesis`, `conditions`, `deal_breakers`) were not consistently available in the gate payload or `/progress`.
+
+**Root cause:** The persisted `MerlinVerdict` model had already gained the new fields, but the server/gate payload serializers still only exposed the older verdict shape.
+
+**Fix:** Extended the gate-material verdict payload and `/progress.merlin_verdict` to include `conditions`, `deal_breakers`, and `final_thesis`. Updated frontend tests to assert the investment-decision vocabulary and rich verdict fields.
+
+**Files touched:** `marvin/graph/gate_material.py`, `marvin_ui/server.py`, `tests/mission-control-ux.test.ts`, `tests/test_progress_truthfulness.py`
+
+---
+
+## 2026-05-04 — Legacy verdict vocabulary still leaked into tests/prompts
+
+**Symptom:** Some tests and prompt guidance still expected `SHIP`, `MINOR_FIXES`, or “Evidence gaps — not ready” as normal product labels, conflicting with the new investment recommendation model.
+
+**Root cause:** The product model changed to `INVEST`, `INVEST_WITH_CONDITIONS`, `DO_NOT_INVEST`, and `INSUFFICIENT_EVIDENCE`, but a few regression tests and the Papyrus prompt still referenced the old CDD shipping vocabulary.
+
+**Fix:** Updated tests and Papyrus guidance to use investment-decision labels. Rewrote the stale synthesis circuit-breaker regression so it asserts the current contract: all final recommendation verdicts advance to `synthesis_done`; no Merlin retry loop is opened for non-invest outcomes.
+
+**Files touched:** `marvin/subagents/prompts/papyrus.md`, `marvin/mission/store.py`, `tests/mission-control-ux.test.ts`, `tests/test_phase_router.py`, `tests/test_synthesis_circuit_breaker.py`
+
+---
+
 ## 2026-05-04 — Live runtime hardening (Phase G)
 
 Five bugs surfaced during a live Netflix CDD run. Each diagnosed from runtime evidence (Render logs, SQLite checkpoint inspection, /progress endpoint poll), then fixed with the smallest-possible change. Adversarial review pass via `architect-reviewer` rejected three larger refactors before they were attempted — see `docs/graph-advance-paths.md`.
@@ -374,5 +412,19 @@ render deploys create srv-d7p2l8vavr4c73d1gnvg  # frontend
 **Validation:** `tests/test_edgar_client.py` passed, typecheck passed, smoke passed, and a live SEC read confirmed Netflix FY2024 returns the correct 10-K.
 
 **Files touched:** `marvin/tools/edgar_client.py`, `marvin/tools/calculus_tools.py`, `tests/test_edgar_client.py`
+
+---
+
+## 2026-05-04 — G3 approval returned success but left final gate open
+
+**Symptom:** Live Adobe test reached G3 correctly, but approving the final review returned `resumed_detached` while `final_review` stayed `pending/open`; final package generation did not start.
+
+**Root cause:** The graph could be checkpointed at `stress_report_done` with G3 materially open in `/progress`, but without a parked LangGraph interrupt for the detached driver to consume. `stress_report_done` was not classified as a continuable checkpoint, and there was no post-replay recovery path for an already-open orphaned gate.
+
+**Fix:** Added `stress_report_done` to continuable checkpoint phases. Added a deterministic detached-driver recovery path: after the driver has tried the graph replay, if the target gate is still open/pending, Python persists the same gate decision `gate_node` would have made and continues from the next routed phase (`gate_g3_passed` for approved G3).
+
+**Validation:** Retried the exact stuck Adobe G3 run after restart. Mission advanced to `status=complete`, `final_review=completed`, `active_phase_agents=[]`, and final deliverables included `exec_summary` and `data_book`.
+
+**Files touched:** `marvin_ui/server.py`, `tests/test_server_continuable_checkpoint.py`
 
 ---

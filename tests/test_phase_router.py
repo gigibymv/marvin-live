@@ -253,7 +253,7 @@ def test_merlin_node_advances_on_ship_verdict(graph_store: MissionStore):
         MerlinVerdict(
             id="mv-1",
             mission_id="m-test",
-            verdict="SHIP",
+            verdict="INVEST",
             created_at=datetime.now(UTC).isoformat(),
         )
     )

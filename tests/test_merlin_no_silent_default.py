@@ -3,7 +3,7 @@
 Live mission m-uber-eats-...-89fc01f6 surfaced a class of bug where missing
 critical state was masked by a plausible default. Specifically:
 
-    verdict = verdict_row.verdict if verdict_row else "MINOR_FIXES"
+    verdict = verdict_row.verdict if verdict_row else "INVEST_WITH_CONDITIONS"
 
 let phase advance to synthesis_done with zero merlin_verdicts rows, opening
 G3 with no verdict for the user to review. The fix routes to a new

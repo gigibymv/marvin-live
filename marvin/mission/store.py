@@ -161,7 +161,7 @@ def _seed_standard_workplan(mission_id: str, store: "MissionStore") -> None:
             id="W3.2",
             mission_id=mission_id,
             workstream_id="W3",
-            label="SHIP verdict",
+            label="Investment recommendation",
             scheduled_day=10,
         ),
         Milestone(

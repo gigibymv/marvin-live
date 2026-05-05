@@ -446,6 +446,9 @@ def _verdict_payload(verdict: MerlinVerdict | None) -> dict[str, Any] | None:
         "ship_risk": verdict.ship_risk,
         "hypothesis_updates": list(verdict.hypothesis_updates or []),
         "recommended_actions": list(verdict.recommended_actions or []),
+        "conditions": list(verdict.conditions or []),
+        "deal_breakers": list(verdict.deal_breakers or []),
+        "final_thesis": verdict.final_thesis,
         "synthesis_complete_at": verdict.synthesis_complete_at,
         "created_at": verdict.created_at,
     }

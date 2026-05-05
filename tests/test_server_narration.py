@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from marvin_ui.server import _emit_for_update
+from marvin_ui.server import _emit_agent_done_and_clear, _emit_for_update
 
 
 def _events(chunks: list[str]) -> list[tuple[str, dict]]:
@@ -21,6 +21,25 @@ def _events(chunks: list[str]) -> list[tuple[str, dict]]:
         if event_type and data:
             parsed.append((event_type, json.loads(data)))
     return parsed
+
+
+@pytest.mark.asyncio
+async def test_agent_done_helper_clears_persisted_runtime_agents(monkeypatch):
+    cleared: list[tuple[str, str | None]] = []
+
+    def fake_set_active_agent(mission_id: str, agent: str | None) -> None:
+        cleared.append((mission_id, agent))
+
+    monkeypatch.setattr(
+        "marvin.graph.tool_callbacks.set_active_agent",
+        fake_set_active_agent,
+    )
+
+    chunk = await _emit_agent_done_and_clear("dora", "m-runtime")
+    events = _events([chunk])
+
+    assert cleared == [("m-runtime", None)]
+    assert ("agent_done", {"agent": "Dora"}) in events
 
 
 @pytest.mark.asyncio

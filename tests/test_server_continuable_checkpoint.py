@@ -30,6 +30,69 @@ def test_continuation_input_from_routable_terminal_checkpoint():
     }
 
 
+def test_continuation_input_includes_stress_report_done_before_g3():
+    snapshot = SimpleNamespace(
+        values={
+            "mission_id": "m-resume",
+            "phase": "stress_report_done",
+            "pending_gate_id": "gate-m-resume-G3",
+        },
+        next=(),
+    )
+
+    continuation = _continuation_input_from_snapshot(snapshot)
+
+    assert continuation == {
+        "mission_id": "m-resume",
+        "phase": "stress_report_done",
+        "pending_gate_id": "gate-m-resume-G3",
+    }
+
+
+def test_gate_resume_recovery_completes_open_orphaned_g3(monkeypatch):
+    store = MissionStore(":memory:")
+    mission_id = "m-orphan-g3"
+    gate_id = "gate-m-orphan-g3-G3"
+    store.save_mission(
+        Mission(
+            id=mission_id,
+            client="Client",
+            target="Target",
+            ic_question="Should IC invest?",
+            status="active",
+        )
+    )
+    store.save_gate(
+        srv.Gate(
+            id=gate_id,
+            mission_id=mission_id,
+            gate_type="final_review",
+            scheduled_day=10,
+            status="pending",
+            format="review_claims",
+        )
+    )
+    monkeypatch.setattr(srv, "get_store", lambda: store)
+    monkeypatch.setattr(
+        srv,
+        "evaluate_gate_material",
+        lambda *args, **kwargs: SimpleNamespace(is_open=True),
+    )
+
+    continuation = srv._gate_resume_recovery_input(
+        mission_id,
+        {"gate_id": gate_id, "verdict": "APPROVED", "notes": "ok"},
+        SimpleNamespace(values={"mission_id": mission_id, "phase": "stress_report_done"}),
+    )
+
+    gate = next(g for g in store.list_gates(mission_id) if g.id == gate_id)
+    assert gate.status == "completed"
+    assert continuation is not None
+    assert continuation["phase"] == "gate_g3_passed"
+    assert continuation["gate_passed"] is True
+    assert continuation["pending_gate_id"] is None
+
+
 def test_continuation_input_rejects_done_and_missing_mission_id():
     assert _continuation_input_from_snapshot(
         SimpleNamespace(values={"mission_id": "m-resume", "phase": "done"}, next=())

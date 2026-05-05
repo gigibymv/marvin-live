@@ -89,7 +89,14 @@ describe("MissionControl UX slice", () => {
         milestones_total: 10,
         workstreams: [],
       },
-      merlin_verdict: { id: "mv1", verdict: "SHIP", notes: "Ready for IC." },
+      merlin_verdict: {
+        id: "mv1",
+        verdict: "INVEST_WITH_CONDITIONS",
+        notes: "Ready for IC with conditions.",
+        final_thesis: "Proceed only if retention evidence holds.",
+        conditions: ["Confirm retention cohort durability before signing."],
+        deal_breakers: ["Margin deterioration above the IC threshold."],
+      },
       arbiter_flags: ["minor inconsistency in pricing"],
       findings_total: 17,
     };
@@ -101,15 +108,22 @@ describe("MissionControl UX slice", () => {
     expect(mapped.hypotheses?.[0]?.text).toBe("TAM > $10B");
     expect(mapped.redteamFindings?.[0]?.agent_id).toBe("adversus");
     expect(mapped.coverage?.workstreams_with_material).toBe(1);
-    expect(mapped.merlinVerdict?.verdict).toBe("SHIP");
+    expect(mapped.merlinVerdict?.verdict).toBe("INVEST_WITH_CONDITIONS");
+    expect(mapped.merlinVerdict?.final_thesis).toBe("Proceed only if retention evidence holds.");
+    expect(mapped.merlinVerdict?.conditions?.[0]).toContain("retention");
+    expect(mapped.merlinVerdict?.deal_breakers?.[0]).toContain("Margin");
     expect(mapped.findingsTotal).toBe(17);
     expect(mapped.arbiterFlags?.length).toBe(1);
   });
 
   it("maps internal Merlin verdict enums to consultant language", () => {
-    expect(humanizeVerdict("SHIP")).toBe("Ready to present");
-    expect(humanizeVerdict("MINOR_FIXES")).toBe("Additional diligence needed");
-    expect(humanizeVerdict("BACK_TO_DRAWING_BOARD")).toBe("Evidence gaps — not ready");
+    expect(humanizeVerdict("INVEST")).toBe("Invest");
+    expect(humanizeVerdict("INVEST_WITH_CONDITIONS")).toBe("Invest with conditions");
+    expect(humanizeVerdict("DO_NOT_INVEST")).toBe("Do not invest");
+    expect(humanizeVerdict("INSUFFICIENT_EVIDENCE")).toBe("Insufficient evidence");
+    expect(humanizeVerdict("SHIP")).toBe("Invest");
+    expect(humanizeVerdict("MINOR_FIXES")).toBe("Invest with conditions");
+    expect(humanizeVerdict("BACK_TO_DRAWING_BOARD")).toBe("Insufficient evidence");
   });
 
   it("gate payload mapping normalizes incomplete coverage safely", async () => {
@@ -414,8 +428,8 @@ describe("MissionControl UX slice", () => {
             id: "synthesis-w3",
             kind: "deliverable",
             agent_id: "merlin",
-            claim_text: "Synthesis · Evidence gaps — not ready",
-            confidence: "Evidence gaps — not ready",
+            claim_text: "Synthesis · Invest with conditions",
+            confidence: "Invest with conditions",
             workstream_id: "W3",
           },
           {
@@ -442,7 +456,7 @@ describe("MissionControl UX slice", () => {
 
     expect(screen.getByText("Deliverable ready · Exec summary")).toBeInTheDocument();
     expect(screen.getByText("Deliverable ready · Data book")).toBeInTheDocument();
-    expect(screen.queryByText("Synthesis · Evidence gaps — not ready")).not.toBeInTheDocument();
+    expect(screen.queryByText("Synthesis · Invest with conditions")).not.toBeInTheDocument();
   });
 
   it("labels workstream reports by section", () => {

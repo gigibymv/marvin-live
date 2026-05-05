@@ -275,6 +275,9 @@ def test_final_review_opens_only_after_synthesis_complete(store: MissionStore):
             id="mv-progress",
             mission_id="m-progress",
             verdict="INVEST",
+            final_thesis="The investment is attractive at disciplined entry terms.",
+            conditions=["Confirm retention durability before signing."],
+            deal_breakers=["Evidence of structural margin decline."],
             synthesis_complete_at=datetime.now(UTC).isoformat(),
             created_at=datetime.now(UTC).isoformat(),
         )
@@ -299,6 +302,13 @@ def test_final_review_opens_only_after_synthesis_complete(store: MissionStore):
     assert gates["final_review"]["lifecycle_status"] == "open"
     assert gates["final_review"]["is_open"] is True
     assert gates["final_review"]["review_payload"]["merlin_verdict"]["verdict"] == "INVEST"
+    assert gates["final_review"]["review_payload"]["merlin_verdict"]["final_thesis"].startswith("The investment")
+    assert gates["final_review"]["review_payload"]["merlin_verdict"]["conditions"] == [
+        "Confirm retention durability before signing."
+    ]
+    assert gates["final_review"]["review_payload"]["merlin_verdict"]["deal_breakers"] == [
+        "Evidence of structural margin decline."
+    ]
     assert gates["final_review"]["review_payload"]["redteam_findings"][0]["id"] == "f-redteam"
 
 
@@ -331,6 +341,55 @@ def test_final_review_stays_scheduled_while_synthesis_running(store: MissionStor
 
     assert gates["final_review"]["lifecycle_status"] == "scheduled"
     assert "synthesis_incomplete" in gates["final_review"]["missing_material"]
+
+
+def test_progress_surfaces_authoritative_runtime_agents_and_clear(store: MissionStore):
+    store.update_mission_active_agent("m-progress", "dora")
+    store.update_mission_active_phase_agents("m-progress", ["dora", "papyrus"])
+
+    payload = asyncio.run(srv.get_mission_progress("m-progress"))
+
+    assert payload["mission"]["active_agent"] == "dora"
+    assert payload["mission"]["active_phase_agents"] == ["dora", "papyrus"]
+
+    store.clear_mission_runtime_agents("m-progress")
+    payload = asyncio.run(srv.get_mission_progress("m-progress"))
+
+    assert payload["mission"]["active_agent"] is None
+    assert payload["mission"]["active_phase_agents"] == []
+
+
+def test_final_review_waits_for_runtime_agents_to_close(store: MissionStore):
+    store.update_mission_synthesis_state("m-progress", "complete", datetime.now(UTC).isoformat())
+    store.save_merlin_verdict(
+        MerlinVerdict(
+            id="mv-progress-active-agent",
+            mission_id="m-progress",
+            verdict="INVEST_WITH_CONDITIONS",
+            synthesis_complete_at=datetime.now(UTC).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    store.save_finding(
+        Finding(
+            id="f-redteam-active-agent",
+            mission_id="m-progress",
+            workstream_id="W4",
+            claim_text="Adversus produced a challenge that needs synthesis",
+            confidence="REASONED",
+            agent_id="adversus",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    g2 = next(g for g in store.list_gates("m-progress") if g.gate_type == "manager_review")
+    store.update_gate_status(g2.id, "completed", "approved-for-test")
+    store.update_mission_active_phase_agents("m-progress", ["merlin"])
+
+    payload = asyncio.run(srv.get_mission_progress("m-progress"))
+    gates = {gate["gate_type"]: gate for gate in payload["gates"]}
+
+    assert gates["final_review"]["lifecycle_status"] == "scheduled"
+    assert "agent_active" in gates["final_review"]["missing_material"]
 
 
 def test_validate_gate_rejects_scheduled_gate_without_material(store: MissionStore):

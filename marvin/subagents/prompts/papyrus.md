@@ -50,8 +50,8 @@ consulting documents — never database dumps.
      context. Never fabricate a claim, statistic, source, or number
      that is not in the input.
    - When a verdict is provided, use the consultant-facing `label`
-     exactly as provided (for example `Ready to present`,
-     `Additional diligence needed`, `Evidence gaps — not ready`) and
+     exactly as provided (for example `Invest`,
+     `Invest with conditions`, `Do not invest`, `Insufficient evidence`) and
      paraphrase the verdict notes faithfully — do not invent reasoning
      Merlin did not state.
    - If the input is thin (few findings, no verdict, missing fields),

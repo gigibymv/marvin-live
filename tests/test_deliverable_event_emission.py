@@ -72,7 +72,7 @@ def _stub_papyrus_llm_generate(
         )
     if deliverable_type == "exec_summary":
         verdict = (extra or {}).get("verdict")
-        verdict_label = verdict.verdict if verdict else "MINOR_FIXES"
+        verdict_label = verdict.verdict if verdict else "INVEST_WITH_CONDITIONS"
         finding_block = "\n\n".join(
             f"**{i + 1}. {f.claim_text[:64].rstrip('.')}.**\n\n"
             f"{f.claim_text} Confidence: {f.confidence}."

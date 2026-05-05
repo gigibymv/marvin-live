@@ -423,7 +423,8 @@ def test_set_merlin_verdict_is_idempotent_for_same_pass(store: MissionStore, sta
     second = mission_tools.set_merlin_verdict("DO_NOT_INVEST", "Need stronger sourcing.", **kwargs)
 
     assert second["verdict_id"] == first["verdict_id"]
-    assert second["deduped"] is True
+    assert second["status"] == "verdict_persisted"
+    assert "already recorded" in second["message"].lower()
     verdict_rows = store._execute(  # noqa: SLF001 - test asserts persistence contract
         "SELECT COUNT(*) AS count FROM merlin_verdicts WHERE mission_id = ?",
         ("m-test",),

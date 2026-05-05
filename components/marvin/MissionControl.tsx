@@ -482,6 +482,7 @@ export default function MissionControl({
   const [selectedHypothesisId, setSelectedHypothesisId] = useState<string | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
   const announcedDeliverablesRef = useRef<Set<string>>(new Set());
+  const authoritativeActiveAgentsRef = useRef<Set<string>>(new Set());
 
   const markGateResolving = useCallback((gateId: string) => {
     setResolvingGateIds((current) => {
@@ -1169,13 +1170,14 @@ export default function MissionControl({
             }
             break;
           case "finding_added":
-            // A finding implies the producing agent is alive even if no
-            // explicit `agent_active` SSE wrapped this work. Without this,
-            // the left-rail agents stay IDLE while the activity feed shows
-            // them streaming claims (observed live with adversus).
+            // Findings are content, not runtime truth. They may arrive late
+            // from persistence replay after the producing agent is already
+            // done, so only let them keep an agent active when /progress still
+            // says that agent is active in the current phase.
             if (event.agent) {
               const agentLower = String(event.agent).toLowerCase();
               setAgentStatuses((current) => {
+                if (!authoritativeActiveAgentsRef.current.has(agentLower)) return current;
                 if (current[agentLower] === "done") return current;
                 if (current[agentLower] === "active") return current;
                 return { ...current, [agentLower]: "active" };
@@ -1848,6 +1850,9 @@ export default function MissionControl({
   const authoritativeSynthesisState = (progress?.mission as any)?.synthesis_state ?? null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    authoritativeActiveAgentsRef.current = new Set(
+      authoritativeActiveAgents.map((agent) => agent.toLowerCase()),
+    );
     if (authoritativeActiveAgents.length > 0) {
       const [first] = authoritativeActiveAgents;
       setActiveAgent(first);
@@ -1864,22 +1869,16 @@ export default function MissionControl({
       });
       return;
     }
-    if (
-      pausedForGate
-      || authoritativeSynthesisState === "complete"
-      || (progress?.mission as any)?.status === "complete"
-    ) {
-      setActiveAgent(null);
-      setActiveAgentSince(null);
-      setActiveAgentElapsed(0);
-      setAgentStatuses((current) => {
-        const next: Record<string, "idle" | "active" | "done"> = { ...current };
-        for (const key of Object.keys(next)) {
-          if (next[key] === "active") next[key] = "done";
-        }
-        return next;
-      });
-    }
+    setActiveAgent(null);
+    setActiveAgentSince(null);
+    setActiveAgentElapsed(0);
+    setAgentStatuses((current) => {
+      const next: Record<string, "idle" | "active" | "done"> = { ...current };
+      for (const key of Object.keys(next)) {
+        if (next[key] === "active") next[key] = "done";
+      }
+      return next;
+    });
   }, [authoritativeActiveAgents.join("|"), pausedForGate, authoritativeSynthesisState, (progress?.mission as any)?.status]);
 
   // P14 + React-rules: this useMemo MUST sit above the early returns below;
