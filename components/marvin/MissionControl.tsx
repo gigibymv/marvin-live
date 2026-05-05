@@ -2525,10 +2525,13 @@ export default function MissionControl({
       liveStatus === "done" && wsHasReadyDeliverable && allMilestoneDeliverablesMaterialized;
     const agentDoneAllMilestonesTerminal =
       liveStatus === "done" && allMilestonesDone && allMilestoneDeliverablesMaterialized;
+    const stressReportComplete =
+      ws.id === "W4" && allMilestonesDone && wsHasReadyDeliverable;
     // P19b: require ALL deliverables ready (not just ≥1) before marking ✓.
     const tabCompletedReady = missionCompleted
       || (allMilestonesDone && wsAllDeliverablesReady && allMilestoneDeliverablesMaterialized)
       || synthesisDone
+      || stressReportComplete
       || agentDoneWithDeliverable
       || agentDoneAllMilestonesTerminal;
     const status: WorkstreamViewStatus =

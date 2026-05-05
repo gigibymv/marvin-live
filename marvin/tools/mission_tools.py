@@ -1118,6 +1118,22 @@ def set_merlin_verdict(
         created_at=utc_now_iso(),
     )
     store.save_merlin_verdict(verdict_row)
+    # Merlin's verdict is the terminal W3 business fact. Close the W3
+    # milestones here so the Stress Test tab does not keep spinning after the
+    # verdict/G3 material exists.
+    for milestone_id, summary in (
+        ("W3.1", "Storyline synthesis completed by Merlin."),
+        ("W3.2", f"Investment recommendation completed: {consultant_verdict_label(normalized_verdict)}."),
+    ):
+        try:
+            store.mark_milestone_delivered(milestone_id, summary, mission_id=mission_id)
+        except Exception:  # noqa: BLE001 — verdict persistence is authoritative
+            logger.debug(
+                "set_merlin_verdict could not close %s for %s",
+                milestone_id,
+                mission_id,
+                exc_info=True,
+            )
     # 9-bug triage I: also persist the verdict as a synthesis finding so the
     # W3 (Synthesis) tab gets at least one row instead of staying on the
     # "Agents are working" empty-state until the deliverable is generated.

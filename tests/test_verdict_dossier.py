@@ -67,6 +67,8 @@ def test_verdict_dossier_is_deterministic_and_flags_gaps(tmp_path):
     assert first["python_signal"] == "high"
     assert any("H1 has unresolved red-team contradiction" in gap for gap in first["gaps"])
     assert any("H2 has no linked evidence yet." in gap for gap in first["gaps"])
+    assert any("H1 has unresolved red-team contradiction" in risk for risk in first["investment_risks"])
+    assert any("H2 has no linked evidence yet." in gap for gap in first["evidence_gaps"])
     by_label = {row["label"]: row for row in first["hypotheses"]}
     assert by_label["H1"]["primary_sourced_count"] == 1
     assert len(by_label["H1"]["attacks"]) == 1

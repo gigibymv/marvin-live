@@ -406,6 +406,9 @@ def test_set_and_check_merlin_verdict(store: MissionStore, state: dict[str, str]
     assert saved["verdict"] == "INVEST"
     assert saved["ship_risk"] == "low"
     assert saved["hypothesis_updates"][0]["hypothesis_label"] == "H1"
+    milestones = {m.id: m.status for m in store.list_milestones("m-test")}
+    assert milestones["W3.1"] == "delivered"
+    assert milestones["W3.2"] == "delivered"
     checked = mission_tools.check_merlin_verdict(state)
     assert checked["verdict"] == "INVEST"
 

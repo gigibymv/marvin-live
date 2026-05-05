@@ -93,6 +93,7 @@ def evaluate_gate_material(
     mission_brief = store.get_mission_brief(mission_id) if mission_brief is None else mission_brief
     workstreams = store.list_workstreams(mission_id) if workstreams is None else workstreams
     milestones = store.list_milestones(mission_id) if milestones is None else milestones
+    deliverables = store.list_deliverables(mission_id)
     if merlin_verdict is None and gate.gate_type == "final_review":
         merlin_verdict = store.get_latest_merlin_verdict(mission_id)
 
@@ -171,7 +172,6 @@ def evaluate_gate_material(
         # compile. A blocked visible milestone is different: it means work was
         # attempted but failed, so the manager gate must wait for an explicit
         # report/caveat rather than silently treating the branch as complete.
-        deliverables = store.list_deliverables(mission_id)
         ready_deliverable_ids = {
             (d.workstream_id or "").upper()
             for d in deliverables
@@ -307,6 +307,15 @@ def evaluate_gate_material(
             missing_material.append("merlin_verdict")
         if not redteam_findings:
             missing_material.append("redteam_evidence")
+        stress_report_ready = any(
+            deliverable.status == "ready"
+            and bool(deliverable.file_path)
+            and deliverable.workstream_id == "W4"
+            and deliverable.deliverable_type == "workstream_report"
+            for deliverable in deliverables
+        )
+        if not stress_report_ready:
+            missing_material.append("stress_report")
         if list(mission.active_phase_agents or []):
             missing_material.append("agent_active")
         if (mission.active_agent or "").strip().lower() == "papyrus":

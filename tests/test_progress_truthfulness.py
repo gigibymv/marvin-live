@@ -293,6 +293,17 @@ def test_final_review_opens_only_after_synthesis_complete(store: MissionStore):
             created_at=datetime.now(UTC).isoformat(),
         )
     )
+    store.save_deliverable(
+        Deliverable(
+            id="d-w4-report",
+            mission_id="m-progress",
+            deliverable_type="workstream_report",
+            status="ready",
+            file_path="/tmp/W4_report.md",
+            workstream_id="W4",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
     g2 = next(g for g in store.list_gates("m-progress") if g.gate_type == "manager_review")
     store.update_gate_status(g2.id, "completed", "approved-for-test")
 

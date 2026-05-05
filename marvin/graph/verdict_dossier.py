@@ -123,7 +123,8 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
         rebuttals_by_hypothesis[f.hypothesis_id].append(f)
 
     hypothesis_sections: list[dict[str, Any]] = []
-    gaps: list[str] = []
+    evidence_gaps: list[str] = []
+    investment_risks: list[str] = []
     contradicting_hypotheses = 0
     unsupported_hypotheses = 0
     low_confidence_hypotheses = 0
@@ -201,21 +202,21 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
         computed = compute_hypothesis_status(scoped)
         if computed["status"] == "CHALLENGED":
             contradicting_hypotheses += 1
-            gaps.append(
+            investment_risks.append(
                 f"{hypothesis.label or f'H{index}'} has unresolved red-team contradiction(s)."
             )
         elif computed["status"] == "WEAKENED":
             low_confidence_hypotheses += 1
-            gaps.append(
+            investment_risks.append(
                 f"{hypothesis.label or f'H{index}'} is mostly supported by fragile evidence."
             )
         elif computed["status"] == "NOT_STARTED":
             unsupported_hypotheses += 1
-            gaps.append(
+            evidence_gaps.append(
                 f"{hypothesis.label or f'H{index}'} has no linked evidence yet."
             )
         if counts["KNOWN"] == 0 and supporting:
-            gaps.append(
+            investment_risks.append(
                 f"{hypothesis.label or f'H{index}'} lacks primary-sourced support."
             )
         hypothesis_sections.append(
@@ -248,7 +249,7 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
     ]
 
     if any(not section["has_material"] for section in coverage if section["id"] in {"W1", "W2", "W4"}):
-        gaps.append("One or more visible workstreams still have no user-facing material.")
+        evidence_gaps.append("One or more visible workstreams still have no user-facing material.")
 
     # python_signal is a mechanical hint for Merlin, NOT a final verdict.
     # Merlin must weigh qualitative attack/support strength per hypothesis and
@@ -275,7 +276,13 @@ def build_verdict_dossier(store: MissionStore, mission_id: str) -> dict[str, Any
         },
         "hypotheses": hypothesis_sections,
         "coverage": coverage,
-        "gaps": gaps,
+        # Backward-compatible combined list for older prompt/tests.
+        "gaps": evidence_gaps + investment_risks,
+        # Product distinction: lack of material can block a decision, but
+        # challenged hypotheses are normally investment risks to price,
+        # diligence, or reject, not automatic "insufficient evidence".
+        "evidence_gaps": evidence_gaps,
+        "investment_risks": investment_risks,
         "python_signal": python_signal,
         "attack_strength_overall": attack_strength_overall,
         "support_strength_overall": support_strength_overall,
