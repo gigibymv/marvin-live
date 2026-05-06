@@ -4,6 +4,60 @@ Bugs found and fixed during development. Most recent first.
 
 ---
 
+## 2026-05-05 — Runtime snapshot / gate contracts / structured verdict evidence
+
+**Symptom:** Several mission surfaces could disagree after refresh or long-running phases: rail agents could remain `RUNNING`, tabs could infer completion from partial local state, gate messages exposed only raw missing-material codes, and Merlin’s dossier had to reason from finding text without enough attached source context.
+
+**Root cause:** Runtime truth was still spread across multiple consumers: `/progress.mission.active_phase_agents`, gate rows, milestone/deliverable rows, local SSE heuristics, and UI-derived workstream status. The store already had richer evidence/source fields, but the verdict dossier and finding tool did not consistently expose them.
+
+**Fix:** Added a canonical `MissionRuntimeSnapshot` to `/progress` with `current_phase`, `active_agents`, `open_gate`, blockers, waiting reason, next action, workstream contracts, and deliverable readiness. Added explicit `gate_contract` payloads with `ready`, `blocking_reasons`, `missing_objects`, consultant copy, and required deliverables. Updated the UI to prefer `runtime_snapshot.current_phase` and `runtime_snapshot.active_agents` over local inference, so Papyrus or another agent cannot stay active from a stale narration alone. Enriched Merlin’s verdict dossier with source summaries/evidence packets and exposed `impact` on `add_finding_to_mission`.
+
+**Regression coverage:** Added/updated targeted tests for `/progress` runtime truth, gate contracts, reject gate lookup, verdict dossier source evidence, and structured finding impact. `make smoke` passed.
+
+**Files touched:** `marvin/mission/runtime_snapshot.py`, `marvin_ui/server.py`, `marvin/graph/gate_material.py`, `marvin/graph/verdict_dossier.py`, `marvin/tools/mission_tools.py`, `components/marvin/MissionControl.tsx`, `lib/missions/api.ts`
+
+### Findings still lacked explicit support/contradict semantics
+
+**Symptom:** Merlin could treat all non-Adversus findings as support and all Adversus findings as contradiction, even when the content itself was more nuanced. That made `INSUFFICIENT_EVIDENCE`/challenge outcomes too dependent on prose interpretation.
+
+**Root cause:** Persisted findings had `confidence`, `impact`, source metadata, and hypothesis/workstream links, but no explicit stance or consultant implication. The verdict dossier had to infer role from `agent_id`.
+
+**Fix:** Added optional `stance` (`supports`, `contradicts`, `mixed`, `context`) and `implication` fields to findings, persisted them through SQLite/store/tool/SSE/progress/replay, and taught the verdict dossier to prefer explicit stance over agent-name heuristics.
+
+**Regression coverage:** Added tool and verdict-dossier assertions for stance normalization and evidence-packet propagation.
+
+### Merlin could over-use `INSUFFICIENT_EVIDENCE`
+
+**Symptom:** Public-company runs could produce an `INSUFFICIENT_EVIDENCE` recommendation even when Dora/Calculus/Adversus had enough material to make a decisive investment call. Challenged hypotheses were being treated like "we cannot judge" rather than "the thesis changed."
+
+**Root cause:** The dossier separated `evidence_gaps` from `investment_risks`, but the prompt did not make the decision boundary explicit enough. Merlin could still map red-team challenges to insufficient evidence.
+
+**Fix:** Added deterministic `decision_guidance` to the verdict dossier. It explicitly says whether `INSUFFICIENT_EVIDENCE` is allowed and recommends the decision family. The Merlin prompt now states that challenged hypotheses are normal diligence outcomes and should become `INVEST_WITH_CONDITIONS` or `DO_NOT_INVEST`, not insufficient evidence, unless material is truly missing.
+
+**Regression coverage:** Added dossier assertions for the mixed case where evidence gaps plus investment risks should still steer toward an investment decision family rather than automatic insufficient evidence.
+
+### Chat replay could bury or lose the open gate CTA
+
+**Symptom:** After reload, a pending gate could appear above later deliverable/narration messages, or be absent if the live stream had opened the gate before the persisted chat row was available. The consultant then had to hunt for the actionable decision.
+
+**Root cause:** `GET /chat/messages` returned persisted chat rows in raw `seq` order only. That preserves audit order, but the product contract is stronger: if a gate is open now, its action bubble must be the final visible action after replay.
+
+**Fix:** Added replay ordering that reconstructs the currently open gate from persisted store truth, moves the matching `gate_action="pending"` chat row to the end, and synthesizes a non-persisted gate bubble if the row is missing. The DB audit rows stay untouched.
+
+**Regression coverage:** Added tests for late deliverable after gate pending and missing gate row synthesis.
+
+### Runtime audit trail was not durable enough for gate decisions
+
+**Symptom:** After long runs or refresh/recovery, it was hard to distinguish "UI stale" from "graph actually parked" because agent/phase/gate transitions were visible only through transient SSE or derived UI state.
+
+**Root cause:** MARVIN had user-facing events and persisted business rows, but no lightweight runtime audit trail for non-user-facing transitions such as `agent_active`, `phase_changed`, `gate_opened`, and `gate_completed`.
+
+**Fix:** Added `mission_runtime_events` with sequenced JSON payloads. Server emitters now best-effort persist phase/agent/gate-open events, and `MissionStore.update_gate_status` records gate completion/failure from the persistence chokepoint so approve/reject/live/detached paths share the same audit truth.
+
+**Regression coverage:** Added store tests for ordered runtime events and system tests that verify gate open events are recorded without changing chat replay behavior.
+
+---
+
 ## 2026-05-04 — Stale runtime agents kept mission steps spinning
 
 **Symptom:** The UI could show `Dora`, `Papyrus`, or `Merlin` as `RUNNING` after the activity feed already showed the agent finished. Tabs stayed in an apparent spin, especially around Market Analysis and Stress Test.
@@ -442,5 +496,67 @@ render deploys create srv-d7p2l8vavr4c73d1gnvg  # frontend
 **Validation:** Targeted resume/server/graph tests passed, and `make smoke` passed. The previously stuck Adobe mission recovered to an open G1 with W1/W2 delivered and `active_phase_agents=[]`.
 
 **Files touched:** `marvin/graph/runner.py`, `marvin_ui/server.py`, `tests/test_resume_loop_stall_guard.py`
+
+---
+
+## 2026-05-06 — Strict finding metadata caused live Dora/Calculus persistence failures
+
+**Symptom:** During the H2 Adobe live test, the research agents appeared to run but emitted `add_finding_to_mission failed · ValidationError`. Findings did not reliably persist, which could cascade into empty outputs, false missing coverage, or blocked downstream gates.
+
+**Root cause:** The new structured finding schema made `impact` canonical (`load_bearing`, `supporting`, `color`), but LLM/tool calls still sent natural aliases such as `critical` or `high`. Separately, agent calls sometimes used source/confidence aliases that normalized to `KNOWN` without a `source_id`, which violates the source-backed confidence contract.
+
+**Fix:** Normalized tool-boundary inputs in `marvin/tools/mission_tools.py`: `critical/high/material/key` map to `load_bearing`, `medium/support` to `supporting`, and `low/context` to `color`. Confidence aliases are normalized, and `KNOWN` without a source is downgraded to `REASONED` instead of failing persistence.
+
+**Why it prevents repeats:** The DB/schema remains strict, but the tool boundary accepts recoverable LLM formatting noise. Invalid business facts are still rejected; only known aliases are normalized.
+
+**Validation:** Added `test_add_finding_normalizes_llm_impact_aliases`; targeted finding tool tests passed. A fresh Adobe live run then persisted W1/W2 findings, reached G1, reached G3, and produced `INVEST_WITH_CONDITIONS`.
+
+**Files touched:** `marvin/tools/mission_tools.py`, `tests/test_tools.py`
+
+---
+
+## 2026-05-06 — Open gate persisted but live SSE ended without `gate_pending`
+
+**Symptom:** In a fresh Adobe H2 live run, the initial hypothesis gate was open in `/progress`, but the initial `/chat` SSE stream ended with `run_end` and did not emit `gate_pending`.
+
+**Root cause:** `_stream_resume` already re-emitted a persisted open gate, but `_stream_chat` only surfaced gates when LangGraph yielded an explicit interrupt frame. A graph pass can return cleanly after the gate row is persisted, leaving the durable gate truth visible to `/progress` but not to the live SSE consumer.
+
+**Fix:** Added a post-pass persisted-gate check in `_stream_chat`: after graph completion and runtime-agent cleanup, read `_open_gate_payload_from_store`; if a gate is materially open, emit `gate_pending`, gate narration, then `run_end`.
+
+**Why it prevents repeats:** Gate visibility now depends on persisted gate truth, not on whether the current SSE iterator happened to receive the LangGraph interrupt frame.
+
+**Validation:** Added `test_live_chat_surfaces_persisted_open_gate_when_graph_finishes_silent`.
+
+**Files touched:** `marvin_ui/server.py`, `tests/test_mission_system_contracts.py`
+
+---
+
+## 2026-05-06 — Final package snapshot did not recognize canonical CDD final deliverables
+
+**Symptom:** Adobe reached `mission.status=complete`, but `/progress.runtime_snapshot.deliverables.final_package_ready` was `false`. The snapshot reported only `data_book` as final-ready even though `exec_summary`, `data_book`, and the W4 stress testing report existed.
+
+**Root cause:** Runtime snapshot expected `executive_summary` and `stress_testing_report`, while the actual persistence contract uses `exec_summary` and a W4 `workstream_report` as the canonical stress testing report. The graph completion contract already accepted W4 `workstream_report`, so `/progress` and graph completion disagreed.
+
+**Fix:** Updated `marvin/mission/runtime_snapshot.py` so final package readiness accepts `exec_summary` or `executive_summary`, requires `data_book`, and treats either `stress_testing_report` or W4 `workstream_report` as the stress testing report.
+
+**Why it prevents repeats:** `/progress`, UI snapshot, and graph completion now use the same canonical CDD deliverable semantics.
+
+**Validation:** Added `test_runtime_snapshot_final_package_accepts_canonical_cdd_deliverables`.
+
+**Files touched:** `marvin/mission/runtime_snapshot.py`, `tests/test_progress_truthfulness.py`
+
+---
+
+## 2026-05-06 — Final Deliverables tab omitted the stress testing report
+
+**Symptom:** A completed Adobe mission showed `Exec summary` and `Data book` in the final tab, but the stress testing report remained visible only in `STRESS TEST`. This made the final package look incomplete even though the sidebar deliverables and backend persistence were correct.
+
+**Root cause:** The UI section adapter mapped W4 `workstream_report` exclusively to the stress-test section. Backend semantics treat that same W4 workstream report as the canonical stress testing report required by the final package, so the UI needed a final-package annex view of the same persisted deliverable.
+
+**Fix:** `MissionControl` now clones a ready W4 `workstream_report` into the final section as a final-package annex while preserving the original stress-test output. No fake deliverable is created; both UI rows point to the same persisted document.
+
+**Validation:** Re-ran the completed Adobe H2 mission locally and captured `/private/tmp/marvin-adobe-h2-final-deliverables-v3.png`; the final tab now shows `Stress testing report`, `Exec summary`, and `Data book`.
+
+**Files touched:** `components/marvin/MissionControl.tsx`
 
 ---

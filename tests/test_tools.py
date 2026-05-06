@@ -388,6 +388,51 @@ def test_persist_source_for_mission_writes_row(store: MissionStore, state: dict[
     assert store.list_sources("m-test")[0].quote == "Quoted"
 
 
+def test_add_finding_accepts_structured_impact(store: MissionStore, state: dict[str, str]):
+    result = mission_tools.add_finding_to_mission(
+        "Primary evidence changes the investment case.",
+        "REASONED",
+        "dora",
+        workstream_id="W1",
+        hypothesis_id="h-1",
+        impact="load_bearing",
+        stance="support",
+        implication="This makes the market thesis more investable.",
+        state=state,
+    )
+
+    assert result["status"] == "saved"
+    assert result["impact"] == "load_bearing"
+    assert result["stance"] == "supports"
+    assert result["implication"] == "This makes the market thesis more investable."
+    finding = store.get_finding(result["finding_id"])
+    assert finding.impact == "load_bearing"
+    assert finding.stance == "supports"
+    assert finding.implication == "This makes the market thesis more investable."
+
+
+def test_add_finding_normalizes_llm_impact_aliases(store: MissionStore, state: dict[str, str]):
+    result = mission_tools.add_finding_to_mission(
+        "Primary evidence materially changes the investment case.",
+        "sourced",
+        "dora",
+        workstream_id="W1",
+        hypothesis_id="h-1",
+        impact="critical",
+        stance="challenge",
+        state=state,
+    )
+
+    assert result["status"] == "saved"
+    assert result["confidence"] == "REASONED"
+    assert result["impact"] == "load_bearing"
+    assert result["stance"] == "contradicts"
+    finding = store.get_finding(result["finding_id"])
+    assert finding.confidence == "REASONED"
+    assert finding.impact == "load_bearing"
+    assert finding.stance == "contradicts"
+
+
 def test_ask_question_returns_pending_payload(state: dict[str, str]):
     result = mission_tools.ask_question("Need customer evidence", True, state)
     assert result["blocking"] is True

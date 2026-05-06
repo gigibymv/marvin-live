@@ -270,6 +270,8 @@ class MissionStore:
             ("hypotheses", "label", "ALTER TABLE hypotheses ADD COLUMN label TEXT"),
             ("missions", "data_room_path", "ALTER TABLE missions ADD COLUMN data_room_path TEXT"),
             ("findings", "impact", "ALTER TABLE findings ADD COLUMN impact TEXT"),
+            ("findings", "stance", "ALTER TABLE findings ADD COLUMN stance TEXT"),
+            ("findings", "implication", "ALTER TABLE findings ADD COLUMN implication TEXT"),
             ("findings", "source_type", "ALTER TABLE findings ADD COLUMN source_type TEXT"),
             (
                 "findings",
@@ -415,12 +417,85 @@ class MissionStore:
                 "CREATE INDEX IF NOT EXISTS idx_mission_chat_messages_mission_seq "
                 "ON mission_chat_messages(mission_id, seq, created_at)"
             )
+        if "mission_runtime_events" not in existing_tables:
+            self._conn.execute(
+                """
+                CREATE TABLE mission_runtime_events (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+                    event_type TEXT NOT NULL,
+                    payload TEXT DEFAULT '{}',
+                    seq INTEGER,
+                    created_at TEXT
+                )
+                """
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_mission_runtime_events_mission_seq "
+                "ON mission_runtime_events(mission_id, seq, created_at)"
+            )
         self._conn.commit()
 
     def _execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
         cursor = self._conn.execute(sql, params)
         self._conn.commit()
         return cursor
+
+    def append_runtime_event(
+        self,
+        mission_id: str,
+        event_type: str,
+        payload: dict | None = None,
+        *,
+        event_id: str | None = None,
+        created_at: str | None = None,
+    ) -> str:
+        from marvin.tools.common import short_id, utc_now_iso
+
+        event_id = event_id or short_id("rt")
+        created_at = created_at or utc_now_iso()
+        row = self._conn.execute(
+            "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM mission_runtime_events WHERE mission_id = ?",
+            (mission_id,),
+        ).fetchone()
+        seq = int(row["next_seq"] if row is not None else 1)
+        self._execute(
+            """
+            INSERT OR IGNORE INTO mission_runtime_events
+            (id, mission_id, event_type, payload, seq, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                mission_id,
+                event_type,
+                json.dumps(payload or {}, default=str, sort_keys=True),
+                seq,
+                created_at,
+            ),
+        )
+        return event_id
+
+    def list_runtime_events(self, mission_id: str) -> list[dict]:
+        rows = self._execute(
+            """
+            SELECT * FROM mission_runtime_events
+            WHERE mission_id = ?
+            ORDER BY COALESCE(seq, 0), created_at, id
+            """,
+            (mission_id,),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "mission_id": row["mission_id"],
+                "event_type": row["event_type"],
+                "payload": _decode_json_value(row["payload"], default={}),
+                "seq": row["seq"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
 
     def save_chat_message(self, message: MissionChatMessage) -> MissionChatMessage:
         self._execute(
@@ -889,8 +964,8 @@ class MissionStore:
             INSERT OR REPLACE INTO findings
             (id, mission_id, workstream_id, hypothesis_id, claim_text, confidence,
              source_id, agent_id, human_validated, created_at, impact, source_type,
-             corroboration_count, corroboration_status, milestone_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             corroboration_count, corroboration_status, milestone_id, stance, implication)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 finding.id,
@@ -908,6 +983,8 @@ class MissionStore:
                 finding.corroboration_count,
                 finding.corroboration_status,
                 finding.milestone_id,
+                finding.stance,
+                finding.implication,
             ),
         )
         # Mirror the primary source into finding_sources for uniform lookup,
@@ -1203,7 +1280,26 @@ class MissionStore:
         if result.rowcount == 0:
             raise KeyError(f"gate not found: {gate_id}")
         row = self._execute("SELECT * FROM gates WHERE id = ?", (gate_id,)).fetchone()
-        return self._gate_from_row(row)
+        gate = self._gate_from_row(row)
+        event_type = {
+            "completed": "gate_completed",
+            "failed": "gate_failed",
+        }.get(status, "gate_status_changed")
+        try:
+            self.append_runtime_event(
+                gate.mission_id,
+                event_type,
+                {
+                    "gate_id": gate.id,
+                    "gate_type": gate.gate_type,
+                    "status": gate.status,
+                    "notes": notes,
+                },
+            )
+        except Exception:
+            # Runtime audit should never make gate validation fail.
+            pass
+        return gate
 
     def save_gate_failure(
         self,

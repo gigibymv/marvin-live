@@ -7,6 +7,7 @@ shape and mission completion contract as one system.
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -32,6 +33,22 @@ def _make_store(mission_id: str = "m-contract", db_path: str | Path = ":memory:"
     )
     _seed_standard_workplan(mission_id, store)
     return store
+
+
+async def _drain_async(iterator):
+    return [chunk async for chunk in iterator]
+
+
+def _parse_sse_events(chunks: list[str]) -> list[tuple[str, dict]]:
+    events: list[tuple[str, dict]] = []
+    for chunk in chunks:
+        if not chunk.startswith("event:"):
+            continue
+        lines = chunk.splitlines()
+        event = next(line.split(":", 1)[1].strip() for line in lines if line.startswith("event:"))
+        data = next(line.split(":", 1)[1].strip() for line in lines if line.startswith("data:"))
+        events.append((event, json.loads(data)))
+    return events
 
 
 def _ready_file(tmp_path: Path, name: str) -> tuple[str, int]:
@@ -208,3 +225,121 @@ def test_gate_pending_and_deliverable_chat_are_persisted_for_reload(tmp_path, mo
     assert messages[0].gate_id == "gate-m-contract-G1"
     assert messages[0].gate_action == "pending"
     assert messages[1].deliverable_id == "deliverable-m-contract-w1-report"
+
+
+def test_gate_pending_is_recorded_in_runtime_audit_trail(tmp_path, monkeypatch):
+    db_path = tmp_path / "mission-runtime-audit.db"
+    monkeypatch.setenv("MARVIN_DB_PATH", str(db_path))
+    store = _make_store(db_path=db_path)
+    store.close()
+
+    gate_payload = {
+        "gate_id": "gate-m-contract-G1",
+        "gate_type": "manager_review",
+        "title": "Manager review of research claims",
+        "summary": "Initial research is complete.",
+    }
+    asyncio.run(srv._emit_gate_pending(gate_payload, mission_id="m-contract"))
+
+    refreshed = MissionStore(db_path)
+    events = refreshed.list_runtime_events("m-contract")
+    refreshed.close()
+
+    assert [(event["event_type"], event["payload"]) for event in events] == [
+        (
+            "gate_opened",
+            {
+                "gate_id": "gate-m-contract-G1",
+                "gate_type": "manager_review",
+                "title": "Manager review of research claims",
+            },
+        )
+    ]
+
+
+def test_chat_replay_keeps_open_gate_last_after_late_deliverable(tmp_path, monkeypatch):
+    db_path = tmp_path / "mission-chat-replay.db"
+    monkeypatch.setenv("MARVIN_DB_PATH", str(db_path))
+    store = _make_store(db_path=db_path)
+    store.close()
+
+    gate_payload = {
+        "gate_id": "gate-m-contract-G1",
+        "gate_type": "manager_review",
+        "title": "Manager review of research claims",
+        "summary": "Initial research is complete.",
+    }
+    asyncio.run(srv._emit_gate_pending(gate_payload, mission_id="m-contract"))
+    srv._build_papyrus_chat_event(
+        {
+            "deliverable_id": "deliverable-m-contract-w1-report",
+            "deliverable_type": "workstream_report",
+        },
+        mission_id="m-contract",
+    )
+    monkeypatch.setattr(srv, "_open_gate_payload_from_store", lambda _store, _mission_id: gate_payload)
+
+    replay = asyncio.run(srv.get_chat_messages("m-contract"))
+
+    assert [message["id"] for message in replay["messages"]] == [
+        "deliverable-m-contract-w1-report-chat",
+        "gate-m-contract-G1-gate-pending",
+    ]
+    assert replay["messages"][-1]["gateAction"] == "pending"
+
+
+def test_chat_replay_synthesizes_missing_open_gate_message(tmp_path, monkeypatch):
+    db_path = tmp_path / "mission-chat-synthetic-gate.db"
+    monkeypatch.setenv("MARVIN_DB_PATH", str(db_path))
+    store = _make_store(db_path=db_path)
+    store.close()
+    gate_payload = {
+        "gate_id": "gate-m-contract-G1",
+        "gate_type": "manager_review",
+        "title": "Manager review of research claims",
+        "summary": "Initial research is complete.",
+    }
+    monkeypatch.setattr(srv, "_open_gate_payload_from_store", lambda _store, _mission_id: gate_payload)
+
+    replay = asyncio.run(srv.get_chat_messages("m-contract"))
+
+    assert replay["messages"][-1]["id"] == "gate-m-contract-G1-gate-pending"
+    assert replay["messages"][-1]["gateAction"] == "pending"
+    assert "Manager review of research claims" in replay["messages"][-1]["text"]
+
+
+def test_live_chat_surfaces_persisted_open_gate_when_graph_finishes_silent(tmp_path, monkeypatch):
+    db_path = tmp_path / "mission-live-silent-gate.db"
+    monkeypatch.setenv("MARVIN_DB_PATH", str(db_path))
+    store = _make_store(db_path=db_path)
+    store.close()
+
+    gate_payload = {
+        "gate_id": "gate-m-contract-hyp-confirm",
+        "gate_type": "hypothesis_confirmation",
+        "title": "Confirm initial hypotheses",
+        "summary": "MARVIN has framed the deal into testable hypotheses.",
+    }
+
+    class FakeGraph:
+        def __init__(self):
+            self.inputs: list[dict] = []
+
+        async def astream(self, graph_input, config, stream_mode):
+            self.inputs.append(graph_input)
+            yield {"framing": {"phase": "awaiting_confirmation", "messages": []}}
+
+    fake_graph = FakeGraph()
+
+    async def get_fake_graph():
+        return fake_graph
+
+    monkeypatch.setattr(srv, "get_graph", get_fake_graph)
+    monkeypatch.setattr(srv, "_open_gate_payload_from_store", lambda _store, _mission_id: gate_payload)
+
+    chunks = asyncio.run(_drain_async(srv._stream_chat("m-contract", "x" * 80)))
+    events = _parse_sse_events(chunks)
+
+    assert fake_graph.inputs
+    assert any(event == "gate_pending" and payload["gate_id"] == gate_payload["gate_id"] for event, payload in events)
+    assert events[-1] == ("run_end", {})

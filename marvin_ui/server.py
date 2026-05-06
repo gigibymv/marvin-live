@@ -51,6 +51,7 @@ from marvin.events import (
 from marvin.graph.gate_material import evaluate_gate_material
 from marvin.graph.runner import build_graph
 from marvin.graph.state import MarvinState
+from marvin.mission.runtime_snapshot import build_mission_runtime_snapshot
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin.tools.common import slugify, short_id, utc_now_iso
 from marvin.tools.mission_tools import (
@@ -971,6 +972,15 @@ def _gate_chat_text(payload: dict) -> str:
 async def _emit_gate_pending(payload: dict, *, mission_id: str | None = None) -> str:
     if mission_id:
         gate_id = str(payload.get("gate_id") or "").strip()
+        _persist_runtime_event(
+            mission_id,
+            "gate_opened",
+            {
+                "gate_id": gate_id or None,
+                "gate_type": payload.get("gate_type"),
+                "title": payload.get("title"),
+            },
+        )
         if gate_id:
             _persist_chat_message(
                 mission_id,
@@ -981,6 +991,15 @@ async def _emit_gate_pending(payload: dict, *, mission_id: str | None = None) ->
                 gate_action="pending",
             )
     return _sse_event("gate_pending", payload)
+
+
+def _persist_runtime_event(mission_id: str | None, event_type: str, payload: dict | None = None) -> None:
+    if not mission_id:
+        return
+    try:
+        MissionStore().append_runtime_event(mission_id, event_type, payload or {})
+    except Exception as exc:  # noqa: BLE001 - audit trail must not break runtime
+        logger.debug("runtime event persistence failed: %s", exc)
 
 
 def _open_gate_payload_from_store(store: MissionStore, mission_id: str) -> dict | None:
@@ -1021,6 +1040,49 @@ def _open_gate_payload_from_store(store: MissionStore, mission_id: str) -> dict 
     except Exception as exc:  # noqa: BLE001 — reconnect must stay best-effort
         logger.warning("Could not reconstruct open gate for mission=%s: %s", mission_id, exc)
     return None
+
+
+def _chat_messages_for_replay(store: MissionStore, mission_id: str) -> list[MissionChatMessage]:
+    """Return chat history in consultant-facing replay order.
+
+    The persisted chat rows keep original seq for auditability, but a reload
+    has one extra product invariant: if a gate is currently open, its
+    actionable message must be the last visible bubble. Late deliverable or
+    narration rows must not bury the decision CTA.
+    """
+    messages = store.list_chat_messages(mission_id)
+    open_gate = _open_gate_payload_from_store(store, mission_id)
+    if not open_gate:
+        return messages
+
+    gate_id = str(open_gate.get("gate_id") or "").strip()
+    if not gate_id:
+        return messages
+
+    max_seq = max((msg.seq or 0 for msg in messages), default=0)
+    non_gate_messages: list[MissionChatMessage] = []
+    pending_gate_message: MissionChatMessage | None = None
+    for message in messages:
+        if message.gate_id == gate_id and message.gate_action == "pending":
+            pending_gate_message = message
+            continue
+        non_gate_messages.append(message)
+
+    if pending_gate_message is None:
+        pending_gate_message = MissionChatMessage(
+            id=f"{gate_id}-gate-pending",
+            mission_id=mission_id,
+            role="marvin",
+            text=_gate_chat_text(open_gate),
+            gate_id=gate_id,
+            gate_action="pending",
+            seq=max_seq + 1,
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    else:
+        pending_gate_message = pending_gate_message.model_copy(update={"seq": max_seq + 1})
+
+    return non_gate_messages + [pending_gate_message]
 
 
 def _recover_stalled_research_checkpoint(mission_id: str, next_value: Any) -> bool:
@@ -1125,6 +1187,8 @@ def _build_finding_added_from_emit(payload: dict) -> dict:
         ("hypothesis_id", "hypothesisId"),
         ("source_id", "sourceId"),
         ("source_type", "sourceType"),
+        ("stance", "stance"),
+        ("implication", "implication"),
         ("created_at", "ts"),
     ):
         value = payload.get(src_key)
@@ -1268,18 +1332,20 @@ def map_tool_to_sse_event(tool_name: str | None, content: Any) -> tuple[str, dic
     return event_type, payload
 
 
-async def _emit_agent_active(agent: str) -> str:
+async def _emit_agent_active(agent: str, *, mission_id: str | None = None) -> str:
     """Emit event when an agent starts processing."""
     display = get_display_name(agent)
     if display is None:
         return ""
+    _persist_runtime_event(mission_id, "agent_active", {"agent": display})
     return _sse_event("agent_active", {"agent": display})
 
 
-async def _emit_agent_done(agent: str) -> str:
+async def _emit_agent_done(agent: str, *, mission_id: str | None = None) -> str:
     display = get_display_name(agent)
     if display is None:
         return ""
+    _persist_runtime_event(mission_id, "agent_done", {"agent": display})
     return _sse_event("agent_done", {"agent": display})
 
 
@@ -1318,7 +1384,7 @@ async def _emit_agent_done_and_clear(agent: str | None, mission_id: str | None) 
     _clear_runtime_agents(mission_id)
     if agent is None:
         return ""
-    return await _emit_agent_done(agent)
+    return await _emit_agent_done(agent, mission_id=mission_id)
 
 
 _MISSION_COMPLETE_TEXT = (
@@ -1525,8 +1591,9 @@ async def _astream_with_heartbeat(graph, next_input, config, *, current_agent_re
         yield ("event", event)
 
 
-async def _emit_phase_changed(phase: str) -> str:
+async def _emit_phase_changed(phase: str, *, mission_id: str | None = None) -> str:
     payload = {"phase": phase, "label": _PHASE_LABELS.get(phase, phase)}
+    _persist_runtime_event(mission_id, "phase_changed", payload)
     return _sse_event("phase_changed", payload)
 
 
@@ -1560,7 +1627,7 @@ async def _emit_for_update(
         # until the user resumes. Close out the currently-active agent so the
         # left rail doesn't show e.g. "Calculus RUNNING" indefinitely.
         if current_agent is not None:
-            out.append(await _emit_agent_done(current_agent))
+            out.append(await _emit_agent_done(current_agent, mission_id=mission_id))
             current_agent = None
             _clear_runtime_agents(mission_id)
         interrupts = event["__interrupt__"]
@@ -1577,7 +1644,7 @@ async def _emit_for_update(
 
         new_phase = output.get("phase")
         if isinstance(new_phase, str) and new_phase and new_phase != current_phase:
-            out.append(await _emit_phase_changed(new_phase))
+            out.append(await _emit_phase_changed(new_phase, mission_id=mission_id))
             phase_intent = _phase_narration(new_phase)
             if phase_intent:
                 out.append(await _emit_narration("workflow", phase_intent))
@@ -1589,7 +1656,7 @@ async def _emit_for_update(
             if new_phase == "done":
                 out.append(await _emit_mission_complete_once(mission_id))
             if new_phase in {"synthesis_done", "done"} and current_agent is not None:
-                out.append(await _emit_agent_done(current_agent))
+                out.append(await _emit_agent_done(current_agent, mission_id=mission_id))
                 current_agent = None
                 _clear_runtime_agents(mission_id)
             current_phase = new_phase
@@ -1598,7 +1665,7 @@ async def _emit_for_update(
             blocked_payload = output["phase_blocked"]
             out.append(await _emit_phase_blocked(blocked_payload))
             if current_agent is not None:
-                out.append(await _emit_agent_done(current_agent))
+                out.append(await _emit_agent_done(current_agent, mission_id=mission_id))
                 current_agent = None
                 _clear_runtime_agents(mission_id)
             if isinstance(blocked_payload, dict):
@@ -1628,7 +1695,7 @@ async def _emit_for_update(
                 _now = time.monotonic()
                 _last_done = (throttle_state or {}).get(_throttle_key_done, 0.0)
                 if _now - _last_done >= 0.5:
-                    out.append(await _emit_agent_done(current_agent))
+                    out.append(await _emit_agent_done(current_agent, mission_id=mission_id))
                     if throttle_state is not None:
                         throttle_state[_throttle_key_done] = _now
             current_agent = node_name
@@ -1638,7 +1705,7 @@ async def _emit_for_update(
             _now = time.monotonic()
             _last_active = (throttle_state or {}).get(_throttle_key_active, 0.0)
             if _now - _last_active >= 0.5:
-                out.append(await _emit_agent_active(node_name))
+                out.append(await _emit_agent_active(node_name, mission_id=mission_id))
                 if throttle_state is not None:
                     throttle_state[_throttle_key_active] = _now
             # Always emit narration (not throttled) — unique signal per activation.
@@ -2167,6 +2234,18 @@ async def _stream_chat(
             yield await _emit_agent_done_and_clear(current_agent, mission_id)
             current_agent = None
 
+        # A LangGraph pass can return cleanly after persisting a gate without
+        # surfacing the interrupt frame in this SSE iterator. Persistence is
+        # the durable truth: if a gate is open now, the consultant must see the
+        # actionable checkpoint before the stream ends.
+        open_gate_payload = _open_gate_payload_from_store(store, mission_id)
+        if open_gate_payload is not None:
+            _clear_runtime_agents(mission_id)
+            yield await _emit_gate_pending(open_gate_payload, mission_id=mission_id)
+            yield await _emit_narration("workflow", _gate_narration(open_gate_payload))
+            yield await _emit_run_end()
+            return
+
         # Bug 7: skip the defensive completion emit if the phase=="done"
         # transition already pushed the closing bubble during the update
         # stream, otherwise the user sees the message twice.
@@ -2396,7 +2475,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
         # still show the user the final completion state, otherwise the chat
         # log on a refresh ends mid-flow.
         if mission.status == "complete":
-            yield await _emit_phase_changed("done")
+            yield await _emit_phase_changed("done", mission_id=mission_id)
             bubble = await _emit_mission_complete_once(mission_id)
             if bubble:
                 yield bubble
@@ -2459,7 +2538,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             else:
                 phase = (snapshot.values or {}).get("phase")
                 if isinstance(phase, str) and phase:
-                    yield await _emit_phase_changed(phase)
+                    yield await _emit_phase_changed(phase, mission_id=mission_id)
                 yield await _emit_run_end()
                 return
 
@@ -3091,6 +3170,9 @@ async def get_workstream_findings(mission_id: str, ws_id: str):
                 "hypothesis_id": f.hypothesis_id,
                 "hypothesis_label": label_by_id.get(f.hypothesis_id or ""),
                 "source_id": f.source_id,
+                "source_type": f.source_type,
+                "stance": f.stance,
+                "implication": f.implication,
                 "created_at": f.created_at,
             }
             for f in workstream_findings
@@ -3377,6 +3459,19 @@ async def get_mission_progress(mission_id: str):
         )
         for g in gates
     }
+    latest_merlin_verdict = store.get_latest_merlin_verdict(mission_id)
+    runtime_snapshot = build_mission_runtime_snapshot(
+        mission=mission,
+        gates=gates,
+        gate_material=gate_material,
+        milestones=milestones,
+        findings=findings,
+        hypotheses=hypotheses,
+        deliverables=deliverables,
+        workstreams=workstreams,
+        mission_brief=mission_brief,
+        merlin_verdict=latest_merlin_verdict,
+    )
     
     return {
         "mission": {
@@ -3390,7 +3485,11 @@ async def get_mission_progress(mission_id: str):
             "active_phase_agents": list(mission.active_phase_agents or []),
             "synthesis_state": mission.synthesis_state,
             "synthesis_complete_at": mission.synthesis_complete_at,
+            "current_phase": runtime_snapshot["current_phase"],
+            "waiting_reason": runtime_snapshot["waiting_reason"],
+            "next_action": runtime_snapshot["next_action"],
         },
+        "runtime_snapshot": runtime_snapshot,
         "framing": mission_brief.model_dump() if mission_brief else None,
         "gates": [
             {
@@ -3427,7 +3526,10 @@ async def get_mission_progress(mission_id: str):
                 "claim_text": f.claim_text,
                 "agent_id": f.agent_id,
                 "source_id": f.source_id,
+                "source_type": f.source_type,
                 "impact": f.impact,  # Chantier 4 CP2: drives load_bearing emphasis
+                "stance": f.stance,
+                "implication": f.implication,
                 "created_at": f.created_at,
             }
             for f in findings
@@ -3461,7 +3563,7 @@ async def get_mission_progress(mission_id: str):
                 "synthesis_complete_at": v.synthesis_complete_at,
                 "created_at": v.created_at,
             }
-            if (v := store.get_latest_merlin_verdict(mission_id))
+            if (v := latest_merlin_verdict)
             else None
         ),
     }
@@ -3498,6 +3600,9 @@ async def get_mission_events(mission_id: str):
             "workstreamId": finding.workstream_id,
             "hypothesisId": finding.hypothesis_id,
             "sourceId": finding.source_id,
+            "sourceType": finding.source_type,
+            "stance": finding.stance,
+            "implication": finding.implication,
         })
 
     for milestone in milestones:
@@ -3553,7 +3658,7 @@ async def get_chat_messages(mission_id: str):
     store = get_store()
     if not _mission_exists(store, mission_id):
         raise HTTPException(status_code=404, detail="Mission not found")
-    messages = store.list_chat_messages(mission_id)
+    messages = _chat_messages_for_replay(store, mission_id)
     return {
         "mission_id": mission_id,
         "messages": [
@@ -4055,6 +4160,8 @@ async def get_deliverable_preview(deliverable_id: str):
                 "confidence": f.confidence,
                 "hypothesis_label": label_by_id.get(f.hypothesis_id or ""),
                 "impact": f.impact,
+                "stance": f.stance,
+                "implication": f.implication,
             }
             for f in findings
         ],

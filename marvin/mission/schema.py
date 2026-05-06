@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 Confidence = Literal["KNOWN", "REASONED", "LOW_CONFIDENCE"]
 FindingImpact = Literal["load_bearing", "supporting", "color"]
+FindingStance = Literal["supports", "contradicts", "mixed", "context"]
 HypothesisStatus = Literal["active", "validated", "invalidated", "abandoned"]
 WorkstreamStatus = Literal["pending", "in_progress", "delivered"]
 MilestoneStatus = Literal["pending", "in_progress", "delivered", "skipped", "blocked"]
@@ -103,6 +104,8 @@ class Finding(MarvinModel):
     human_validated: bool = False
     created_at: str | None = None
     impact: FindingImpact | None = None  # Chantier 4: load_bearing | supporting | color
+    stance: FindingStance | None = None  # supports | contradicts | mixed | context
+    implication: str | None = None  # concise consultant-facing implication
     source_type: str | None = None  # sec_filing | web | data_room | inference | press
     corroboration_count: int = 1  # C4: number of independent sources
     corroboration_status: str | None = None  # 'corroborated' | 'single_source' | 'downgraded'

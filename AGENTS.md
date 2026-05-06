@@ -283,6 +283,27 @@ Do not assume SSE correctness from unit tests alone. Runtime evidence matters.
 
 ## Working rules specific to this repo
 
+### Planning Rule — Model & Subagent Allocation
+
+For any non-trivial MARVIN plan, include a dedicated `Model & Subagent Allocation` section.
+
+The section must specify:
+
+* what remains in the main thread
+* which read-only audits can be delegated to explorer subagents
+* which implementation tasks can be delegated to worker subagents
+* which model level is appropriate for each task
+* file/module ownership for each worker
+* which parts must not be delegated because they affect core graph invariants
+
+Default allocation:
+
+* Use GPT-5.5 for architecture, LangGraph routing, mission-state invariants, product semantics, and final integration.
+* Use GPT-5.4 for bounded implementation, tests, UI adapters, and documentation.
+* Use explorer subagents only for read-only codebase analysis.
+* Use worker subagents only when write scopes are disjoint and explicitly owned.
+* Keep graph routing, gate semantics, and mission-state source-of-truth decisions in the main thread unless explicitly approved.
+
 ### 1. Code change is not delivery
 
 A green test suite is necessary but not sufficient.

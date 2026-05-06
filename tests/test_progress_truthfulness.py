@@ -50,6 +50,56 @@ def test_empty_mission_has_scheduled_gates_but_none_open(store: MissionStore):
     assert payload["gates"]
     assert {gate["lifecycle_status"] for gate in payload["gates"]} == {"scheduled"}
     assert all(gate["is_open"] is False for gate in payload["gates"])
+    assert payload["mission"]["current_phase"] == "framing"
+    assert payload["runtime_snapshot"]["current_phase"] == "framing"
+    assert payload["runtime_snapshot"]["next_action"] == "provide_brief"
+    assert payload["runtime_snapshot"]["active_agents"] == []
+
+
+def test_runtime_snapshot_treats_completed_status_as_done(store: MissionStore):
+    store.update_mission_status("m-progress", "completed")
+    store.update_mission_active_phase_agents("m-progress", ["papyrus"])
+
+    payload = asyncio.run(srv.get_mission_progress("m-progress"))
+
+    assert payload["runtime_snapshot"]["current_phase"] == "done"
+    assert payload["runtime_snapshot"]["active_agents"] == []
+    assert payload["runtime_snapshot"]["waiting_reason"] == "complete"
+    assert payload["runtime_snapshot"]["next_action"] == "review_final_deliverables"
+
+
+def test_runtime_snapshot_final_package_accepts_canonical_cdd_deliverables(
+    store: MissionStore,
+    tmp_path: Path,
+):
+    for deliverable_id, deliverable_type, workstream_id, file_name in (
+        ("d-exec", "exec_summary", None, "exec_summary.md"),
+        ("d-book", "data_book", None, "data_book.md"),
+        ("d-stress", "workstream_report", "W4", "W4_report.md"),
+    ):
+        path = tmp_path / file_name
+        path.write_text("# Deliverable\n\n" + ("Consultant-grade content.\n" * 20), encoding="utf-8")
+        store.save_deliverable(
+            Deliverable(
+                id=deliverable_id,
+                mission_id="m-progress",
+                deliverable_type=deliverable_type,
+                status="ready",
+                workstream_id=workstream_id,
+                file_path=str(path.resolve()),
+                file_size_bytes=path.stat().st_size,
+                created_at=datetime.now(UTC).isoformat(),
+            )
+        )
+
+    payload = asyncio.run(srv.get_mission_progress("m-progress"))
+
+    assert payload["runtime_snapshot"]["deliverables"]["final_package_ready"] is True
+    assert payload["runtime_snapshot"]["deliverables"]["final_ready_types"] == [
+        "data_book",
+        "exec_summary",
+        "workstream_report",
+    ]
 
 
 def test_chat_messages_endpoint_returns_persisted_history(store: MissionStore):
@@ -115,6 +165,9 @@ def test_hypothesis_gate_opens_only_after_hypotheses_exist(store: MissionStore):
 
     assert gates["hypothesis_confirmation"]["lifecycle_status"] == "open"
     assert gates["hypothesis_confirmation"]["is_open"] is True
+    assert payload["runtime_snapshot"]["open_gate"]["gate_type"] == "hypothesis_confirmation"
+    assert payload["runtime_snapshot"]["waiting_reason"] == "awaiting_hypothesis_confirmation"
+    assert payload["runtime_snapshot"]["next_action"] == "consultant_review"
     assert gates["hypothesis_confirmation"]["review_payload"]["framing"]["brief_summary"] == "Assess differentiated growth."
     assert gates["hypothesis_confirmation"]["review_payload"]["hypotheses"][0]["id"] == "hyp-progress"
     assert gates["manager_review"]["lifecycle_status"] == "scheduled"
@@ -362,12 +415,16 @@ def test_progress_surfaces_authoritative_runtime_agents_and_clear(store: Mission
 
     assert payload["mission"]["active_agent"] == "dora"
     assert payload["mission"]["active_phase_agents"] == ["dora", "papyrus"]
+    assert payload["runtime_snapshot"]["active_agents"] == ["dora", "papyrus"]
+    assert payload["runtime_snapshot"]["waiting_reason"] == "agents_running"
+    assert payload["runtime_snapshot"]["next_action"] == "agent_work"
 
     store.clear_mission_runtime_agents("m-progress")
     payload = asyncio.run(srv.get_mission_progress("m-progress"))
 
     assert payload["mission"]["active_agent"] is None
     assert payload["mission"]["active_phase_agents"] == []
+    assert payload["runtime_snapshot"]["active_agents"] == []
 
 
 def test_final_review_waits_for_runtime_agents_to_close(store: MissionStore):

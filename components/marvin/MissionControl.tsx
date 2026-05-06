@@ -289,6 +289,9 @@ type LiveFindingEvent = {
   agent?: string;
   workstreamId?: string;
   hypothesisId?: string;
+  sourceType?: string | null;
+  stance?: "supports" | "contradicts" | "mixed" | "context" | null;
+  implication?: string | null;
   ts?: string;
   href?: string;
 };
@@ -560,12 +563,19 @@ export default function MissionControl({
 
   // P15: Bootstrap currentPhase from REST on mount so a page-reload mid-mission
   // does not show "Mission starting…" while waiting for the first phase_changed SSE.
-  // TODO(backend): add `current_phase: string | null` to GET /progress response so
-  // this can be a direct field read instead of a derivation. For now we infer the
-  // most-recent completed phase from the progress snapshot.
+  // Prefer the backend runtime snapshot; keep the legacy derivation as a fallback
+  // for older progress payloads.
   useEffect(() => {
     if (currentPhase !== null) return; // SSE already set it — don't clobber
     if (!progress) return;
+    const backendPhase =
+      (progress as any)?.runtime_snapshot?.current_phase ??
+      (progress?.mission as any)?.current_phase ??
+      null;
+    if (backendPhase) {
+      setCurrentPhase(String(backendPhase));
+      return;
+    }
     // Derive the latest phase from persisted state: gates, milestones, and
     // deliverables act as breadcrumbs. We pick the furthest phase we can confirm.
     const resolvedGates = (progress.gates ?? []).filter(
@@ -1192,6 +1202,9 @@ export default function MissionControl({
                 agent: event.agent,
                 workstreamId: event.workstreamId,
                 hypothesisId: event.hypothesisId,
+                sourceType: event.sourceType,
+                stance: event.stance,
+                implication: event.implication,
                 ts: event.ts,
               }),
             );
@@ -1842,10 +1855,20 @@ export default function MissionControl({
 
   const authoritativeActiveAgents = useMemo(
     () =>
-      (((progress?.mission as any)?.active_phase_agents ?? []) as string[])
+      (
+        ((progress as any)?.runtime_snapshot?.active_agents ??
+          (progress?.mission as any)?.active_phase_agents ??
+          []) as string[]
+      )
         .map((agent) => normalizeAgentName(agent))
         .filter(Boolean),
-    [JSON.stringify((progress?.mission as any)?.active_phase_agents ?? [])],
+    [
+      JSON.stringify(
+        (progress as any)?.runtime_snapshot?.active_agents ??
+          (progress?.mission as any)?.active_phase_agents ??
+          [],
+      ),
+    ],
   );
   const authoritativeSynthesisState = (progress?.mission as any)?.synthesis_state ?? null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1991,9 +2014,7 @@ export default function MissionControl({
   // so the workstream-derived map below would never surface it. We infer
   // its state from (a) the most recent narration agent and (b) whether
   // any deliverable exists yet.
-  const papyrusActive = authoritativeActiveAgentSet.has("papyrus")
-    || (latestNarration ?? "").startsWith("Papyrus —")
-    || agentStatuses["papyrus"] === "active";
+  const papyrusActive = authoritativeActiveAgentSet.has("papyrus");
   const anyDeliverableReady = (progress?.deliverables ?? []).some((d: any) => d.status === "ready");
   const papyrusRow = {
     id: "papyrus",
@@ -2282,6 +2303,8 @@ export default function MissionControl({
       source_id: f.source_id ?? null,
       source_type: f.source_type ?? f.sourceType ?? null,
       impact: f.impact ?? null,
+      stance: f.stance ?? null,
+      implication: f.implication ?? null,
     };
   };
   const allFindings = (progress?.findings ?? []).map(normalizeFinding);
@@ -2304,20 +2327,35 @@ export default function MissionControl({
   const deliverables = seedDeliverables;
   const deliverableOutputs = seedDeliverables
     .filter((d) => d.status === "ready")
-    .map((d) => ({
-      id: d.id,
-      kind: "deliverable" as const,
-      ag: "MARVIN",
-      text: `Deliverable ready · ${d.label}`,
-      claim_text: `Deliverable ready · ${d.label}`,
-      confidence: "READY",
-      section_id: routeDeliverableToSectionId(d),
-      workstream_id: null,
-      ts: "",
-      href: d.href,
-      onOpen: d.onOpen,
-      output_label: d.label,
-    }));
+    .flatMap((d) => {
+      const sectionId = routeDeliverableToSectionId(d);
+      const base = {
+        id: d.id,
+        kind: "deliverable" as const,
+        ag: "MARVIN",
+        text: `Deliverable ready · ${d.label}`,
+        claim_text: `Deliverable ready · ${d.label}`,
+        confidence: "READY",
+        section_id: sectionId,
+        workstream_id: null,
+        ts: "",
+        href: d.href,
+        onOpen: d.onOpen,
+        output_label: d.label,
+      };
+      const isStressReport =
+        sectionId === "W4" &&
+        String(d.deliverable_type ?? "").toLowerCase() === "workstream_report";
+      if (!isStressReport) return [base];
+      return [
+        base,
+        {
+          ...base,
+          id: `${d.id}-final-annex`,
+          section_id: "final",
+        },
+      ];
+    });
   // C-PER-MILESTONE: pair each delivered milestone row with its
   // milestone_report deliverable so the row exposes Open/Download.
   // Fall back to the parent workstream report when no per-milestone
@@ -2460,6 +2498,10 @@ export default function MissionControl({
   // W3 (Synthesis) is verdict-driven, not milestone-driven — once Merlin
   // has issued a verdict the tab is complete regardless of milestone count.
   const merlinVerdictPresent = Boolean((progress as any)?.merlin_verdict?.verdict);
+  const runtimeWorkstreamStatus = new Map(
+    (((progress as any)?.runtime_snapshot?.workstreams ?? []) as Array<{ id?: string; status?: string }>)
+      .map((ws) => [String(ws.id ?? ""), String(ws.status ?? "")] as const),
+  );
   const workstreamContent = (progress?.workstreams ?? []).map((ws) => {
     const wsMilestones = visibleMilestones.filter((m: any) => m.workstream_id === ws.id);
     // Count any terminal status — delivered, skipped, or blocked — as "done".
@@ -2527,8 +2569,15 @@ export default function MissionControl({
       liveStatus === "done" && allMilestonesDone && allMilestoneDeliverablesMaterialized;
     const stressReportComplete =
       ws.id === "W4" && allMilestonesDone && wsHasReadyDeliverable;
+    const backendWorkstreamStatus = runtimeWorkstreamStatus.get(ws.id);
+    const backendCompleted =
+      backendWorkstreamStatus === "reviewable" ||
+      backendWorkstreamStatus === "completed" ||
+      backendWorkstreamStatus === "done";
+    const backendBlocked = backendWorkstreamStatus === "blocked";
     // P19b: require ALL deliverables ready (not just ≥1) before marking ✓.
     const tabCompletedReady = missionCompleted
+      || backendCompleted
       || (allMilestonesDone && wsAllDeliverablesReady && allMilestoneDeliverablesMaterialized)
       || synthesisDone
       || stressReportComplete
@@ -2537,6 +2586,8 @@ export default function MissionControl({
     const status: WorkstreamViewStatus =
       tabCompletedReady
         ? "completed"
+        : backendBlocked
+          ? "blocked"
         : allMilestonesBlocked
           ? "blocked"
         : liveStatus === "active"

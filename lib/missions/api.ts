@@ -146,6 +146,45 @@ export async function getMissionProgress(missionId: string): Promise<{
     active_phase_agents?: string[];
     synthesis_state?: string | null;
     synthesis_complete_at?: string | null;
+    current_phase?: string | null;
+    waiting_reason?: string | null;
+    next_action?: string | null;
+  };
+  runtime_snapshot?: {
+    mission_id: string;
+    status: string;
+    current_phase: string;
+    active_agents: string[];
+    active_agent?: string | null;
+    open_gate?: {
+      id: string;
+      gate_type: string;
+      scheduled_day?: number | null;
+      title?: string | null;
+      stage?: string | null;
+      missing_material?: string[];
+    } | null;
+    blockers?: Array<Record<string, unknown>>;
+    waiting_reason?: string | null;
+    next_action?: string | null;
+    workstreams?: Array<{
+      id: string;
+      label?: string | null;
+      assigned_agent?: string | null;
+      status: string;
+      findings_total?: number;
+      milestones_total?: number;
+      milestones_terminal?: number;
+      deliverables_ready?: number;
+      missing_deliverables?: string[];
+    }>;
+    deliverables?: {
+      ready_total?: number;
+      final_package_ready?: boolean;
+      final_ready_types?: string[];
+      ready_ids?: string[];
+    };
+    counts?: Record<string, number>;
   };
   framing?: {
     mission_id: string;
@@ -190,6 +229,8 @@ export async function getMissionProgress(missionId: string): Promise<{
     claim_text: string;
     agent_id: string | null;
     impact?: "load_bearing" | "supporting" | "color" | null;
+    stance?: "supports" | "contradicts" | "mixed" | "context" | null;
+    implication?: string | null;
     created_at?: string | null;
   }>;
   hypotheses?: Array<{
@@ -277,6 +318,9 @@ export interface PersistedRailEvent {
   workstreamId?: string | null;
   hypothesisId?: string | null;
   sourceId?: string | null;
+  sourceType?: string | null;
+  stance?: "supports" | "contradicts" | "mixed" | "context" | null;
+  implication?: string | null;
   deliverableType?: string;
   filePath?: string | null;
   fileSizeBytes?: number | null;

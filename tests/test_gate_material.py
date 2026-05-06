@@ -83,6 +83,8 @@ def test_hypothesis_gate_material_requires_framing_and_hypotheses(store: Mission
 
     assert material.is_open is True
     assert material.missing_material == ()
+    assert material.review_payload["gate_contract"]["ready"] is True
+    assert material.review_payload["gate_contract"]["blocking_reasons"] == []
     assert material.review_payload["framing"]["brief_summary"] == "Assess Target's market attractiveness."
 
 
@@ -226,6 +228,13 @@ def test_manager_gate_waits_for_delivered_milestone_reports(store: MissionStore)
 
     assert material.is_open is False
     assert "deliverable_writing_in_progress" in material.missing_material
+    contract = material.review_payload["gate_contract"]
+    assert contract["ready"] is False
+    assert contract["missing_objects"] == ["deliverable_writing_in_progress"]
+    assert contract["consultant_message"] == (
+        "Research reports are still being written. The manager review will open once the reports are ready."
+    )
+    assert {"workstream_id": "W1", "deliverable_type": "workstream_report"} in contract["required_deliverables"]
 
 
 def test_manager_gate_allows_blocked_optional_financial_milestones_without_reports(store: MissionStore):
@@ -435,6 +444,9 @@ def test_final_gate_waits_for_stress_report(store: MissionStore):
 
     assert material.is_open is False
     assert "stress_report" in material.missing_material
+    contract = material.review_payload["gate_contract"]
+    assert contract["ready"] is False
+    assert {"workstream_id": "W4", "deliverable_type": "workstream_report"} in contract["required_deliverables"]
 
 
 def test_final_gate_blocked_while_manager_gate_pending(store: MissionStore):

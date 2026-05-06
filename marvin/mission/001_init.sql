@@ -68,6 +68,13 @@ CREATE TABLE IF NOT EXISTS findings (
     agent_id TEXT,
     human_validated INTEGER DEFAULT 0,
     created_at TEXT,
+    impact TEXT,
+    stance TEXT,
+    implication TEXT,
+    source_type TEXT,
+    corroboration_count INTEGER DEFAULT 1,
+    corroboration_status TEXT,
+    milestone_id TEXT,
     FOREIGN KEY (mission_id, workstream_id) REFERENCES workstreams(mission_id, id) ON DELETE SET NULL,
     FOREIGN KEY (hypothesis_id) REFERENCES hypotheses(id) ON DELETE SET NULL
 );
@@ -203,3 +210,14 @@ CREATE TABLE IF NOT EXISTS mission_chat_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_mission_chat_messages_mission_seq
     ON mission_chat_messages(mission_id, seq, created_at);
+
+CREATE TABLE IF NOT EXISTS mission_runtime_events (
+    id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    payload TEXT DEFAULT '{}',
+    seq INTEGER,
+    created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_mission_runtime_events_mission_seq
+    ON mission_runtime_events(mission_id, seq, created_at);

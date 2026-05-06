@@ -128,7 +128,7 @@ def test_g3_reject_routes_to_redteam_done_and_seeds_retry(
     monkeypatch.setattr(gates, "interrupt", lambda payload: {"approved": False, "notes": "thesis weak"})
     # G3 evaluate_gate_material requires a verdict; it would refuse to interrupt
     # without one, so seed one.
-    from marvin.mission.schema import Finding, MerlinVerdict
+    from marvin.mission.schema import Deliverable, Finding, MerlinVerdict
 
     graph_store.save_finding(
         Finding(
@@ -145,6 +145,17 @@ def test_g3_reject_routes_to_redteam_done_and_seeds_retry(
             id="mv-1",
             mission_id="m-test",
             verdict="INVEST_WITH_CONDITIONS",
+            created_at=datetime.now(UTC).isoformat(),
+        )
+    )
+    graph_store.save_deliverable(
+        Deliverable(
+            id="d-w4-reject",
+            mission_id="m-test",
+            deliverable_type="workstream_report",
+            status="ready",
+            workstream_id="W4",
+            file_path="/tmp/W4_report.md",
             created_at=datetime.now(UTC).isoformat(),
         )
     )
@@ -181,6 +192,26 @@ def test_resolve_gate_by_day_prefers_pending_retry(graph_store: MissionStore):
     )
     # _resolve_gate_by_day must return the pending retry, not the failed original
     assert runner._resolve_gate_by_day("m-test", 3) == "gate-m-test-G1-retry-1"
+
+
+def test_resolve_gate_by_type_prefers_pending_hypothesis_retry(graph_store: MissionStore):
+    graph_store.update_gate_status("gate-m-test-hyp-confirm", "failed", notes="rejected")
+    from marvin.mission.schema import Gate
+
+    graph_store.save_gate(
+        Gate(
+            id="gate-m-test-hyp-confirm-retry-1",
+            mission_id="m-test",
+            gate_type="hypothesis_confirmation",
+            scheduled_day=1,
+            status="pending",
+        )
+    )
+
+    assert (
+        runner._resolve_gate_by_type("m-test", "hypothesis_confirmation")
+        == "gate-m-test-hyp-confirm-retry-1"
+    )
 
 
 def test_g0_reject_still_routes_to_framing(

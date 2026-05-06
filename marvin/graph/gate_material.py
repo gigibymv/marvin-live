@@ -350,12 +350,96 @@ def evaluate_gate_material(
 
     payload["material_status"] = "ready" if is_open else lifecycle_status
     payload["missing_material"] = list(missing_material)
+    payload["ready"] = is_open
+    payload["blocking_reasons"] = _blocking_reasons(missing_material)
+    payload["required_deliverables"] = _required_deliverables_for_gate(gate.gate_type)
+    payload["consultant_message"] = _consultant_message(
+        gate.gate_type,
+        is_open=is_open,
+        missing_material=missing_material,
+    )
+    payload["gate_contract"] = {
+        "ready": is_open,
+        "blocking_reasons": payload["blocking_reasons"],
+        "missing_objects": list(missing_material),
+        "consultant_message": payload["consultant_message"],
+        "required_deliverables": payload["required_deliverables"],
+    }
     return GateMaterial(
         lifecycle_status=lifecycle_status,
         is_open=is_open,
         missing_material=tuple(missing_material),
         review_payload=payload,
     )
+
+
+def _blocking_reasons(missing_material: list[str]) -> list[dict[str, str]]:
+    return [
+        {
+            "code": item,
+            "message": _missing_material_message(item),
+        }
+        for item in missing_material
+    ]
+
+
+def _missing_material_message(code: str) -> str:
+    return {
+        "framing_summary": "The framing summary is not ready yet.",
+        "hypotheses": "The initial hypotheses are not ready yet.",
+        "research_in_progress": "Research workstreams are still running.",
+        "deliverable_writing_in_progress": "Research reports are still being written.",
+        "prior_gate_pending": "The prior review gate has not been approved yet.",
+        "synthesis_incomplete": "The investment synthesis is still being finalized.",
+        "merlin_verdict": "The investment recommendation is not ready yet.",
+        "redteam_evidence": "Stress-test evidence is not ready yet.",
+        "stress_report": "The stress-test report is not ready yet.",
+        "agent_active": "An agent is still working.",
+        "delivery_in_progress": "Final delivery writing is still in progress.",
+        "data_decision_question": "A data availability decision is required.",
+        "clarification_questions": "Clarification questions are required.",
+        "gate_material": "Review material is not ready yet.",
+    }.get(code, code.replace("_", " ").capitalize())
+
+
+def _required_deliverables_for_gate(gate_type: str) -> list[dict[str, str]]:
+    if gate_type == "manager_review":
+        return [
+            {"workstream_id": "W1", "deliverable_type": "workstream_report"},
+            {"workstream_id": "W2", "deliverable_type": "workstream_report"},
+            {"workstream_id": "W1", "deliverable_type": "milestone_report"},
+            {"workstream_id": "W2", "deliverable_type": "milestone_report"},
+        ]
+    if gate_type == "final_review":
+        return [
+            {"workstream_id": "W4", "deliverable_type": "workstream_report"},
+        ]
+    if gate_type == "hypothesis_confirmation":
+        return [
+            {"workstream_id": "setup", "deliverable_type": "engagement_brief"},
+        ]
+    return []
+
+
+def _consultant_message(
+    gate_type: str,
+    *,
+    is_open: bool,
+    missing_material: list[str],
+) -> str:
+    if is_open:
+        return human_gate_copy(gate_type)["summary"]
+    if gate_type == "manager_review" and "deliverable_writing_in_progress" in missing_material:
+        return "Research reports are still being written. The manager review will open once the reports are ready."
+    if gate_type == "manager_review" and "research_in_progress" in missing_material:
+        return "Research is still running. The manager review will open once the research workstreams are complete."
+    if gate_type == "final_review" and "synthesis_incomplete" in missing_material:
+        return "The investment synthesis is still being finalized. The decision review will open once the recommendation is stable."
+    if gate_type == "final_review" and "agent_active" in missing_material:
+        return "An agent is still working. The decision review will open once the stress-test pass is complete."
+    if gate_type == "hypothesis_confirmation":
+        return "MARVIN is still framing the deal into reviewable hypotheses."
+    return "Review material is still being prepared."
 
 
 def _clarification_rounds(store: MissionStore, mission_id: str) -> int:

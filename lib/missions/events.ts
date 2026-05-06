@@ -15,6 +15,9 @@ export type MissionStreamEvent =
       workstreamId?: string;
       hypothesisId?: string;
       sourceId?: string;
+      sourceType?: string;
+      stance?: "supports" | "contradicts" | "mixed" | "context";
+      implication?: string;
       ts?: string;
     }
   | {
@@ -131,6 +134,11 @@ export function createEventSourceMissionEventStream(basePath = "/api/v1"): Missi
         workstreamId: payload.workstreamId,
         hypothesisId: payload.hypothesisId,
         sourceId: payload.sourceId,
+        sourceType: payload.sourceType,
+        stance: ["supports", "contradicts", "mixed", "context"].includes(String(payload.stance))
+          ? (String(payload.stance) as "supports" | "contradicts" | "mixed" | "context")
+          : undefined,
+        implication: payload.implication,
         ts: payload.ts,
       }));
       addListener(source, "milestone_done", onEvent, (payload) => ({
@@ -409,6 +417,11 @@ function mapSSEToStreamEvent(event: SSEEvent): MissionStreamEvent | null {
         workstreamId: event.workstreamId ? String(event.workstreamId) : undefined,
         hypothesisId: event.hypothesisId ? String(event.hypothesisId) : undefined,
         sourceId: event.sourceId ? String(event.sourceId) : undefined,
+        sourceType: event.sourceType ? String(event.sourceType) : undefined,
+        stance: ["supports", "contradicts", "mixed", "context"].includes(String(event.stance))
+          ? (String(event.stance) as "supports" | "contradicts" | "mixed" | "context")
+          : undefined,
+        implication: event.implication ? String(event.implication) : undefined,
         ts: event.ts ? String(event.ts) : undefined,
       };
     case "milestone_done":

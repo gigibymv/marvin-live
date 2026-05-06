@@ -1027,6 +1027,10 @@ async def merlin_node(state: MarvinState) -> dict:
             "Task: Judge the synthesis dossier and issue one investment verdict.\n"
             "Use only the dossier below. Do not explore with tools beyond set_merlin_verdict.\n"
             "Verdict options: INVEST | INVEST_WITH_CONDITIONS | DO_NOT_INVEST | INSUFFICIENT_EVIDENCE\n\n"
+            "Important decision rule: challenged hypotheses are normal diligence outcomes, not automatic "
+            "insufficient evidence. Use INSUFFICIENT_EVIDENCE only when the dossier's decision_guidance says "
+            "material is missing enough that MARVIN cannot judge. Otherwise be decisive: INVEST, "
+            "INVEST_WITH_CONDITIONS, or DO_NOT_INVEST.\n\n"
             f"VERDICT_DOSSIER:\n{json.dumps(dossier, indent=2, sort_keys=True)}"
         )
     )

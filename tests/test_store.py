@@ -66,7 +66,37 @@ def test_store_initializes_temp_db_file(tmp_path: Path):
     assert "missions" in tables
     assert "mission_briefs" in tables
     assert "mission_chat_messages" in tables
+    assert "mission_runtime_events" in tables
     assert "merlin_verdicts" in tables
+    store.close()
+
+
+def test_runtime_events_are_ordered_and_decode_payloads():
+    store = MissionStore(":memory:")
+    store.save_mission(_mission())
+
+    first_id = store.append_runtime_event(
+        "m-test",
+        "phase_changed",
+        {"phase": "confirmed"},
+        event_id="rt-1",
+        created_at="2026-01-01T00:00:01+00:00",
+    )
+    second_id = store.append_runtime_event(
+        "m-test",
+        "agent_active",
+        {"agent": "Dora"},
+        event_id="rt-2",
+        created_at="2026-01-01T00:00:02+00:00",
+    )
+
+    events = store.list_runtime_events("m-test")
+
+    assert [event["id"] for event in events] == [first_id, second_id]
+    assert [event["seq"] for event in events] == [1, 2]
+    assert events[0]["event_type"] == "phase_changed"
+    assert events[0]["payload"] == {"phase": "confirmed"}
+    assert events[1]["payload"] == {"agent": "Dora"}
     store.close()
 
 
@@ -368,6 +398,14 @@ def test_save_list_and_update_gate_status():
     updated = store.update_gate_status("gate-1", "completed", notes="Approved")
     assert updated.status == "completed"
     assert updated.completion_notes == "Approved"
+    runtime_events = store.list_runtime_events("m-test")
+    assert runtime_events[-1]["event_type"] == "gate_completed"
+    assert runtime_events[-1]["payload"] == {
+        "gate_id": "gate-1",
+        "gate_type": "hypothesis_confirmation",
+        "notes": "Approved",
+        "status": "completed",
+    }
     store.close()
 
 

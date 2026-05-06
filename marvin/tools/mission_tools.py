@@ -612,6 +612,38 @@ def validate_finding_quality(
     return True, None, None
 
 
+def _normalize_confidence(value: str | None) -> str:
+    normalized = (value or "").strip().upper().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "KNOWN": "KNOWN",
+        "SOURCED": "KNOWN",
+        "SOURCE": "KNOWN",
+        "PRIMARY": "KNOWN",
+        "REASONED": "REASONED",
+        "INFERRED": "REASONED",
+        "PRELIMINARY": "REASONED",
+        "LOW": "LOW_CONFIDENCE",
+        "LOW_CONFIDENCE": "LOW_CONFIDENCE",
+        "LOWCONFIDENCE": "LOW_CONFIDENCE",
+    }
+    return aliases.get(normalized, "REASONED")
+
+
+def _normalize_finding_impact(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    if not normalized:
+        return None
+    if normalized in {"load_bearing", "critical", "high", "material", "key", "major"}:
+        return "load_bearing"
+    if normalized in {"supporting", "support", "medium", "moderate"}:
+        return "supporting"
+    if normalized in {"color", "context", "low", "minor", "background"}:
+        return "color"
+    return None
+
+
 def _detect_failure_patterns(text: str | None) -> list[str]:
     """Return list of failure-pattern labels found in text (empty if clean)."""
     if not text:
@@ -634,6 +666,9 @@ def add_finding_to_mission(
     source_url: str | None = None,
     source_quote: str | None = None,
     milestone_id: str | None = None,
+    impact: str | None = None,
+    stance: str | None = None,
+    implication: str | None = None,
     state: InjectedStateArg = None,
 ) -> dict[str, Any]:
     """Add a finding to the mission.
@@ -730,6 +765,23 @@ def add_finding_to_mission(
     if suggested_conf and suggested_conf != confidence:
         confidence = suggested_conf
         claim_text = f"{claim_text} [confidence auto-adjusted: {quality_reason}]"
+    confidence = _normalize_confidence(confidence)
+    if confidence == "KNOWN" and source_id is None:
+        confidence = "REASONED"
+
+    impact = _normalize_finding_impact(impact)
+
+    if stance is not None:
+        normalized_stance = str(stance).strip().lower().replace("_", "-")
+        if normalized_stance == "support":
+            normalized_stance = "supports"
+        elif normalized_stance in {"contradict", "challenge", "challenges"}:
+            normalized_stance = "contradicts"
+        elif normalized_stance not in {"supports", "contradicts", "mixed", "context"}:
+            normalized_stance = ""
+        stance = normalized_stance or None
+    if implication is not None:
+        implication = str(implication).strip()[:1000] or None
 
     # Bug 2 (chantier 2.6): hypothesis linking is mandatory. Every finding
     # must reference an active hypothesis; orphan or stale-hypothesis findings
@@ -850,6 +902,9 @@ def add_finding_to_mission(
         source_id=source_id,
         source_type=source_type,
         agent_id=agent_id,
+        impact=impact,
+        stance=stance,
+        implication=implication,
         created_at=utc_now_iso(),
         corroboration_count=1 if source_id else 0,
         corroboration_status="single_source" if source_id else None,
@@ -875,6 +930,9 @@ def add_finding_to_mission(
             "hypothesis_id": hypothesis_id,
             "source_id": source_id,
             "source_type": source_type,
+            "impact": impact,
+            "stance": stance,
+            "implication": implication,
             "created_at": finding.created_at,
         },
     )
@@ -882,6 +940,9 @@ def add_finding_to_mission(
         "finding_id": finding.id,
         "claim": claim_text,
         "confidence": confidence,
+        "impact": finding.impact,
+        "stance": finding.stance,
+        "implication": finding.implication,
         "status": "saved",
         "corroboration_warning": corroboration_warning,
     }
