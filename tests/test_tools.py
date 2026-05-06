@@ -433,6 +433,26 @@ def test_add_finding_normalizes_llm_impact_aliases(store: MissionStore, state: d
     assert finding.stance == "contradicts"
 
 
+def test_add_finding_downgrades_critical_low_confidence_impact(store: MissionStore, state: dict[str, str]):
+    result = mission_tools.add_finding_to_mission(
+        "W1.1 TAM denominator is incomplete, so this is only a weak sizing signal.",
+        "LOW_CONFIDENCE",
+        "dora",
+        workstream_id="W1",
+        hypothesis_id="h-1",
+        impact="critical",
+        source_type="inference",
+        state=state,
+    )
+
+    assert result["status"] == "saved"
+    assert result["confidence"] == "LOW_CONFIDENCE"
+    assert result["impact"] == "supporting"
+    finding = store.get_finding(result["finding_id"])
+    assert finding.confidence == "LOW_CONFIDENCE"
+    assert finding.impact == "supporting"
+
+
 def test_ask_question_returns_pending_payload(state: dict[str, str]):
     result = mission_tools.ask_question("Need customer evidence", True, state)
     assert result["blocking"] is True

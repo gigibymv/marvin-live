@@ -637,11 +637,25 @@ def _normalize_finding_impact(value: str | None) -> str | None:
         return None
     if normalized in {"load_bearing", "critical", "high", "material", "key", "major"}:
         return "load_bearing"
-    if normalized in {"supporting", "support", "medium", "moderate"}:
+    if normalized in {"supporting", "support", "medium", "moderate", "important"}:
         return "supporting"
-    if normalized in {"color", "context", "low", "minor", "background"}:
+    if normalized in {"color", "context", "low", "minor", "background", "info", "informational"}:
         return "color"
     return None
+
+
+def _align_impact_with_confidence(impact: str | None, confidence: str) -> str | None:
+    """Keep weak evidence from being rejected as load-bearing.
+
+    Agents often use words like "critical" to mean "relevant to a critical
+    hypothesis" even when they correctly mark the evidence LOW_CONFIDENCE.
+    The schema is intentionally strict: genuinely load-bearing findings cannot
+    be low-confidence. Rather than reject the whole finding, keep the evidence
+    and classify it as a secondary signal.
+    """
+    if impact == "load_bearing" and confidence == "LOW_CONFIDENCE":
+        return "supporting"
+    return impact
 
 
 def _detect_failure_patterns(text: str | None) -> list[str]:
@@ -769,7 +783,7 @@ def add_finding_to_mission(
     if confidence == "KNOWN" and source_id is None:
         confidence = "REASONED"
 
-    impact = _normalize_finding_impact(impact)
+    impact = _align_impact_with_confidence(_normalize_finding_impact(impact), confidence)
 
     if stance is not None:
         normalized_stance = str(stance).strip().lower().replace("_", "-")
