@@ -1331,9 +1331,11 @@ def build_graph(checkpointer=None):
         END: END,
     })
     
-    # Parallel branches join at research_join
-    builder.add_edge("dora", "research_join")
-    builder.add_edge("calculus", "research_join")
+    # Parallel branches join at research_join. This must be a waiting edge:
+    # adding dora→research_join and calculus→research_join separately lets the
+    # join fire once per branch, so Papyrus can compile reports while the other
+    # workstream is still running and G1 can be evaluated on partial material.
+    builder.add_edge(["dora", "calculus"], "research_join")
     
     builder.add_conditional_edges("research_join", phase_router, {
         "gate_entry": "gate_entry",

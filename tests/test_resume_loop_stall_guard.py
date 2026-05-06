@@ -135,3 +135,44 @@ def test_guarded_loop_does_not_break_when_astream_makes_progress():
     )
     assert result["resume_steps"] == 8, "loop with progress must NOT stall-break"
     assert result["stall_break"] is False
+
+
+def test_research_fanout_stall_recovery_runs_join_when_findings_exist(monkeypatch):
+    """If a root checkpoint is stuck at dora/calculus after findings were
+    persisted, resume should run deterministic research_join instead of
+    leaving the mission spinning before G1.
+    """
+    from types import SimpleNamespace
+    import marvin_ui.server as server
+
+    class FakeStore:
+        def list_findings(self, mission_id):
+            assert mission_id == "m-stalled"
+            return [SimpleNamespace(workstream_id="W1")]
+
+    called = {}
+
+    def fake_research_join(state):
+        called["state"] = state
+        return {"phase": "research_done"}
+
+    import marvin.graph.runner as runner
+
+    monkeypatch.setattr(server, "MissionStore", FakeStore)
+    monkeypatch.setattr(runner, "research_join", fake_research_join)
+
+    assert server._recover_stalled_research_checkpoint("m-stalled", ("dora", "calculus")) is True
+    assert called["state"]["mission_id"] == "m-stalled"
+
+
+def test_research_fanout_stall_recovery_ignores_non_research_next(monkeypatch):
+    from types import SimpleNamespace
+    import marvin_ui.server as server
+
+    class FakeStore:
+        def list_findings(self, mission_id):
+            return [SimpleNamespace(workstream_id="W1")]
+
+    monkeypatch.setattr(server, "MissionStore", FakeStore)
+
+    assert server._recover_stalled_research_checkpoint("m-stalled", ("merlin",)) is False

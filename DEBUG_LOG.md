@@ -428,3 +428,19 @@ render deploys create srv-d7p2l8vavr4c73d1gnvg  # frontend
 **Files touched:** `marvin_ui/server.py`, `tests/test_server_continuable_checkpoint.py`
 
 ---
+
+## 2026-05-05 — Research workstreams stalled after G0 approval / duplicated Papyrus reports
+
+**Symptom:** After approving the hypothesis gate, `Market Analysis` and `Financial Analysis` produced findings but the mission stayed around 25-50%, G1 did not reliably appear, and Papyrus/report narrations could duplicate or run while one research branch was still active.
+
+**Root cause:** The graph did not actually wait for both parallel research branches. It registered two independent edges, `dora -> research_join` and `calculus -> research_join`, so `research_join` could fire once per branch instead of once after both branches completed. On reconnect, LangGraph could also remain at a stale root checkpoint with `next=('dora','calculus')` even after subgraphs had persisted W1/W2 findings, causing resume to re-run agents or stall before deterministic report generation.
+
+**Fix:** Changed the graph to a true waiting edge, `builder.add_edge(["dora", "calculus"], "research_join")`. Added a narrow `/resume` recovery path: if the checkpoint is stuck at the research fan-out/join and persisted W1/W2 findings already exist, the backend runs the deterministic `research_join` once, clears stale runtime agents, emits the resulting deliverables/milestones, and surfaces G1 from persisted gate material.
+
+**Why it prevents repeats:** Research completion is now barrier-synchronized in LangGraph, while reconnect recovery handles the specific stale-checkpoint shape without moving routing into prompts or inventing UI state.
+
+**Validation:** Targeted resume/server/graph tests passed, and `make smoke` passed. The previously stuck Adobe mission recovered to an open G1 with W1/W2 delivered and `active_phase_agents=[]`.
+
+**Files touched:** `marvin/graph/runner.py`, `marvin_ui/server.py`, `tests/test_resume_loop_stall_guard.py`
+
+---

@@ -660,11 +660,27 @@ async def _drive_detached_resume(mission_id: str, resume_payload: dict) -> None:
                         next_input = continuation_input
                         continue
                     if snapshot is not None and getattr(snapshot, "next", None):
+                        current_next = getattr(snapshot, "next", None)
+                        if _recover_stalled_research_checkpoint(mission_id, current_next):
+                            post_gate_payload = _open_gate_payload_from_store(MissionStore(), mission_id)
+                            if post_gate_payload is not None:
+                                _clear_runtime_agents(mission_id)
+                                emit_graph_event(
+                                    mission_id,
+                                    await _emit_gate_pending(post_gate_payload, mission_id=mission_id),
+                                )
+                                emit_graph_event(
+                                    mission_id,
+                                    await _emit_narration("workflow", _gate_narration(post_gate_payload)),
+                                )
+                                break
+                            next_input = {"mission_id": mission_id, "phase": "research_done", "messages": []}
+                            continue
                         logger.warning(
                             "Detached resume continuing from runnable checkpoint: "
                             "mission=%s next=%s",
                             mission_id,
-                            getattr(snapshot, "next", None),
+                            current_next,
                         )
                         next_input = None
                         continue
@@ -1005,6 +1021,62 @@ def _open_gate_payload_from_store(store: MissionStore, mission_id: str) -> dict 
     except Exception as exc:  # noqa: BLE001 — reconnect must stay best-effort
         logger.warning("Could not reconstruct open gate for mission=%s: %s", mission_id, exc)
     return None
+
+
+def _recover_stalled_research_checkpoint(mission_id: str, next_value: Any) -> bool:
+    """Run the deterministic research join when LangGraph is stuck pre-join.
+
+    A cancelled/reconnected SSE stream can leave the root checkpoint at the
+    parallel research fan-out (`dora`, `calculus`) even though the subgraphs have
+    already persisted findings. Re-running that checkpoint can yield zero events
+    and keep `next` unchanged, so the mission appears to spin at W1/W2 forever.
+
+    The recovery is deliberately narrow: only research fan-out / join checkpoints
+    qualify, and only after persisted W1/W2 findings prove that the research pass
+    has produced material for the deterministic join to consume.
+    """
+    if not isinstance(mission_id, str) or not mission_id:
+        return False
+    if not isinstance(next_value, tuple):
+        return False
+    next_nodes = {str(node) for node in next_value}
+    research_nodes = {"dora", "calculus", "research_join"}
+    if not next_nodes or not next_nodes.issubset(research_nodes):
+        return False
+    if not (next_nodes & research_nodes):
+        return False
+
+    try:
+        store = MissionStore()
+        findings = store.list_findings(mission_id)
+        has_research_material = any(
+            (finding.workstream_id or "").upper() in {"W1", "W2"}
+            for finding in findings
+        )
+        if not has_research_material:
+            return False
+
+        from marvin.graph.runner import research_join
+
+        result = research_join({"mission_id": mission_id, "phase": "confirmed", "messages": []})
+        recovered = result.get("phase") == "research_done"
+        if recovered:
+            _clear_runtime_agents(mission_id)
+            logger.warning(
+                "Recovered stalled research checkpoint via deterministic join: "
+                "mission=%s next=%s",
+                mission_id,
+                next_value,
+            )
+        return recovered
+    except Exception as exc:  # noqa: BLE001 - recovery must not crash resume
+        logger.warning(
+            "Could not recover stalled research checkpoint: mission=%s next=%s err=%s",
+            mission_id,
+            next_value,
+            exc,
+        )
+        return False
 
 
 async def _emit_phase_blocked(payload: dict) -> str:
@@ -2535,7 +2607,14 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                 "Store replay failed for mission=%s: %s", mission_id, exc
             )
 
+        snapshot_next = getattr(snapshot, "next", None)
+        if snapshot_next and _recover_stalled_research_checkpoint(mission_id, snapshot_next):
+            for s in _drain_events():
+                yield s
+            open_gate_payload = _open_gate_payload_from_store(store, mission_id)
+
         if open_gate_payload is not None:
+            _clear_runtime_agents(mission_id)
             yield await _emit_gate_pending(open_gate_payload, mission_id=mission_id)
             yield await _emit_narration("workflow", _gate_narration(open_gate_payload))
             yield await _emit_run_end()
@@ -2617,6 +2696,7 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
             if not interrupted:
                 post_gate_payload = _open_gate_payload_from_store(store, mission_id)
                 if post_gate_payload is not None:
+                    _clear_runtime_agents(mission_id)
                     yield await _emit_gate_pending(post_gate_payload, mission_id=mission_id)
                     yield await _emit_narration("workflow", _gate_narration(post_gate_payload))
                     yield await _emit_run_end()
@@ -2656,6 +2736,18 @@ async def _stream_resume(mission_id: str) -> AsyncIterator[str]:
                             "after astream yielded 0 events; breaking instead of looping",
                             mission_id, current_next,
                         )
+                        if _recover_stalled_research_checkpoint(mission_id, current_next):
+                            for s in _drain_events():
+                                yield s
+                            post_gate_payload = _open_gate_payload_from_store(store, mission_id)
+                            if post_gate_payload is not None:
+                                _clear_runtime_agents(mission_id)
+                                yield await _emit_gate_pending(post_gate_payload, mission_id=mission_id)
+                                yield await _emit_narration("workflow", _gate_narration(post_gate_payload))
+                                yield await _emit_run_end()
+                                return
+                            next_input = {"mission_id": mission_id, "phase": "research_done", "messages": []}
+                            continue
                         break
                     prev_runnable_next = current_next
                     logger.warning(
