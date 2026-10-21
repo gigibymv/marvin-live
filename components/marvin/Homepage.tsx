@@ -79,7 +79,7 @@ export default function Homepage() {
         <main className="hero product-hero">
           <div className="statement">
             <h1><span>Your consulting</span><span>operating system</span></h1>
-            <div className="statement-aside"><p>AI agents work on your mission. You review the evidence and decide what comes next.</p><div className="hero-actions"><InteractiveMissionLink /><a className="example-jump" href="#mission-example" onClick={event => { event.preventDefault(); setStage("brief"); setPlaying(true); exampleRef.current?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" }); }}>See an example <MissionArrow direction="down" /></a></div></div>
+            <div className="statement-aside"><p>AI agents work on your mission. You review the evidence and decide what comes next.</p><div className="hero-actions"><InteractiveMissionLink /><a className="example-jump" href="#mission-example" onClick={() => { setStage("brief"); setPlaying(true); }}>See an example <MissionArrow direction="down" /></a></div></div>
 
           </div>
           <div className="mission-example" id="mission-example" data-ui="illustrative-mission" ref={exampleRef} onMouseLeave={() => setPlaying(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPlaying(true); }} data-auto-playing={autoPlaying} style={{ "--stage-duration": `${STAGE_DURATION[stage]}ms` } as CSSProperties}>

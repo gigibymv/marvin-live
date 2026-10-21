@@ -45,18 +45,14 @@ describe("Landing example playback", () => {
     advance(6000); selected("The analysis");
   });
 
-  it.each([false, true])("opens the brief from the hero with reduced motion=%s", (reduce) => {
-    reducedMotion = reduce;
-    const scrollIntoView = vi.fn();
-    const previous = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = scrollIntoView;
-    try {
-      render(<Homepage />);
-      fireEvent.click(screen.getByRole("tab", { name: "The report" }));
-      fireEvent.click(screen.getByRole("link", { name: "See an example" }));
-      selected("The brief");
-      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: reduce ? "instant" : "smooth", block: "start" });
-    } finally { Element.prototype.scrollIntoView = previous; }
+  it("links to the example and restarts it from the brief", () => {
+    render(<Homepage />);
+    fireEvent.click(screen.getByRole("tab", { name: "The report" }));
+    const link = screen.getByRole("link", { name: "See an example" });
+    expect(link).toHaveAttribute("href", "#mission-example");
+    fireEvent.click(link);
+    selected("The brief");
+    expect(document.querySelector("#mission-example")).toBeInTheDocument();
   });
 
   it("stops while offscreen or in a hidden document", () => {
