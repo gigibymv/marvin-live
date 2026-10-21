@@ -10,11 +10,12 @@ const CSS = `
   outline: 2px solid var(--ink3); outline-offset: 4px;
 }
 .mission-dashboard .row {
-  display: grid; grid-template-columns: minmax(0,1fr) 180px 130px 100px;
+  display: grid; grid-template-columns: minmax(0,1fr) 180px 130px 140px;
   align-items: center; gap: 12px 24px; padding: 18px 24px;
   border-bottom: 1px solid var(--rule); cursor: pointer; transition: background .1s;
 }
 .mission-dashboard .row > div { min-width: 0; overflow-wrap: anywhere; }
+.mission-dashboard .row > div:last-child > span { white-space: nowrap; flex-shrink: 0; }
 .mission-dashboard .row:hover { background: var(--bone); }
 .mission-dashboard .row:last-child { border-bottom: none; }
 .mission-dashboard .new-btn {
@@ -24,7 +25,7 @@ const CSS = `
   transition: opacity .1s;
 }
 .mission-dashboard .new-btn:hover { opacity: .85; }
-.mission-dashboard .list-heading { display:grid; grid-template-columns:minmax(0,1fr) 180px 130px 100px; gap:0 24px; padding:0 24px 12px; border-bottom:1px solid var(--ruleh); }
+.mission-dashboard .list-heading { display:grid; grid-template-columns:minmax(0,1fr) 180px 130px 140px; gap:0 24px; padding:0 24px 12px; border-bottom:1px solid var(--ruleh); }
 .mission-dashboard .overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(5px);
   display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px;
@@ -37,10 +38,10 @@ const CSS = `
 .mission-dashboard .template-tile:disabled { cursor:default; }
 .mission-dashboard .modal-footer { gap:12px; flex-wrap:wrap; }
 .mission-dashboard .modal-footer > button { min-height:44px; margin-left:auto; }
-.mission-dashboard .mission-delete { opacity: .55; min-width:44px; min-height:44px; justify-content:center; align-items:center; }
+.mission-dashboard .mission-delete { opacity: .55; flex-shrink:0; min-width:44px; min-height:44px; justify-content:center; align-items:center; }
 .mission-dashboard .mission-delete:hover, .mission-dashboard .mission-delete:focus-visible { opacity:1; }
 @keyframes missionFadeIn { from { opacity: 0; } to { opacity: 1; } }
-@media(max-width:700px) {
+@media(max-width:850px) {
   .mission-dashboard .row { grid-template-columns:minmax(0,1fr) auto; padding:18px 16px; gap:12px 18px; }
   .mission-dashboard .row > div:first-child { grid-column:1; }
   .mission-dashboard .row > div:nth-child(2) { grid-column:1; grid-row:2; }
