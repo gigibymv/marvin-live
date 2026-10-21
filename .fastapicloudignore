@@ -1,0 +1,22 @@
+# Only the Python backend is deployed here. Vercel owns the frontend.
+app/
+components/
+lib/
+UI Marvin/
+public/
+tests/
+e2e/
+e2e-test/
+docs/
+revamp/
+.git/
+.next/
+node_modules/
+.venv/
+.fastapicloud/
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm
+output/

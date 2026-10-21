@@ -1,26 +1,31 @@
 # Resettable free demo
 
 The existing frontend stays on Vercel Hobby. The selected backend host is
-Northflank Developer Sandbox. Render was rejected by the owner; neither
-`render.yaml` nor `render.demo.yaml` is part of the selected deployment.
+FastAPI Cloud Hobby ($0/month, explicitly no credit card required).
+Render was rejected by the owner, and Northflank was rejected because it
+requires a card. Neither `render.yaml` nor `render.demo.yaml` is part of the
+selected deployment.
 
 The demo uses a new service name so it does not replace an existing backend or
-its disk. Keep the team on **Developer Sandbox / Free Team**. Do not upgrade
+its disk. Keep the team on **Hobby**. Do not upgrade
 the team or add paid resources.
 
-## Northflank
+## FastAPI Cloud
 
-- Northflank requires card verification even for Developer Sandbox. The
-  service form states the Sandbox is not charged. The owner must enter the
-  card directly; do not collect or store payment details in this repository.
-- Build `gigibymv/marvin-live`, branch `main`, using `/Dockerfile` and context `/`.
-- Use service name `marvin-demo-api`, one instance, and the free compute option.
-- Expose HTTP port `8095`; set `MARVIN_PORT=8095` and `MARVIN_HOST=0.0.0.0`.
-- Set `MARVIN_DB_PATH=/data/marvin.db` and
-  `MARVIN_CHECKPOINT_DB=/data/checkpoints.db` on ephemeral storage.
+- Sign in to the free Hobby account. Do not enter a payment method or
+  upgrade to Pro. If deployment asks for a card, stop and report the conflict
+  with the published no-card offering.
+- Deploy the Python project with `fastapi deploy` from the repository root.
+  `pyproject.toml` declares `marvin_ui.server:app`; `.python-version` selects
+  Python 3.11. `.fastapicloudignore` excludes frontend and local files.
+- Use service name `marvin-demo-api`. Set the maximum replicas to **1**:
+  each SQLite instance has its own local state and cannot serve a shared mission.
+- Leave the database paths unset to use the default writable home directory,
+  or configure both paths within a writable temporary directory. Do not use
+  Docker's `/data` path, which is not created by this deployment method.
 - Set `CORS_ORIGINS=https://marvin-zeta.vercel.app` and
   `ALLOW_LOCALHOST_ANY_PORT=0`.
-- Supply `OPENROUTER_API_KEY` through Northflank's secret environment settings.
+- Supply `OPENROUTER_API_KEY` through FastAPI Cloud's secret environment settings.
 - Set `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`.
 - Add `TAVILY_API_KEY` there if live web research is needed.
 - `/health` should return 200.
@@ -31,7 +36,7 @@ the team or add paid resources.
 Set these production environment variables, then rebuild:
 
 ```text
-NEXT_PUBLIC_API_BASE_URL=<actual Northflank API URL>/api/v1
+NEXT_PUBLIC_API_BASE_URL=<actual FastAPI Cloud API URL>/api/v1
 NEXT_PUBLIC_DEMO_MODE=1
 ```
 
@@ -41,9 +46,9 @@ explicitly to `CORS_ORIGINS`.
 
 ## Limitations
 
-Northflank advertises always-on Sandbox services. Without an attached
-persistent volume, mission rows, graph checkpoints, uploads and generated
-reports remain ephemeral and can disappear on restart or redeploy. This loss is accepted for this
+Hobby apps scale to zero when idle. Mission rows, graph checkpoints, uploads
+and generated reports use local storage and must be treated as ephemeral:
+they can disappear when instances stop or are replaced. This loss is accepted for this
 demo; it is not a durable deployment. Download reports you need to retain.
 
 The hosting free tier does not include OpenRouter or Tavily usage. Existing

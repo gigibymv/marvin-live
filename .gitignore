@@ -43,3 +43,4 @@ e2e/results/
 e2e-test/test-results/
 playwright-report/
 .vercel
+.fastapicloud/
