@@ -46,6 +46,11 @@ explicitly to `CORS_ORIGINS`.
 
 ## Limitations
 
+All seven LLM roles use `minimax/minimax-m3.1-flash:free`, verified in the
+OpenRouter catalogue on 2026-10-20. The request also caps prompt, completion
+and per-request provider pricing at zero. There is no paid fallback. Free
+capacity and daily request quotas can interrupt a multi-agent mission.
+
 Hobby apps scale to zero when idle. Mission rows, graph checkpoints, uploads
 and generated reports use local storage and must be treated as ephemeral:
 they can disappear when instances stop or are replaced. This loss is accepted for this

@@ -1,20 +1,33 @@
 from __future__ import annotations
 
 from marvin.graph.subgraphs import adversus, calculus, dora, merlin, orchestrator
-from marvin.llm_factory import MODEL_BY_ROLE, OPENROUTER_BASE_URL
+import pytest
+
+from marvin.llm_factory import FREE_MODEL, MODEL_BY_ROLE, OPENROUTER_BASE_URL, get_chat_llm
 
 
 def test_llm_factory_uses_openrouter_role_mapping():
-    """Runtime truth: every role is routed through OpenRouter and currently
-    mapped to the same proven model. The previous DeepSeek-specific assertion
-    predated the switch to OpenAI-via-OpenRouter and no longer matches the
-    end-to-end-proven runtime configuration."""
+    """Every demo role must use the explicit free variant, including drafting."""
     assert OPENROUTER_BASE_URL == "https://openrouter.ai/api/v1"
-    for role in ("dora", "calculus", "merlin", "adversus", "orchestrator", "papyrus"):
+    assert FREE_MODEL == "minimax/minimax-m3.1-flash:free"
+    for role in ("dora", "calculus", "merlin", "adversus", "orchestrator", "framing", "papyrus"):
         assert role in MODEL_BY_ROLE
-        assert MODEL_BY_ROLE[role].startswith(("openai/", "deepseek/", "google/", "anthropic/"))
+        assert MODEL_BY_ROLE[role] == FREE_MODEL
 
-    assert MODEL_BY_ROLE["papyrus"] == "anthropic/claude-3.5-haiku"
+
+@pytest.mark.parametrize("role", MODEL_BY_ROLE)
+def test_llm_factory_rejects_paid_endpoints(monkeypatch, role):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-not-a-secret")
+    llm = get_chat_llm(role)
+    assert llm.model_name.endswith(":free")
+    assert llm.extra_body == {
+        "provider": {"max_price": {"prompt": 0, "completion": 0, "request": 0}}
+    }
+
+
+def test_unknown_role_cannot_select_an_unconfigured_model():
+    with pytest.raises(KeyError, match="unknown LLM role"):
+        get_chat_llm("unknown")
 
 
 def test_agent_tool_registries_non_empty():

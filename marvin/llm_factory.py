@@ -5,26 +5,17 @@ import os
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
-# Model routing via OpenRouter:
-# - GPT-5.4 Nano: cheap roles where reasoning depth doesn't gate quality
-#   (extraction, classification, structured numeric output, chat QA).
-# - Gemini 2.5 Pro: reasoning-critical roles (synthesis verdict, red-team).
-# - Claude Haiku: client-facing drafting where cost matters more than deep
-#   adversarial reasoning.
+# Free demo routing, checked against OpenRouter's live catalogue on 2026-10-20.
+# MiniMax M3.1 Flash supports tools and a 1M-token context. Keep the explicit
+# :free variant: the unsuffixed model is paid. No paid fallback is configured.
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+FREE_MODEL = "minimax/minimax-m3.1-flash:free"
 MODEL_BY_ROLE = {
-    "dora": "openai/gpt-5.4-nano",
-    "calculus": "openai/gpt-5.4-nano",
-    "orchestrator": "openai/gpt-5.4-nano",
-    "framing": "openai/gpt-5.4-nano",
-    # Reasoning-critical: synthesis verdict and adversarial stress.
-    # Nano was borderline on multi-claim reconciliation.
-    "merlin": "google/gemini-2.5-pro",
-    "adversus": "google/gemini-2.5-pro",
-    # Papyrus produces client-facing documents frequently; use Haiku for the
-    # writing pass to keep live mission cost under control.
-    "papyrus": "anthropic/claude-3.5-haiku",
+    role: FREE_MODEL
+    for role in (
+        "dora", "calculus", "orchestrator", "framing", "merlin", "adversus", "papyrus"
+    )
 }
 
 
@@ -50,4 +41,9 @@ def get_chat_llm(role: str) -> ChatOpenAI:
         temperature=0,
         timeout=120,
         max_retries=0,
+        # Also reject endpoints with token or per-request charges if provider
+        # availability changes. A free endpoint outage must surface as an error.
+        extra_body={
+            "provider": {"max_price": {"prompt": 0, "completion": 0, "request": 0}}
+        },
     )
