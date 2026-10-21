@@ -1,30 +1,241 @@
-.marvin-landing{--ground:#0c1011;--surface:#171e20;--paper:#dce5e7;--text:#f2f4f1;--muted:#b1bcbd;--ink:#19292e;--secondary:#455c63;--accent:#b9d8cb;--serif:'Newsreader',Georgia,serif;--sans:'Geist',Arial,sans-serif;background:var(--ground);color:var(--text);font:16px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
-.marvin-landing *{box-sizing:border-box}.marvin-landing a{color:inherit;text-underline-offset:5px}.marvin-landing button{font:inherit;cursor:pointer}.marvin-landing button,.marvin-landing a{-webkit-tap-highlight-color:transparent}.marvin-landing :is(button,a,[tabindex]):focus-visible{outline:2px solid currentColor;outline-offset:5px}.marvin-landing ::selection{background:var(--accent);color:var(--ink)}
-.marvin-landing .wrap{width:min(1328px,calc(100% - 96px));margin:auto}.marvin-landing .nav{height:108px;display:flex;align-items:center;justify-content:space-between}.marvin-landing .brand{display:flex;align-items:baseline;gap:15px;text-decoration:none}.marvin-landing .brand strong{font:400 32px/1 var(--serif);letter-spacing:-.04em}.marvin-landing .brand span{font-size:13px;color:var(--muted)}.marvin-landing .open-link{display:inline-flex;align-items:center;min-height:44px;text-decoration:none;font-size:14px}.marvin-landing .open-link:hover{color:var(--accent)}
-.marvin-landing .statement{display:grid;grid-template-columns:1fr 320px;align-items:end;gap:48px;padding:42px 0 62px}.marvin-landing h1{font:400 clamp(70px,7.7vw,112px)/.96 var(--serif);letter-spacing:-.045em;margin:0}.marvin-landing h1 span{display:block;white-space:nowrap}.marvin-landing .statement-aside{padding-bottom:7px}.marvin-landing .statement-aside p{margin:0 0 25px;font-size:18px;line-height:1.5;color:var(--muted);max-width:30ch}
-.marvin-landing .mission-cta{position:relative;display:inline-flex;align-items:center;justify-content:center;width:226px;min-height:56px;overflow:hidden;isolation:isolate;border:0;border-radius:3px;background:var(--accent);color:var(--ink);text-decoration:none;font-size:16px;font-weight:500;line-height:1.2;transition:transform .2s}.marvin-landing .mission-cta-dot{position:absolute;left:23px;top:calc(50% - 4px);width:8px;height:8px;border-radius:50%;background:var(--ink);transition:transform .35s cubic-bezier(.22,1,.36,1)}.marvin-landing .mission-cta-label{position:relative;transform:translateX(5px);transition:transform .3s,opacity .2s}.marvin-landing .mission-cta-reveal{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;color:var(--text);opacity:0;transform:translateX(36px);transition:transform .3s,opacity .25s}.marvin-landing .mission-cta-reveal svg{width:20px;height:20px}.marvin-landing .mission-cta:is(:hover,:focus-visible) .mission-cta-dot{transform:scale(60)}.marvin-landing .mission-cta:is(:hover,:focus-visible) .mission-cta-label{transform:translateX(48px);opacity:0}.marvin-landing .mission-cta:is(:hover,:focus-visible) .mission-cta-reveal{transform:translateX(0);opacity:1}.marvin-landing .mission-cta:active{transform:scale(.98)}
-.marvin-landing .mission-example{padding:26px 0 40px}.marvin-landing .example-header{display:flex;align-items:center;gap:16px;margin-bottom:28px}.marvin-landing .example-header strong{font-weight:400;font-size:20px;flex:1}.marvin-landing .preview-label{font-size:13px;color:var(--muted)}
-.marvin-landing .dossier-layout{display:grid;grid-template-columns: .72fr 1fr;gap:64px;align-items:start}.marvin-landing .dossier-margin{padding:24px 0}.marvin-landing .example-tabs{display:flex;flex-direction:column;align-items:flex-start;gap:5px}.marvin-landing .example-tabs button{display:flex;align-items:center;gap:16px;border:0;background:none;color:var(--muted);padding:10px 0;font:400 34px/1.2 var(--serif);letter-spacing:-.025em;min-height:52px;text-align:left;transition:color .2s,transform .2s}.marvin-landing .tab-dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:0;transform:scale(.5);transition:opacity .2s,transform .2s}.marvin-landing .example-tabs button[aria-selected=true]{color:var(--accent)}.marvin-landing .example-tabs button[aria-selected=true] .tab-dot{opacity:1;transform:scale(1)}.marvin-landing .example-tabs button:hover{color:var(--text);transform:translateX(3px)}.marvin-landing .margin-note{max-width:29ch;margin:42px 0 24px 23px;color:var(--muted);font-size:17px;animation:margin-appear .3s both}.marvin-landing .margin-disclaimer{margin:0 0 0 23px;color:var(--muted);font-size:13px}
-.marvin-landing .example-body{background:var(--paper);color:var(--ink);padding:42px 40px 24px;min-width:0;overflow:hidden;animation:dossier-enter .8s cubic-bezier(.16,1,.3,1) both}.marvin-landing .example-stage{animation:page-enter .38s cubic-bezier(.16,1,.3,1) both}.marvin-landing .example-stage[hidden]{display:none}.marvin-landing .example-body h2{font:400 42px/1.05 var(--serif);letter-spacing:-.035em;margin:0 0 25px;text-wrap:balance}.marvin-landing .example-body p{font-size:16px;line-height:1.55;color:var(--secondary)}.marvin-landing .sample-question{margin:0 0 28px;max-width:42ch}.marvin-landing .sample-sheet{background:#cbd9dd;padding:20px 22px}.marvin-landing .sheet-title{display:flex;justify-content:space-between;gap:16px;font-size:13px;color:var(--secondary);margin-bottom:18px}.marvin-landing .sample-sheet dl{margin:0}.marvin-landing .sample-sheet dl>div{display:flex;align-items:baseline;justify-content:space-between;gap:20px;padding:12px 0}.marvin-landing .sample-sheet dt{font-size:15px;color:var(--secondary)}.marvin-landing .sample-sheet dd{font-size:23px;letter-spacing:-.025em;margin:0;font-variant-numeric:tabular-nums}.marvin-landing .sample-sheet .missing-data{font-size:16px}.marvin-landing .missing-data,.marvin-landing .evidence-gap{color:#775522}.marvin-landing .example-next{display:flex;align-items:center;justify-content:space-between;gap:24px;width:100%;min-height:56px;margin-top:20px;padding:10px 0;border:0;background:transparent;color:var(--ink);font-size:16px;text-align:left;text-decoration:none}.marvin-landing .example-next span{font-size:24px;transition:transform .2s}.marvin-landing .example-next:hover span{transform:translateX(5px)}
-.marvin-landing .analysis-finding{display:grid;grid-template-columns:25px minmax(0,1fr);gap:14px;padding:17px 0}.marvin-landing .finding-mark{font-size:24px}.marvin-landing .finding-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.marvin-landing .finding-heading h3{font-size:18px;font-weight:500;letter-spacing:-.025em;margin:0}.marvin-landing .finding-heading>span{font-size:13px;color:var(--secondary)}.marvin-landing .analysis-finding p{margin:6px 0}.marvin-landing .source-link{padding:4px 0;background:transparent;border:0;color:var(--secondary);text-align:left;font-size:13px;text-decoration:underline;text-underline-offset:4px;min-height:32px}.marvin-landing .evidence-gap{font-size:13px}
-.marvin-landing .review-conversation{display:grid;grid-template-columns:28px 1fr;gap:14px;margin:28px 0}.marvin-landing .logo-tile{font:400 28px/1 var(--serif)}.marvin-landing .review-conversation p{margin:0;color:var(--ink);font-size:20px;line-height:1.45}.marvin-landing .example-choices{display:grid;gap:9px;margin:30px 0 22px}.marvin-landing .example-choices button{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:54px;padding:13px 17px;background:#c2d3d3;color:var(--ink);border:0;border-radius:3px;text-align:left;font-size:16px}.marvin-landing .example-choices button:hover,.marvin-landing .example-choices button[aria-pressed=true]{background:#abc8be}.marvin-landing .example-feedback{color:#285840!important}.marvin-landing .example-disclaimer{font-size:13px!important;margin:20px 0 8px}.marvin-landing .report-meta{font:400 22px var(--serif);display:flex;align-items:baseline;justify-content:space-between;gap:15px;margin-bottom:32px}.marvin-landing .report-meta span{font:13px var(--sans);color:var(--secondary)}.marvin-landing .report-preview h3{font-size:16px;font-weight:500;margin:25px 0 8px}.marvin-landing .report-preview p{margin:0}.marvin-landing .report-lead{font:400 23px/1.3 var(--serif)!important;color:var(--ink)!important}.marvin-landing .report-footnote{font-size:13px;margin-top:28px;color:var(--secondary)}
-.marvin-landing .bottom{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:32px 0 40px;font-size:13px;color:var(--muted)}.marvin-landing .bottom p{margin:0}.marvin-landing .footer-brand{font:400 28px/1 var(--serif);text-decoration:none;color:var(--text)}.marvin-landing .bottom>a:last-child{text-decoration:none}.marvin-landing .bottom>a:hover{color:var(--accent)}
-@keyframes dossier-enter{from{opacity:.5;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}@keyframes page-enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes margin-appear{from{opacity:0}to{opacity:1}}
-@media(max-width:1100px){.marvin-landing .wrap{width:calc(100% - 64px)}.marvin-landing .statement{grid-template-columns:1fr;gap:30px;padding:30px 0 40px}.marvin-landing h1{font-size:clamp(64px,9vw,96px)}.marvin-landing .statement-aside{display:flex;align-items:center;justify-content:space-between;gap:36px}.marvin-landing .statement-aside p{max-width:40ch;margin:0}.marvin-landing .dossier-layout{grid-template-columns:.58fr 1fr;gap:32px}.marvin-landing .example-body{padding:32px 28px 20px}.marvin-landing .example-body h2{font-size:36px}.marvin-landing .example-tabs button{font-size:30px}.marvin-landing .finding-heading{display:block}.marvin-landing .finding-heading>span{display:block;margin-top:4px}}
-@media(max-width:650px){.marvin-landing .wrap{width:calc(100% - 40px)}.marvin-landing .nav{height:84px}.marvin-landing .brand strong{font-size:28px}.marvin-landing .brand span{font-size:13px}.marvin-landing .open-link{font-size:13px}.marvin-landing .statement{padding:30px 0 34px;gap:23px}.marvin-landing h1{font-size:clamp(39px,10.8vw,66px);line-height:1.02;letter-spacing:-.045em}.marvin-landing .statement-aside{display:block;padding:0}.marvin-landing .statement-aside p{font-size:16px;max-width:34ch;margin-bottom:24px}.marvin-landing .mission-example{padding:15px 0 0}.marvin-landing .example-header{gap:10px;flex-wrap:wrap;margin-bottom:16px}.marvin-landing .example-header strong{font-size:17px}.marvin-landing .preview-label{display:none}.marvin-landing .dossier-layout{display:flex;flex-direction:column;gap:0}.marvin-landing .dossier-margin{padding:0;width:100%}.marvin-landing .example-tabs{flex-direction:row;justify-content:space-between;gap:4px;margin-bottom:18px}.marvin-landing .example-tabs button{font:400 14px/1.2 var(--sans);letter-spacing:0;gap:5px;min-height:44px;padding:8px 0}.marvin-landing .tab-dot{width:4px;height:4px;flex:none}.marvin-landing .margin-note,.marvin-landing .margin-disclaimer{display:none}.marvin-landing .example-body{width:calc(100% + 40px);margin-left:-20px;padding:28px 24px 18px}.marvin-landing .example-body h2{font-size:32px;max-width:24ch;margin-bottom:21px}.marvin-landing .sample-question{margin-bottom:24px}.marvin-landing .sample-sheet{padding:18px 16px}.marvin-landing .sheet-title{font-size:13px}.marvin-landing .sheet-title span:last-child{display:none}.marvin-landing .sample-sheet dt{font-size:14px}.marvin-landing .sample-sheet dd{font-size:21px}.marvin-landing .sample-sheet dl>div{gap:12px}.marvin-landing .sample-sheet .missing-data{font-size:14px}.marvin-landing .finding-heading h3{font-size:18px}.marvin-landing .analysis-finding{padding:14px 0;gap:9px}.marvin-landing .review-conversation p{font-size:20px}.marvin-landing .example-choices button{font-size:15px}.marvin-landing .bottom{display:grid;grid-template-columns:1fr auto;gap:20px;padding:30px 0}.marvin-landing .bottom p{grid-column:1/-1;grid-row:2;font-size:13px}.marvin-landing .report-meta{margin-bottom:24px}}
-@media(prefers-reduced-motion:reduce){.marvin-landing *{animation:none!important;transition:none!important}.marvin-landing .mission-cta:active{transform:none}}
-.marvin-landing .revenue-comparison{display:grid;gap:12px;margin:24px 0 12px}.marvin-landing .revenue-comparison>div{display:grid;grid-template-columns:40px 1fr;align-items:center;gap:12px;font-size:13px;color:var(--secondary)}.marvin-landing .revenue-bar{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;background:#c3d1d5;min-height:42px;transform-origin:left;animation:bar-enter .65s cubic-bezier(.16,1,.3,1) both}.marvin-landing .revenue-bar strong{font-size:17px;color:var(--ink);font-weight:500}.marvin-landing .revenue-bar.current{background:#b1cbbf}.marvin-landing .revenue-bar.current>span{font-size:16px;color:var(--ink)}@keyframes bar-enter{from{opacity:.3;transform:scaleX(.8)}to{opacity:1;transform:scaleX(1)}}
-@media(max-width:650px){.marvin-landing .margin-disclaimer{display:block;margin:0 0 18px;font-size:13px}}
+@font-face {
+  font-family: 'Marvin Newsreader';
+  src: url('/fonts/newsreader-latin-variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Marvin Geist';
+  src: url('/fonts/geist-latin-variable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+}
+.marvin-landing {
+  --ground: #0c1011;
+  --surface: #1b2729;
+  --paper: #e2eaeb;
+  --text: #f2f4f1;
+  --muted: #b1bcbd;
+  --ink: #19292e;
+  --secondary: #455c63;
+  --accent: #b9d8cb;
+  --serif: 'Marvin Newsreader', Georgia, serif;
+  --sans: 'Marvin Geist', Arial, sans-serif;
+  background: var(--ground);
+  color: var(--text);
+  font: 16px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+.marvin-landing * { box-sizing: border-box; }
+.marvin-landing a { color: inherit; text-underline-offset: 5px; }
+.marvin-landing button { font: inherit; cursor: pointer; }
+.marvin-landing button, .marvin-landing a { -webkit-tap-highlight-color: transparent; }
+.marvin-landing :is(button, a, [tabindex]):focus-visible { outline: 2px solid currentColor; outline-offset: 5px; }
+.marvin-landing ::selection { background: var(--accent); color: var(--ink); }
+.marvin-landing .wrap { width: min(1328px, calc(100% - 96px)); margin: auto; }
+.marvin-landing .nav { height: 108px; display: flex; align-items: center; justify-content: space-between; }
+.marvin-landing .brand { display: flex; align-items: baseline; gap: 15px; text-decoration: none; }
+.marvin-landing .brand strong { font: 400 32px/1 var(--serif); letter-spacing: -.04em; }
+.marvin-landing .brand span { font-size: 13px; color: var(--muted); }
+.marvin-landing .open-link { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; text-decoration: none; font-size: 14px; }
+.marvin-landing .open-link:hover { color: var(--accent); }
+.marvin-landing .open-link .mission-arrow { width: 17px; height: 17px; }
 
-.marvin-landing .example-intro{flex:1;min-width:0}.marvin-landing .example-intro strong{display:block;font-size:22px;color:var(--text)}.marvin-landing .example-intro p{font-size:16px;color:var(--muted);margin:5px 0 0}.marvin-landing .example-header{align-items:flex-start}@media(max-width:650px){.marvin-landing .example-intro strong{font-size:20px}.marvin-landing .example-intro p{font-size:15px;max-width:29ch}}
+/* One centered opening; the working example takes over the page below it. */
+.marvin-landing .statement { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 28px; padding: 34px 0 54px; }
+.marvin-landing h1 { font: 400 clamp(64px, 7.2vw, 104px)/.96 var(--serif); letter-spacing: -.045em; margin: 0; }
+.marvin-landing h1 span { display: block; white-space: nowrap; }
+.marvin-landing .statement-aside { display: flex; flex-direction: column; align-items: center; gap: 26px; }
+.marvin-landing .statement-aside p { font-size: 18px; line-height: 1.5; color: var(--muted); max-width: 49ch; margin: 0; text-wrap: balance; }
+.marvin-landing .hero-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.marvin-landing .mission-cta { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 226px; min-height: 56px; overflow: hidden; isolation: isolate; border: 0; border-radius: 3px; background: var(--accent); color: var(--ink); text-decoration: none; font-size: 16px; font-weight: 500; line-height: 1.2; transition: transform .2s; }
+.marvin-landing .mission-cta-dot { position: absolute; left: 23px; top: calc(50% - 4px); width: 8px; height: 8px; border-radius: 50%; background: var(--ink); transition: transform .35s cubic-bezier(.22, 1, .36, 1); }
+.marvin-landing .mission-cta-label { position: relative; transform: translateX(5px); transition: transform .3s, opacity .2s; }
+.marvin-landing .mission-cta-reveal { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--text); opacity: 0; transform: translateX(36px); transition: transform .3s, opacity .25s; }
+.marvin-landing .mission-cta-reveal svg { width: 20px; height: 20px; }
+.marvin-landing .mission-cta:is(:hover, :focus-visible) .mission-cta-dot { transform: scale(60); }
+.marvin-landing .mission-cta:is(:hover, :focus-visible) .mission-cta-label { transform: translateX(48px); opacity: 0; }
+.marvin-landing .mission-cta:is(:hover, :focus-visible) .mission-cta-reveal { transform: translateX(0); opacity: 1; }
+.marvin-landing .mission-cta:active { transform: scale(.98); }
+.marvin-landing .example-jump { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; font-size: 15px; color: var(--muted); text-decoration: none; }
+.marvin-landing .example-jump:hover { color: var(--text); }
+.marvin-landing .example-jump .mission-arrow { transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
+.marvin-landing .example-jump:hover .mission-arrow { transform: translateY(3px) rotate(90deg); }
 
-/* The opening reads as one proposition, then one action. */
-.marvin-landing .statement{display:flex;flex-direction:column;align-items:center;text-align:center;gap:26px;padding:30px 0 48px}.marvin-landing .statement h1{font-size:clamp(64px,7.2vw,104px)}.marvin-landing .statement-aside{display:flex;flex-direction:column;align-items:center;gap:24px;padding:0}.marvin-landing .statement-aside p{font-size:18px;max-width:49ch;margin:0;text-wrap:balance}.marvin-landing .hero-actions{display:flex;justify-content:center}.marvin-landing .example-intro strong{font-size:24px}.marvin-landing .stage-name{display:inline-block;color:var(--accent);animation:stage-name-enter .35s cubic-bezier(.16,1,.3,1) both}@keyframes stage-name-enter{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@media(max-width:650px){.marvin-landing .statement{padding:24px 0 34px;gap:23px}.marvin-landing .statement h1{font-size:clamp(39px,10.8vw,66px)}.marvin-landing .statement-aside{gap:23px}.marvin-landing .statement-aside p{font-size:16px;max-width:34ch}.marvin-landing .example-intro strong{font-size:20px}.marvin-landing .example-intro p{max-width:none}}
+.marvin-landing .mission-example { padding: 28px 0 24px; scroll-margin-top: 24px; }
+.marvin-landing .example-header { margin-bottom: 26px; }
+.marvin-landing .example-intro strong { display: block; font-size: 24px; font-weight: 400; }
+.marvin-landing .example-intro p { font-size: 16px; color: var(--muted); margin: 6px 0 0; }
+.marvin-landing .stage-name { display: inline-block; color: var(--accent); animation: stage-name-enter .35s cubic-bezier(.16, 1, .3, 1) both; }
+.marvin-landing .example-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 36px; }
+.marvin-landing .example-tabs button { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 54px; padding: 12px 16px; border: 0; background: transparent; color: var(--muted); font-size: 16px; text-align: left; transition: color .2s, background-color .2s; }
+.marvin-landing .example-tabs button[aria-selected=true] { color: var(--accent); background: var(--surface); }
+.marvin-landing .example-tabs button:hover { color: var(--text); background: var(--surface); }
+.marvin-landing .tab-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: currentColor; opacity: 0; transform: scale(.5); transition: opacity .2s, transform .2s; }
+.marvin-landing .example-tabs button[aria-selected=true] .tab-dot { opacity: 1; transform: scale(1); }
+.marvin-landing .dossier-layout { display: grid; grid-template-columns: minmax(0, .72fr) minmax(0, 1.65fr); gap: 72px; align-items: center; }
+.marvin-landing .dossier-margin { padding: 34px 0; animation: page-enter .38s cubic-bezier(.16, 1, .3, 1) both; }
+.marvin-landing .dossier-margin h2 { font: 400 clamp(34px, 3.35vw, 48px)/1.06 var(--serif); letter-spacing: -.035em; margin: 0; text-wrap: balance; }
+.marvin-landing .margin-note { max-width: 30ch; margin: 24px 0 0; color: var(--muted); font-size: 17px; line-height: 1.55; }
+.marvin-landing .example-body { min-width: 0; background: var(--paper); color: var(--ink); padding: 38px 42px 22px; animation: dossier-enter .8s cubic-bezier(.16, 1, .3, 1) both; }
+.marvin-landing .example-stage { animation: page-enter .38s cubic-bezier(.16, 1, .3, 1) both; }
+.marvin-landing .example-stage[hidden] { display: none; }
+.marvin-landing .example-body p { font-size: 16px; line-height: 1.55; color: var(--secondary); }
 
-.marvin-landing .mission-arrow{display:inline-block;flex:none;vertical-align:middle}.marvin-landing .mission-arrow-up-right{transform:rotate(-45deg)}.marvin-landing .mission-arrow-down{transform:rotate(90deg)}.marvin-landing .open-link{gap:10px}.marvin-landing .open-link .mission-arrow{width:17px;height:17px}.marvin-landing .hero-actions{flex-direction:column;align-items:center;gap:14px}.marvin-landing .example-jump{display:inline-flex;align-items:center;gap:9px;min-height:44px;font-size:15px;color:var(--muted);text-decoration:none}.marvin-landing .example-jump:hover{color:var(--text)}.marvin-landing .example-jump .mission-arrow{transition:transform .25s cubic-bezier(.16,1,.3,1)}.marvin-landing .example-jump:hover .mission-arrow{transform:translateY(3px) rotate(90deg)}.marvin-landing .mission-example{scroll-margin-top:24px}.marvin-landing .example-header{margin-bottom:22px}.marvin-landing .bottom>a:last-child{display:inline-flex;align-items:center;gap:8px}.marvin-landing .bottom .mission-arrow{width:16px;height:16px}
-@media(max-width:650px){.marvin-landing .statement{padding-bottom:22px}.marvin-landing .hero-actions{gap:8px}.marvin-landing .mission-example{scroll-margin-top:18px}}
+/* The source is a financial sheet, with its figures given the visual weight. */
+.marvin-landing .sheet-title { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 35px; font-size: 14px; color: var(--secondary); }
+.marvin-landing .sheet-title > span:first-child { display: inline-flex; align-items: center; gap: 12px; color: var(--ink); }
+.marvin-landing .sheet-title svg { flex: none; }
+.marvin-landing .sheet-title > span:last-child { font-size: 13px; }
+.marvin-landing .sample-sheet dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; margin: 0; }
+.marvin-landing .sample-sheet dl > div { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 20px; padding: 18px 0; }
+.marvin-landing .sample-sheet dl > .revenue-metric { grid-column: auto; flex-direction: column; gap: 6px; padding: 0 0 34px; }
+.marvin-landing .sample-sheet dt { font-size: 15px; color: var(--secondary); }
+.marvin-landing .sample-sheet dd { font-size: 24px; letter-spacing: -.025em; margin: 0; font-variant-numeric: tabular-nums; }
+.marvin-landing .sample-sheet .revenue-metric dd { font-size: clamp(36px, 3.5vw, 50px); line-height: 1.15; font-weight: 400; letter-spacing: -.04em; }
+.marvin-landing .sample-sheet .missing-data { font-size: 16px; }
+.marvin-landing .missing-data, .marvin-landing .evidence-gap { color: #775522; }
+.marvin-landing .example-next { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; margin-top: 24px; padding: 12px 0; border: 0; background: transparent; color: var(--ink); font-size: 16px; text-align: left; text-decoration: none; }
+.marvin-landing .example-next > .mission-arrow { width: 24px; height: 24px; transition: translate .2s; }
+.marvin-landing .example-next:hover > .mission-arrow { translate: 4px 0; }
+.marvin-landing .example-next:hover > .mission-arrow-down { translate: 0 3px; }
 
-html:has(.marvin-landing){scroll-behavior:smooth}@media(prefers-reduced-motion:reduce){html:has(.marvin-landing){scroll-behavior:auto}}
+.marvin-landing .revenue-comparison { display: grid; gap: 12px; margin: 0 0 20px; }
+.marvin-landing .revenue-comparison > div { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 14px; font-size: 14px; color: var(--secondary); }
+.marvin-landing .revenue-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #c5d5d9; min-height: 48px; transform-origin: left; animation: bar-enter .65s cubic-bezier(.16, 1, .3, 1) both; }
+.marvin-landing .revenue-bar strong { font-size: 19px; color: var(--ink); font-weight: 500; }
+.marvin-landing .revenue-bar.current { background: #b1cbbf; }
+.marvin-landing .revenue-bar.current > span { font-size: 16px; color: var(--ink); }
+.marvin-landing .analysis-finding { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 16px; padding: 18px 0; }
+.marvin-landing .finding-mark { display: flex; align-items: flex-start; padding-top: 1px; }
+.marvin-landing .finding-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.marvin-landing .finding-heading h3 { font-size: 18px; font-weight: 500; letter-spacing: -.025em; margin: 0; }
+.marvin-landing .finding-heading > span { font-size: 13px; color: var(--secondary); }
+.marvin-landing .analysis-finding p { margin: 6px 0; }
+.marvin-landing .source-link { padding: 5px 0; background: transparent; border: 0; color: var(--secondary); text-align: left; font-size: 14px; text-decoration: underline; text-underline-offset: 4px; min-height: 36px; }
+.marvin-landing .source-link .mission-arrow { width: 14px; height: 14px; margin-left: 4px; }
+.marvin-landing .evidence-gap { font-size: 14px; }
 
-.marvin-landing .finding-mark{display:flex;align-items:flex-start;padding-top:1px}.marvin-landing .source-link .mission-arrow{width:14px;height:14px;margin-left:4px}.marvin-landing .example-next>.mission-arrow{width:24px;height:24px;transition:translate .2s}.marvin-landing .example-next:hover>.mission-arrow{translate:4px 0}.marvin-landing .example-next:hover>.mission-arrow-down{translate:0 3px}
+.marvin-landing .review-conversation { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 18px; margin: 0 0 30px; }
+.marvin-landing .logo-tile { font: 400 34px/1 var(--serif); padding-top: 2px; }
+.marvin-landing .conversation-speaker { display: block; margin-bottom: 12px; font-size: 14px; color: var(--secondary); }
+.marvin-landing .review-conversation p { margin: 0; color: var(--ink); font-size: 23px; line-height: 1.45; letter-spacing: -.025em; }
+.marvin-landing .example-choices { display: grid; gap: 10px; margin: 0 0 20px 50px; }
+.marvin-landing .example-choices button { display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 56px; padding: 15px 18px; background: #c8d7d9; color: var(--ink); border: 0; border-radius: 3px; text-align: left; font-size: 16px; transition: background-color .2s; }
+.marvin-landing .example-choices button:first-child { background: var(--ink); color: var(--text); }
+.marvin-landing .example-choices button:hover, .marvin-landing .example-choices button[aria-pressed=true] { background: #b1cbbf; color: var(--ink); }
+.marvin-landing .example-feedback { color: #285840 !important; margin-left: 50px; }
+.marvin-landing .example-disclaimer { font-size: 13px !important; margin: 24px 0 8px 50px; }
+.marvin-landing .report-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 36px; font: 400 25px var(--serif); letter-spacing: -.025em; }
+.marvin-landing .report-meta span { font: 14px var(--sans); letter-spacing: 0; color: var(--secondary); }
+.marvin-landing .report-preview h3 { font-size: 16px; font-weight: 500; margin: 26px 0 8px; }
+.marvin-landing .report-preview .report-title { font: 400 44px/1.08 var(--serif); letter-spacing: -.035em; margin: 0 0 22px; }
+.marvin-landing .report-preview p { margin: 0; max-width: 59ch; }
+.marvin-landing .report-lead { font: 400 25px/1.3 var(--serif) !important; color: var(--ink) !important; }
+.marvin-landing .report-footnote { font-size: 13px; margin-top: 30px; color: var(--secondary); }
+.marvin-landing .bottom { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 36px 0 40px; font-size: 13px; color: var(--muted); }
+.marvin-landing .bottom p { margin: 0; }
+.marvin-landing .footer-brand { font: 400 28px/1 var(--serif); text-decoration: none; color: var(--text); }
+.marvin-landing .bottom > a:last-child { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; text-decoration: none; }
+.marvin-landing .bottom > a:hover { color: var(--accent); }
+.marvin-landing .bottom .mission-arrow { width: 16px; height: 16px; }
+.marvin-landing .mission-arrow { display: inline-block; flex: none; vertical-align: middle; }
+.marvin-landing .mission-arrow-up-right { transform: rotate(-45deg); }
+.marvin-landing .mission-arrow-down { transform: rotate(90deg); }
+
+@keyframes dossier-enter { from { opacity: .5; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes page-enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes stage-name-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes bar-enter { from { opacity: .3; transform: scaleX(.8); } to { opacity: 1; transform: scaleX(1); } }
+
+@media (max-width: 1100px) {
+  .marvin-landing .wrap { width: calc(100% - 64px); }
+  .marvin-landing .dossier-layout { grid-template-columns: minmax(0, .85fr) minmax(0, 1.5fr); gap: 40px; }
+  .marvin-landing .dossier-margin h2 { font-size: 36px; }
+  .marvin-landing .example-body { padding: 32px 30px 20px; }
+  .marvin-landing .finding-heading { display: block; }
+  .marvin-landing .finding-heading > span { display: block; margin-top: 4px; }
+}
+@media (max-width: 850px) {
+  .marvin-landing .statement { padding: 34px 0 48px; }
+  .marvin-landing h1 { font-size: clamp(54px, 9vw, 76px); }
+  .marvin-landing .dossier-layout { grid-template-columns: 1fr; gap: 28px; }
+  .marvin-landing .dossier-margin { padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  .marvin-landing .dossier-margin h2 { font-size: 38px; }
+  .marvin-landing .margin-note { margin: 0; font-size: 16px; max-width: 35ch; }
+  .marvin-landing .example-body { padding: 34px 36px 20px; }
+  .marvin-landing .sample-sheet .revenue-metric dd { font-size: 46px; }
+  .marvin-landing .finding-heading { display: flex; }
+  .marvin-landing .finding-heading > span { margin: 0; }
+}
+@media (max-width: 650px) {
+  .marvin-landing .wrap { width: calc(100% - 40px); }
+  .marvin-landing .nav { height: 84px; }
+  .marvin-landing .brand { gap: 13px; }
+  .marvin-landing .brand strong { font-size: 28px; }
+  .marvin-landing .open-link { font-size: 13px; }
+  .marvin-landing .statement { padding: 24px 0 32px; gap: 23px; }
+  .marvin-landing h1 { font-size: clamp(37px, 10.8vw, 66px); line-height: 1.02; }
+  .marvin-landing .statement-aside { gap: 23px; }
+  .marvin-landing .statement-aside p { font-size: 16px; max-width: 34ch; }
+  .marvin-landing .hero-actions { gap: 8px; }
+  .marvin-landing .mission-example { padding: 20px 0 0; scroll-margin-top: 18px; }
+  .marvin-landing .example-header { margin-bottom: 22px; }
+  .marvin-landing .example-intro strong { font-size: 20px; }
+  .marvin-landing .example-intro p { font-size: 15px; line-height: 1.5; max-width: none; }
+  .marvin-landing .example-tabs { gap: 4px; margin-bottom: 28px; }
+  .marvin-landing .example-tabs button { gap: 0; padding: 12px 3px; min-height: 48px; font-size: 14px; justify-content: center; }
+  .marvin-landing .tab-dot { display: none; }
+  .marvin-landing .dossier-layout { gap: 26px; }
+  .marvin-landing .dossier-margin { display: block; }
+  .marvin-landing .dossier-margin h2 { font-size: 34px; max-width: 22ch; }
+  .marvin-landing .margin-note { display: none; }
+  .marvin-landing .example-body { width: calc(100% + 40px); margin-left: -20px; padding: 28px 24px 18px; }
+  .marvin-landing .sheet-title { gap: 12px; font-size: 14px; margin-bottom: 30px; }
+  .marvin-landing .sheet-title > span:last-child { display: none; }
+  .marvin-landing .sample-sheet dl { gap: 0 20px; }
+  .marvin-landing .sample-sheet dl > div { gap: 12px; padding: 16px 0; }
+  .marvin-landing .sample-sheet dl > .revenue-metric { gap: 7px; padding: 0 0 26px; }
+  .marvin-landing .sample-sheet dt { font-size: 14px; }
+  .marvin-landing .sample-sheet dd { font-size: 21px; }
+  .marvin-landing .sample-sheet .revenue-metric dd { font-size: 37px; }
+  .marvin-landing .sample-sheet .missing-data { font-size: 14px; }
+  .marvin-landing .example-next { font-size: 16px; margin-top: 16px; }
+  .marvin-landing .revenue-comparison { margin-bottom: 16px; }
+  .marvin-landing .revenue-comparison > div { gap: 10px; }
+  .marvin-landing .revenue-bar { min-height: 44px; padding: 10px 12px; }
+  .marvin-landing .revenue-bar strong { font-size: 17px; }
+  .marvin-landing .analysis-finding { padding: 16px 0; gap: 10px; }
+  .marvin-landing .finding-heading { display: block; }
+  .marvin-landing .finding-heading h3 { font-size: 18px; }
+  .marvin-landing .finding-heading > span { display: block; margin-top: 4px; }
+  .marvin-landing .source-link { min-height: 44px; font-size: 13px; }
+  .marvin-landing .evidence-gap { font-size: 13px; }
+  .marvin-landing .review-conversation { grid-template-columns: 25px minmax(0, 1fr); gap: 13px; margin-bottom: 26px; }
+  .marvin-landing .logo-tile { font-size: 28px; }
+  .marvin-landing .conversation-speaker { margin-bottom: 10px; }
+  .marvin-landing .review-conversation p { font-size: 21px; }
+  .marvin-landing .example-choices { margin-left: 0; }
+  .marvin-landing .example-choices button { font-size: 15px; min-height: 56px; padding: 14px 16px; }
+  .marvin-landing .example-feedback, .marvin-landing .example-disclaimer { margin-left: 0; }
+  .marvin-landing .report-meta { margin-bottom: 28px; font-size: 23px; }
+  .marvin-landing .report-meta span { font-size: 13px; }
+  .marvin-landing .report-preview .report-title { font-size: 35px; }
+  .marvin-landing .report-lead { font-size: 23px !important; }
+  .marvin-landing .report-footnote { font-size: 13px; }
+  .marvin-landing .bottom { display: grid; grid-template-columns: 1fr auto; gap: 20px; padding: 26px 0; }
+  .marvin-landing .bottom p { grid-column: 1 / -1; grid-row: 2; font-size: 13px; }
+}
+@media (max-width: 370px) {
+  .marvin-landing .brand span { display: none; }
+  .marvin-landing .example-tabs button { font-size: 13px; }
+  .marvin-landing .sample-sheet .revenue-metric dd { font-size: 33px; }
+}
+html:has(.marvin-landing) { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html:has(.marvin-landing) { scroll-behavior: auto; }
+  .marvin-landing * { animation: none !important; transition: none !important; }
+  .marvin-landing .mission-cta:active { transform: none; }
+}
