@@ -376,7 +376,10 @@ export default function MissionDashboard({
   const [profileReady, setProfileReady] = useState(false);
   useEffect(() => {
     try {
-      setViewerName((localStorage.getItem(VIEWER_NAME_KEY) || "").trim().slice(0, 80));
+      const savedName = (localStorage.getItem(VIEWER_NAME_KEY) || "").trim().slice(0, 80);
+      const enteringFromHome = new URLSearchParams(window.location.search).get("welcome") === "1";
+      setNameDraft(savedName);
+      if (!enteringFromHome) setViewerName(savedName);
     } catch {
       // The name still works for this visit when browser storage is unavailable.
     }
