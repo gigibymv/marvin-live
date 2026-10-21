@@ -33,15 +33,16 @@ describe("Landing example playback", () => {
     advance(8000); selected("The brief");
   });
 
-  it("can pause, resume and stop on a manual selection", () => {
+  it("updates the example title, stops on a manual selection and resumes on leaving", () => {
     render(<Homepage />);
+    expect(screen.queryByRole("button", { name: /pause example|play example/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Interactive example:")).toHaveTextContent("the brief");
     advance(6000);
-    fireEvent.click(screen.getByRole("button", { name: "Pause example" }));
-    advance(60000); selected("The analysis");
-    fireEvent.click(screen.getByRole("button", { name: "Play example" }));
-    advance(8000); selected("Your review");
+    expect(screen.getByText("Interactive example:")).toHaveTextContent("the analysis");
     fireEvent.click(screen.getByRole("tab", { name: "The brief" }));
     advance(60000); selected("The brief");
+    fireEvent.mouseLeave(document.querySelector(".mission-example")!);
+    advance(6000); selected("The analysis");
   });
 
   it("stops while offscreen or in a hidden document", () => {
@@ -61,7 +62,6 @@ describe("Landing example playback", () => {
   it("respects reduced motion and keeps keyboard navigation usable", () => {
     reducedMotion = true;
     render(<Homepage />);
-    expect(screen.getByRole("button", { name: "Automatic playback disabled for reduced motion" })).toBeDisabled();
     advance(60000); selected("The brief");
     fireEvent.keyDown(screen.getByRole("tab", { name: "The brief" }), { key: "ArrowRight" });
     selected("The analysis");
