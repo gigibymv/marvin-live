@@ -24,11 +24,11 @@ export interface RightRailProps {
 // ─── Agent colors (mirrors CenterPane / LeftRail) ─────────────────────────────
 
 const AGENT_COLORS: Record<string, string> = {
-  dora: "#3B7FE0",
-  merlin: "#7C5CBF",
-  adversus: "#C0614A",
-  papyrus: "#B07D1A",
-  calculus: "#2D8A5A",
+  dora: "#85B3ED",
+  merlin: "#B8A0E1",
+  adversus: "#E6A18F",
+  papyrus: "var(--amber)",
+  calculus: "var(--green)",
 };
 
 const AGENT_NAME_RE = /^(MARVIN|Adversus|Dora|Calculus|Merlin|Papyrus)\s*[—–-]\s*/i;
@@ -40,8 +40,8 @@ function renderMessageText(raw: string, opts?: { onDark?: boolean }): React.Reac
   const name = m[1];
   const rest = text.slice(m[0].length);
   const onDark = opts?.onDark ?? false;
-  const color = AGENT_COLORS[name.toLowerCase()] ?? (onDark ? "rgba(244,240,234,.82)" : "var(--ink)");
-  const separatorColor = onDark ? "rgba(244,240,234,.55)" : "var(--ink3)";
+  const color = AGENT_COLORS[name.toLowerCase()] ?? (onDark ? "var(--ink2)" : "var(--ink)");
+  const separatorColor = onDark ? "var(--ink3)" : "var(--ink3)";
   return (
     <span style={{ whiteSpace: "pre-wrap" }}>
       <span style={{ fontWeight: 700, color }}>{name}</span>
@@ -96,14 +96,14 @@ export function RightRail({
   }
 
   return (
-    <aside style={{ borderLeft: "1px solid var(--ruleh)", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
+    <aside className="marvin-chat" style={{ borderLeft: "1px solid var(--ruleh)", display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
 
       {/* Header */}
       <div style={{ padding: 0, flexShrink: 0 }}>
         <div style={{
           padding: "14px 20px",
-          background: "var(--ink)",
-          color: "var(--paper)",
+          background: "var(--bone2)",
+          color: "var(--ink)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -111,7 +111,7 @@ export function RightRail({
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{
               width: 24, height: 24, borderRadius: 6,
-              background: "rgba(244,240,234,.12)",
+              background: "var(--ruleh)",
               display: "grid", placeItems: "center",
               fontFamily: "var(--d)", fontSize: 11, fontWeight: 700,
             }}>
@@ -119,14 +119,14 @@ export function RightRail({
             </div>
             <div>
               <div style={{ fontFamily: "var(--d)", fontSize: 13, fontWeight: 700, letterSpacing: ".02em" }}>MARVIN</div>
-              <Mono size={9} color="rgba(244,240,234,.35)" spacing=".06em">Mission orchestrator</Mono>
+              <Mono size={9} color="var(--muted)" spacing=".06em">Mission orchestrator</Mono>
             </div>
           </div>
 
           {/* Pulsing M + Connected label — shared primitive for consistency */}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <PulsingM color="#4ade80" size={10} />
-            <Mono size={9} weight={600} color="#4ade80" spacing=".08em">Connected</Mono>
+            <PulsingM color="var(--green)" size={10} />
+            <Mono size={9} weight={600} color="var(--green)" spacing=".08em">Connected</Mono>
           </div>
         </div>
       </div>
@@ -175,13 +175,13 @@ export function RightRail({
                 color: isUser
                   ? "var(--paper)"
                   : m.deliverableId
-                    ? "#4ade80"
+                    ? "var(--green)"
                     : "var(--ink2)",
                 background: isUser
                   ? "var(--ink)"
                   : m.deliverableId
-                    ? "#0a0a0a"
-                    : "white",
+                    ? "var(--paper)"
+                    : "var(--bone2)",
                 borderRadius: isUser ? "12px 12px 3px 12px" : "12px 12px 12px 3px",
                 boxShadow: isUser
                   ? "none"
@@ -199,12 +199,12 @@ export function RightRail({
                       alignSelf: "flex-start",
                       fontFamily: "var(--m)", fontSize: 9, fontWeight: 700,
                       letterSpacing: ".1em", textTransform: "uppercase",
-                      color: "#4ade80", background: "transparent",
-                      border: "1px solid rgba(74,222,128,.45)",
+                      color: "var(--green)", background: "transparent",
+                      border: "1px solid color-mix(in srgb, var(--green) 45%, transparent)",
                       padding: "5px 12px", borderRadius: 4, cursor: "pointer",
                       transition: "background .15s",
                     }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(74,222,128,.12)"; }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "color-mix(in srgb, var(--green) 12%, transparent)"; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                   >
                     Open {m.deliverableLabel ?? "deliverable"} →
@@ -234,10 +234,10 @@ export function RightRail({
                         textTransform: "uppercase", fontWeight: 700,
                         padding: "4px 10px", borderRadius: 4, cursor: "pointer",
                         background: "transparent",
-                        border: "1px solid rgba(45,110,78,.30)",
+                        border: "1px solid color-mix(in srgb, var(--green) 30%, transparent)",
                         color: "var(--green)",
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(45,110,78,.08)"; }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "color-mix(in srgb, var(--green) 8%, transparent)"; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                     >Approve →</button>
                     <button
@@ -247,10 +247,10 @@ export function RightRail({
                         textTransform: "uppercase", fontWeight: 700,
                         padding: "4px 10px", borderRadius: 4, cursor: "pointer",
                         background: "transparent",
-                        border: "1px solid rgba(160,40,40,.25)",
-                        color: "rgba(160,40,40,.8)",
+                        border: "1px solid color-mix(in srgb, var(--red) 25%, transparent)",
+                        color: "var(--red)",
                       }}
-                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(160,40,40,.06)"; }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "color-mix(in srgb, var(--red) 8%, transparent)"; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                     >Reject</button>
                   </div>
@@ -271,7 +271,7 @@ export function RightRail({
             }}>
               M
             </div>
-            <div style={{ maxWidth: "82%", padding: "10px 14px", background: "white", borderRadius: "12px 12px 12px 3px", boxShadow: "0 1px 3px rgba(26,24,20,.06)" }}>
+            <div style={{ maxWidth: "82%", padding: "10px 14px", background: "var(--bone2)", borderRadius: "12px 12px 12px 3px", boxShadow: "0 1px 3px rgba(26,24,20,.06)" }}>
               {currentNarration && (
                 <div style={{ fontSize: 12, lineHeight: 1.6, color: "var(--ink3)", marginBottom: 8 }}>
                   {humanizeText(currentNarration)}
@@ -297,7 +297,7 @@ export function RightRail({
       </div>
 
       {/* Input */}
-      <div style={{ background: "white", borderTop: "1px solid var(--ruleh)", flexShrink: 0 }}>
+      <div style={{ background: "var(--bone2)", borderTop: "1px solid var(--ruleh)", flexShrink: 0 }}>
         <div style={{ padding: "12px 16px 8px" }}>
           <textarea
             ref={inputRef}

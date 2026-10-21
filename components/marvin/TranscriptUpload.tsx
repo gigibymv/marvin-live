@@ -74,9 +74,9 @@ export default function TranscriptUpload({ missionId }: { missionId: string }) {
   }
 
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
+    <div className="marvin-data-panel" style={{ padding: 16, fontFamily: "var(--g)", overflowX: "auto" }}>
       <h2 style={{ marginTop: 0 }}>Expert Calls</h2>
-      {error && <div style={{ color: "#b00", marginBottom: 8 }}>error: {error}</div>}
+      {error && <div style={{ color: "var(--red)", marginBottom: 8 }}>error: {error}</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
         <input
@@ -115,7 +115,7 @@ export default function TranscriptUpload({ missionId }: { missionId: string }) {
 
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14, marginTop: 16 }}>
         <thead>
-          <tr style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
+          <tr style={{ borderBottom: "1px solid var(--ruleh)", textAlign: "left" }}>
             <th>Title</th>
             <th>Expert</th>
             <th>Role</th>
@@ -126,18 +126,18 @@ export default function TranscriptUpload({ missionId }: { missionId: string }) {
         </thead>
         <tbody>
           {items.map((t) => (
-            <tr key={t.id} style={{ borderBottom: "1px solid #eee" }}>
+            <tr key={t.id} style={{ borderBottom: "1px solid var(--rule)" }}>
               <td style={{ padding: "6px 0" }}>{t.title || "—"}</td>
               <td>{t.expert_name || "—"}</td>
               <td>{t.expert_role || "—"}</td>
               <td>{t.line_count ?? "—"}</td>
-              <td style={{ fontSize: 12, color: "#666" }}>
+              <td style={{ fontSize: 12, color: "var(--ink3)" }}>
                 {t.uploaded_at?.replace("T", " ").slice(0, 19) || ""}
               </td>
               <td>
                 <button
                   onClick={() => void remove(t.id)}
-                  style={{ fontSize: 12, color: "#b00", background: "none", border: "none", cursor: "pointer" }}
+                  style={{ fontSize: 12, color: "var(--red)", background: "none", border: "none", cursor: "pointer" }}
                 >
                   delete
                 </button>
@@ -146,7 +146,7 @@ export default function TranscriptUpload({ missionId }: { missionId: string }) {
           ))}
           {items.length === 0 && (
             <tr>
-              <td colSpan={6} style={{ padding: 12, color: "#888" }}>
+              <td colSpan={6} style={{ padding: 12, color: "var(--muted)" }}>
                 No transcripts yet.
               </td>
             </tr>

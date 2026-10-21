@@ -121,7 +121,7 @@ export interface PulsingMProps {
   active?: boolean;
 }
 
-export function PulsingM({ color = "#4ade80", size = 10, active = true }: PulsingMProps): React.ReactElement {
+export function PulsingM({ color = "var(--green)", size = 10, active = true }: PulsingMProps): React.ReactElement {
   return (
     <span
       style={{
@@ -196,9 +196,9 @@ export function Badge({ children, color = "var(--muted)", filled = false }: Badg
         fontWeight: 600,
         letterSpacing: ".08em",
         textTransform: "uppercase",
-        color: filled ? "white" : color,
+        color: filled ? "var(--paper)" : color,
         background: filled ? color : "transparent",
-        border: filled ? "none" : `1px solid ${color}55`,
+        border: filled ? "none" : `1px solid color-mix(in srgb, ${color} 40%, transparent)`,
         padding: "2px 7px",
         borderRadius: 4,
         display: "inline-block",

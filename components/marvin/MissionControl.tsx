@@ -386,23 +386,23 @@ function TransientFailureBanner({
         top: "16px",
         right: "16px",
         width: "min(420px, calc(100vw - 32px))",
-        background: "#fff5f5",
-        border: "1px solid #f5b5b5",
+        background: "var(--bone)",
+        border: "1px solid var(--red)",
         borderRadius: "10px",
         boxShadow: "0 12px 32px rgba(120, 30, 30, .18)",
         padding: "14px 16px",
         zIndex: 950,
       }}
     >
-      <div style={{ fontWeight: 600, color: "#8a1d1d", marginBottom: "4px" }}>
+      <div style={{ fontWeight: 600, color: "var(--red)", marginBottom: "4px" }}>
         {agentLabel} failed — upstream LLM unavailable
       </div>
-      <div style={{ fontSize: "13px", color: "#5a2222", marginBottom: "10px" }}>
+      <div style={{ fontSize: "13px", color: "var(--ink2)", marginBottom: "10px" }}>
         {cause} · {attempts} attempts. Click Rerun {agentLabel} to retry from
         this node only — research is not replayed.
       </div>
       {error ? (
-        <div style={{ fontSize: "12px", color: "#7a1d1d", marginBottom: "8px" }}>
+        <div style={{ fontSize: "12px", color: "var(--red)", marginBottom: "8px" }}>
           {error}
         </div>
       ) : null}
@@ -411,8 +411,9 @@ function TransientFailureBanner({
         onClick={handleRerun}
         disabled={submitting}
         style={{
-          background: submitting ? "#d49797" : "#b03434",
-          color: "#fff",
+          background: "var(--red)",
+          opacity: submitting ? 0.65 : 1,
+          color: "var(--paper)",
           border: 0,
           borderRadius: "6px",
           padding: "8px 14px",
@@ -1962,9 +1963,9 @@ export default function MissionControl({
           minHeight: "100vh",
           display: "grid",
           placeItems: "center",
-          background: "#f4f0ea",
+          background: "var(--paper)",
           padding: "24px",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "var(--g)",
         }}
       >
         <div style={{ maxWidth: "420px", textAlign: "center" }}>
@@ -1985,15 +1986,15 @@ export default function MissionControl({
           minHeight: "100vh",
           display: "grid",
           placeItems: "center",
-          background: "#f4f0ea",
+          background: "var(--paper)",
           padding: "24px",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "var(--g)",
         }}
       >
         <div style={{ maxWidth: "420px", textAlign: "center" }}>
           <h1 style={{ margin: "0 0 12px", fontSize: "28px" }}>Mission not found</h1>
           <p style={{ margin: "0 0 16px", lineHeight: 1.6 }}>
-            The URL mission id is valid route authority, but no matching mission record exists.
+            This mission is no longer available. Demo missions can be cleared after inactivity or a server restart.
           </p>
           <Link href="/missions">Return to missions</Link>
         </div>
@@ -2845,10 +2846,10 @@ export default function MissionControl({
             transform: "translateX(-50%)",
             bottom: "24px",
             width: "min(640px, calc(100vw - 32px))",
-            background: "#fffaf2",
-            border: "1px solid #e5dccd",
+            background: "var(--bone)",
+            border: "1px solid var(--ruleh)",
             borderRadius: "12px",
-            boxShadow: "0 18px 48px rgba(26,24,20,.18)",
+            boxShadow: "0 18px 48px rgba(0,0,0,.3)",
             padding: "18px 20px",
             zIndex: 900,
           }}
@@ -2863,12 +2864,12 @@ export default function MissionControl({
           >
             <div
               style={{
-                fontFamily: "system-ui",
+                fontFamily: "var(--g)",
                 fontSize: "11px",
                 fontWeight: 600,
                 letterSpacing: "0.14em",
                 textTransform: "uppercase",
-                color: "#8a8784",
+                color: "var(--muted)",
               }}
             >
               MARVIN needs context · Round {clarificationGate.round ?? 1} of{" "}
@@ -2881,9 +2882,9 @@ export default function MissionControl({
                 <label
                   style={{
                     display: "block",
-                    fontFamily: "Georgia, serif",
+                    fontFamily: "var(--g)",
                     fontSize: "14px",
-                    color: "#3a362f",
+                    color: "var(--ink2)",
                     marginBottom: "6px",
                   }}
                 >
@@ -2902,12 +2903,13 @@ export default function MissionControl({
                     width: "100%",
                     boxSizing: "border-box",
                     padding: "8px 10px",
-                    fontFamily: "system-ui",
+                    fontFamily: "var(--g)",
                     fontSize: "13px",
-                    border: "1px solid #ddd2bd",
+                    border: "1px solid var(--ruleh)",
                     borderRadius: "8px",
                     resize: "vertical",
-                    background: "#fffefb",
+                    background: "var(--paper)",
+                    color: "var(--ink)",
                   }}
                 />
               </div>
@@ -2919,12 +2921,12 @@ export default function MissionControl({
               onClick={handleClarificationSubmit}
               disabled={clarificationSubmitting}
               style={{
-                background: "#1f3b2c",
-                color: "#fffefb",
+                background: "var(--action-bg)",
+                color: "var(--action-text)",
                 border: "none",
                 borderRadius: "8px",
                 padding: "9px 16px",
-                fontFamily: "system-ui",
+                fontFamily: "var(--g)",
                 fontSize: "13px",
                 cursor: clarificationSubmitting ? "wait" : "pointer",
                 opacity: clarificationSubmitting ? 0.7 : 1,
@@ -2957,10 +2959,10 @@ export default function MissionControl({
             style={{
               width: "100%",
               maxWidth: "540px",
-              background: "#f9f7f4",
-              border: "1px solid #e5e2de",
+              background: "var(--bone)",
+              border: "1px solid var(--rule)",
               borderRadius: "14px",
-              boxShadow: "0 32px 80px rgba(26,24,20,.22)",
+              boxShadow: "0 32px 80px rgba(0,0,0,.4)",
               display: "flex",
               flexDirection: "column",
               maxHeight: "80vh",
@@ -2990,7 +2992,7 @@ export default function MissionControl({
                       fontWeight: 600,
                       letterSpacing: "0.14em",
                       textTransform: "uppercase",
-                      color: "#8a8784",
+                      color: "var(--muted)",
                       marginBottom: "5px",
                     }}
                   >
@@ -3014,7 +3016,7 @@ export default function MissionControl({
                     background: "none",
                     border: "none",
                     cursor: "pointer",
-                    color: "#8a8784",
+                    color: "var(--muted)",
                     display: "flex",
                   }}
                 >
@@ -3045,7 +3047,7 @@ export default function MissionControl({
                     fontSize: "9px",
                     letterSpacing: "0.14em",
                     textTransform: "uppercase",
-                    color: "#8a8784",
+                    color: "var(--muted)",
                     marginBottom: "10px",
                   }}
                 >
@@ -3057,7 +3059,7 @@ export default function MissionControl({
                 style={{
                   fontSize: "13px",
                   lineHeight: 1.6,
-                  color: "#3a362f",
+                  color: "var(--ink2)",
                   marginBottom: "14px",
                 }}
               >
@@ -3065,17 +3067,17 @@ export default function MissionControl({
               </p>
 
               {gateModal.framing && (
-                <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
-                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
+                <div style={{ marginBottom: "14px", border: "1px solid var(--rule)", borderRadius: "8px", padding: "10px 12px", background: "var(--paper)" }}>
+                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink3)", marginBottom: "6px" }}>
                     Framing summary
                   </div>
                   {gateModal.framing.briefSummary && (
-                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "6px" }}>
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--ink2)", marginBottom: "6px" }}>
                       {gateModal.framing.briefSummary}
                     </div>
                   )}
                   {gateModal.framing.missionAngle && (
-                    <div style={{ fontSize: "11px", lineHeight: 1.5, color: "#78716A" }}>
+                    <div style={{ fontSize: "11px", lineHeight: 1.5, color: "var(--muted)" }}>
                       Angle: {gateModal.framing.missionAngle}
                     </div>
                   )}
@@ -3083,16 +3085,16 @@ export default function MissionControl({
               )}
 
               {gateModal.coverage && (
-                <div style={{ marginBottom: "14px", border: "1px solid #e5e2de", borderRadius: "8px", padding: "10px 12px", background: "#fff" }}>
-                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#5a5854", marginBottom: "6px" }}>
+                <div style={{ marginBottom: "14px", border: "1px solid var(--rule)", borderRadius: "8px", padding: "10px 12px", background: "var(--paper)" }}>
+                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink3)", marginBottom: "6px" }}>
                     Research coverage
                   </div>
-                  <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: "8px" }}>
+                  <div style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--ink2)", marginBottom: "8px" }}>
                     {gateModal.coverage.findings_total} findings across {gateModal.coverage.workstreams_with_material}/{gateModal.coverage.workstreams_total} workstreams · {gateModal.coverage.milestones_delivered}/{gateModal.coverage.milestones_total} milestones delivered
                   </div>
                   <div style={{ display: "grid", gap: "4px" }}>
                     {gateModal.coverage.workstreams.map((w) => (
-                      <div key={w.id} style={{ display: "flex", justifyContent: "space-between", gap: "10px", fontSize: "11px", color: "#5a5854" }}>
+                      <div key={w.id} style={{ display: "flex", justifyContent: "space-between", gap: "10px", fontSize: "11px", color: "var(--ink3)" }}>
                         <span>{w.id} · {w.label}</span>
                         <span>{w.findings_total} findings · {w.milestones_delivered}/{w.milestones_total}</span>
                       </div>
@@ -3102,21 +3104,21 @@ export default function MissionControl({
               )}
 
               {gateModal.merlinVerdict && (
-                <div style={{ marginBottom: "14px", border: "1px solid #d5e2d8", borderRadius: "8px", padding: "10px 12px", background: "rgba(45,110,78,.06)" }}>
-                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2D6E4E", marginBottom: "6px" }}>
+                <div style={{ marginBottom: "14px", border: "1px solid var(--ruleh)", borderRadius: "8px", padding: "10px 12px", background: "color-mix(in srgb, var(--green) 6%, transparent)" }}>
+                  <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--green)", marginBottom: "6px" }}>
                     Merlin verdict · {gateModal.merlinVerdict.label || humanizeVerdict(gateModal.merlinVerdict.verdict)}
                   </div>
                   {gateModal.merlinVerdict.final_thesis && (
-                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", fontStyle: "italic", borderLeft: "2px solid #2D6E4E", paddingLeft: "8px", marginBottom: "8px" }}>
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--ink2)", fontStyle: "italic", marginBottom: "8px" }}>
                       &ldquo;{gateModal.merlinVerdict.final_thesis}&rdquo;
                     </div>
                   )}
                   {gateModal.merlinVerdict.conditions && gateModal.merlinVerdict.conditions.length > 0 && (
                     <div style={{ marginBottom: "8px" }}>
-                      <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#5a5854", marginBottom: "4px" }}>
+                      <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink3)", marginBottom: "4px" }}>
                         Conditions
                       </div>
-                      <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11px", lineHeight: 1.5, color: "#3a362f" }}>
+                      <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11px", lineHeight: 1.5, color: "var(--ink2)" }}>
                         {gateModal.merlinVerdict.conditions.map((c, i) => (
                           <li key={`cond-${i}`}>{c}</li>
                         ))}
@@ -3125,10 +3127,10 @@ export default function MissionControl({
                   )}
                   {gateModal.merlinVerdict.deal_breakers && gateModal.merlinVerdict.deal_breakers.length > 0 && (
                     <div style={{ marginBottom: "8px" }}>
-                      <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#8B3A3A", marginBottom: "4px" }}>
+                      <div style={{ fontFamily: '"Geist Mono", monospace', fontSize: "9px", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--red)", marginBottom: "4px" }}>
                         Deal breakers
                       </div>
-                      <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11px", lineHeight: 1.5, color: "#3a362f" }}>
+                      <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11px", lineHeight: 1.5, color: "var(--ink2)" }}>
                         {gateModal.merlinVerdict.deal_breakers.map((d, i) => (
                           <li key={`db-${i}`}>{d}</li>
                         ))}
@@ -3136,19 +3138,19 @@ export default function MissionControl({
                     </div>
                   )}
                   {gateModal.merlinVerdict.recommendedAction && (
-                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f", marginBottom: gateModal.merlinVerdict.notes ? "6px" : 0 }}>
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--ink2)", marginBottom: gateModal.merlinVerdict.notes ? "6px" : 0 }}>
                       {gateModal.merlinVerdict.recommendedAction}
                     </div>
                   )}
                   {gateModal.merlinVerdict.notes && (
-                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                    <div style={{ fontSize: "12px", lineHeight: 1.5, color: "var(--ink2)" }}>
                       {stripVerdictScaffolding(gateModal.merlinVerdict.notes)}
                     </div>
                   )}
                   {gateModal.merlinVerdict.recommendedActions && gateModal.merlinVerdict.recommendedActions.length > 0 && (
                     <div style={{ marginTop: "8px", display: "grid", gap: "4px" }}>
                       {gateModal.merlinVerdict.recommendedActions.map((action, index) => (
-                        <div key={`${action}-${index}`} style={{ fontSize: "11px", lineHeight: 1.45, color: "#3a362f" }}>
+                        <div key={`${action}-${index}`} style={{ fontSize: "11px", lineHeight: 1.45, color: "var(--ink2)" }}>
                           - {action}
                         </div>
                       ))}
@@ -3157,7 +3159,7 @@ export default function MissionControl({
                   {gateModal.merlinVerdict.hypothesisUpdates && gateModal.merlinVerdict.hypothesisUpdates.length > 0 && (
                     <div style={{ marginTop: "10px", display: "grid", gap: "6px" }}>
                       {gateModal.merlinVerdict.hypothesisUpdates.map((update) => (
-                        <div key={`${update.hypothesisLabel}-${update.nextStatus}`} style={{ fontSize: "11px", lineHeight: 1.45, color: "#3a362f" }}>
+                        <div key={`${update.hypothesisLabel}-${update.nextStatus}`} style={{ fontSize: "11px", lineHeight: 1.45, color: "var(--ink2)" }}>
                           <strong>{update.hypothesisLabel}</strong> · {humanizeText(update.nextStatus)}<br />
                           {update.why}
                         </div>
@@ -3170,21 +3172,21 @@ export default function MissionControl({
               {(gateModal.unlocksOnApprove || gateModal.unlocksOnReject) && (
                 <div
                   style={{
-                    border: "1px solid #e5e2de",
+                    border: "1px solid var(--rule)",
                     borderRadius: "8px",
                     padding: "10px 12px",
                     marginBottom: "14px",
-                    background: "#fff",
+                    background: "var(--paper)",
                   }}
                 >
                   {gateModal.unlocksOnApprove && (
-                    <div style={{ fontSize: "12px", color: "#3a362f", marginBottom: gateModal.unlocksOnReject ? "6px" : 0 }}>
-                      <strong style={{ color: "#2D6E4E" }}>Approve →</strong> {gateModal.unlocksOnApprove}
+                    <div style={{ fontSize: "12px", color: "var(--ink2)", marginBottom: gateModal.unlocksOnReject ? "6px" : 0 }}>
+                      <strong style={{ color: "var(--green)" }}>Approve →</strong> {gateModal.unlocksOnApprove}
                     </div>
                   )}
                   {gateModal.unlocksOnReject && (
-                    <div style={{ fontSize: "12px", color: "#3a362f" }}>
-                      <strong style={{ color: "#8B6200" }}>Reject →</strong> {gateModal.unlocksOnReject}
+                    <div style={{ fontSize: "12px", color: "var(--ink2)" }}>
+                      <strong style={{ color: "var(--amber)" }}>Reject →</strong> {gateModal.unlocksOnReject}
                     </div>
                   )}
                 </div>
@@ -3199,18 +3201,18 @@ export default function MissionControl({
                       fontWeight: 700,
                       letterSpacing: "0.14em",
                       textTransform: "uppercase",
-                      color: "#5a5854",
+                      color: "var(--ink3)",
                       marginBottom: "6px",
                     }}
                   >
                     Hypotheses ({gateModal.hypotheses.length})
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "var(--ink2)" }}>
                     {gateModal.hypotheses.map((h) => (
                       <li key={h.id} style={{ marginBottom: "4px" }}>
                         {h.text}
                         {h.status && h.status !== "open" && (
-                          <span style={{ color: "#78716A", marginLeft: "6px", fontSize: "10px" }}>· {h.status}</span>
+                          <span style={{ color: "var(--muted)", marginLeft: "6px", fontSize: "10px" }}>· {h.status}</span>
                         )}
                       </li>
                     ))}
@@ -3227,17 +3229,17 @@ export default function MissionControl({
                       fontWeight: 700,
                       letterSpacing: "0.14em",
                       textTransform: "uppercase",
-                      color: "#5a5854",
+                      color: "var(--ink3)",
                       marginBottom: "6px",
                     }}
                   >
                     Recent claims{typeof gateModal.findingsTotal === "number" ? ` (showing ${gateModal.researchFindings.length} of ${gateModal.findingsTotal})` : ""}
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "var(--ink2)" }}>
                     {gateModal.researchFindings.map((f, i) => (
                       <li key={`${f.agent_id ?? "x"}-${i}`} style={{ marginBottom: "4px" }}>
                         {f.claim_text}
-                        <span style={{ color: "#78716A", marginLeft: "6px", fontSize: "10px" }}>
+                        <span style={{ color: "var(--muted)", marginLeft: "6px", fontSize: "10px" }}>
                           {f.agent_id ?? "agent"}{f.confidence ? ` · ${f.confidence}` : ""}
                         </span>
                       </li>
@@ -3247,7 +3249,7 @@ export default function MissionControl({
               )}
 
               {gateModal.redteamFindings && gateModal.redteamFindings.length > 0 && (
-                <div style={{ marginBottom: "14px", border: "1px solid rgba(139,98,0,0.3)", borderRadius: "8px", padding: "10px 12px", background: "rgba(139,98,0,.05)" }}>
+                <div style={{ marginBottom: "14px", border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)", borderRadius: "8px", padding: "10px 12px", background: "color-mix(in srgb, var(--amber) 6%, transparent)" }}>
                   <div
                     style={{
                       fontFamily: '"Geist Mono", monospace',
@@ -3255,13 +3257,13 @@ export default function MissionControl({
                       fontWeight: 700,
                       letterSpacing: "0.14em",
                       textTransform: "uppercase",
-                      color: "#8B6200",
+                      color: "var(--amber)",
                       marginBottom: "6px",
                     }}
                   >
                     Red-team challenges
                   </div>
-                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "#3a362f" }}>
+                  <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: 1.5, color: "var(--ink2)" }}>
                     {gateModal.redteamFindings.map((f, i) => (
                       <li key={`rt-${i}`}>{f.claim_text}</li>
                     ))}
@@ -3270,7 +3272,7 @@ export default function MissionControl({
               )}
 
               {gateModal.openRisks && gateModal.openRisks.length > 0 && (
-                <div style={{ marginBottom: "14px", color: "#8B6200", fontSize: "12px", lineHeight: 1.5 }}>
+                <div style={{ marginBottom: "14px", color: "var(--amber)", fontSize: "12px", lineHeight: 1.5 }}>
                   <strong>Open risks:</strong>
                   <ul style={{ margin: "4px 0 0", paddingLeft: "16px" }}>
                     {gateModal.openRisks.map((risk, i) => (
@@ -3281,7 +3283,7 @@ export default function MissionControl({
               )}
 
               {gateModal.arbiterFlags && gateModal.arbiterFlags.length > 0 && (
-                <div style={{ marginBottom: "14px", color: "#8B6200", fontSize: "12px", lineHeight: 1.5 }}>
+                <div style={{ marginBottom: "14px", color: "var(--amber)", fontSize: "12px", lineHeight: 1.5 }}>
                   <strong>Consistency checks:</strong>
                   <ul style={{ margin: "4px 0 0", paddingLeft: "16px" }}>
                     {gateModal.arbiterFlags.map((flag, i) => (
@@ -3297,8 +3299,8 @@ export default function MissionControl({
               style={{
                 flexShrink: 0,
                 padding: "14px 24px 22px",
-                borderTop: "1px solid #e5e2de",
-                background: "#f9f7f4",
+                borderTop: "1px solid var(--rule)",
+                background: "var(--bone)",
               }}
             >
               {gateModal.format === "data_decision" && gateModal.options && gateModal.options.length > 0 ? (
@@ -3314,18 +3316,18 @@ export default function MissionControl({
                       style={{
                         textAlign: "left",
                         padding: "12px 14px",
-                        background: "#fff",
-                        border: "1px solid #d5d2ce",
+                        background: "var(--paper)",
+                        border: "1px solid var(--ruleh)",
                         borderRadius: "8px",
                         cursor: "pointer",
                         fontFamily: '"Geist Mono", monospace',
                       }}
                     >
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: "#1a1814", marginBottom: "4px" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--ink)", marginBottom: "4px" }}>
                         {opt.label}
                       </div>
                       {opt.consequence && (
-                        <div style={{ fontSize: "12px", color: "#5a5854", lineHeight: 1.4 }}>
+                        <div style={{ fontSize: "12px", color: "var(--ink3)", lineHeight: 1.4 }}>
                           {opt.consequence}
                         </div>
                       )}
@@ -3342,7 +3344,7 @@ export default function MissionControl({
                       cursor: "pointer",
                       fontFamily: '"Geist Mono", monospace',
                       fontSize: "12px",
-                      color: "#78716A",
+                      color: "var(--muted)",
                       textDecoration: "underline",
                     }}
                   >
@@ -3360,7 +3362,7 @@ export default function MissionControl({
                     cursor: "pointer",
                     fontFamily: '"Geist Mono", monospace',
                     fontSize: "12px",
-                    color: "#78716A",
+                    color: "var(--muted)",
                     textDecoration: "underline",
                   }}
                   title="Close without losing the pending gate. Use the banner Approve/Reject to decide."

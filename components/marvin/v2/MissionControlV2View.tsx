@@ -319,9 +319,10 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
 
   return (
     <div
+      className="marvin-workspace"
       style={{
         display: "grid",
-        gridTemplateColumns: "256px 1fr 310px",
+        gridTemplateColumns: "256px minmax(0, 1fr) 310px",
         height: "100vh",
         width: "100%",
         overflow: "hidden",
@@ -337,15 +338,16 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
         onSelectHypothesis={onSelectHypothesis}
       />
 
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div className="marvin-main" style={{ position: "relative", display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
         {banner && (
           <div
             role="region"
             aria-label="Gate review pending"
+            className="marvin-gate-banner"
             style={{
               padding: "10px 24px",
-              background: "rgba(139,98,0,.10)",
-              borderBottom: "1px solid rgba(139,98,0,.30)",
+              background: "color-mix(in srgb, var(--amber) 10%, transparent)",
+              borderBottom: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
               display: "flex",
               alignItems: "center",
               gap: 12,

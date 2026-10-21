@@ -79,30 +79,30 @@ function MissionCard({ mission }: { mission: MissionCardData }): React.ReactElem
   const pct = Math.round(ratio * 100);
 
   return (
-    <div style={{ padding: "20px 20px 18px", background: "var(--ink)", color: "var(--paper)" }}>
+    <div style={{ padding: "20px 20px 18px", background: "var(--bone2)", color: "var(--ink)" }}>
       <a
         href="/missions"
         style={{
           display: "inline-flex", alignItems: "center", gap: 5,
           fontFamily: "var(--m)", fontSize: 9, letterSpacing: ".06em",
-          color: "rgba(244,240,234,.4)", textDecoration: "none", marginBottom: 14,
+          color: "var(--muted)", textDecoration: "none", marginBottom: 14,
         }}
       >
-        <Icon id="back" size={10} color="rgba(244,240,234,.4)" /> Missions
+        <Icon id="back" size={10} color="var(--muted)" /> Missions
       </a>
       <div style={{ fontFamily: "var(--d)", fontSize: 18, fontWeight: 700, letterSpacing: "-.025em", lineHeight: 1.15, marginBottom: 3 }}>
         {mission.name}
       </div>
-      <Mono size={9} color="rgba(244,240,234,.45)" spacing=".06em">{mission.client}</Mono>
+      <Mono size={9} color="var(--ink3)" spacing=".06em">{mission.client}</Mono>
       <div style={{ marginTop: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <PulsingM color={isRunning ? "#4ade80" : "rgba(244,240,234,.3)"} size={10} active={isRunning} />
-            <Mono size={9} weight={600} color={isRunning ? "#4ade80" : "rgba(244,240,234,.5)"}>{mission.statusLabel}</Mono>
+            <PulsingM color={isRunning ? "var(--green)" : "var(--muted)"} size={10} active={isRunning} />
+            <Mono size={9} weight={600} color={isRunning ? "var(--green)" : "var(--ink3)"}>{mission.statusLabel}</Mono>
           </div>
-          <span style={{ fontFamily: "var(--d)", fontSize: 20, fontWeight: 700, color: "var(--paper)", letterSpacing: "-.02em" }}>{pct}%</span>
+          <span style={{ fontFamily: "var(--d)", fontSize: 20, fontWeight: 700, color: "var(--ink)", letterSpacing: "-.02em" }}>{pct}%</span>
         </div>
-        <ProgressBar pct={pct} color="#4ade80" height={3} bg="rgba(244,240,234,.12)" />
+        <ProgressBar pct={pct} color="var(--green)" height={3} bg="var(--ruleh)" />
       </div>
     </div>
   );
@@ -177,9 +177,9 @@ function HypothesesRail({
               padding: "6px 0",
               borderBottom: "1px solid var(--rule)",
               cursor: "pointer",
-              background: isSelected ? "rgba(26,24,20,.04)" : "transparent",
-              borderLeft: isSelected ? "2px solid var(--ink)" : "2px solid transparent",
-              paddingLeft: isSelected ? 6 : 0,
+              background: isSelected ? "var(--bone2)" : "transparent",
+              borderLeft: "none",
+              paddingLeft: 6,
               transition: "background .12s cubic-bezier(0.16,1,0.3,1)",
             }}
           >
@@ -271,11 +271,11 @@ function DeliverablesRail({ deliverables }: { deliverables: LeftRailDeliverable[
 // ─── AgentsRail ───────────────────────────────────────────────────────────────
 
 const AGENT_ACTIVE_COLORS: Record<string, string> = {
-  dora: "#3B7FE0",
-  merlin: "#7C5CBF",
-  adversus: "#C0614A",
-  papyrus: "#B07D1A",
-  calculus: "#2D8A5A",
+  dora: "#85B3ED",
+  merlin: "#B8A0E1",
+  adversus: "#E6A18F",
+  papyrus: "var(--amber)",
+  calculus: "var(--green)",
 };
 
 function AgentsRail({ agents }: { agents: AgentData[] }): React.ReactElement {
@@ -336,7 +336,7 @@ export function LeftRail({ mission, agents, hypotheses, deliverables, selectedHy
   }));
 
   return (
-    <aside style={{
+    <aside className="marvin-context" style={{
       background: "var(--bone)",
       borderRight: "1px solid var(--ruleh)",
       display: "flex",

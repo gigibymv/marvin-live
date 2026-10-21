@@ -1,23 +1,4 @@
-/* mc v2 design tokens */
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500;600&display=swap');
-
-:root {
-  --paper: #f4f0ea;
-  --bone:  #ede9e2;
-  --ink:   #1a1814;
-  --ink2:  #3a3630;
-  --ink3:  #6b6560;
-  --muted: #9e9890;
-  --rule:  rgba(26,24,20,.08);
-  --ruleh: rgba(26,24,20,.14);
-  --green: #2d6e4e;
-  --amber: #b45309;
-  --red:   #b91c1c;
-  --d: "Bricolage Grotesque", system-ui, sans-serif;
-  --g: "Geist", -apple-system, system-ui, sans-serif;
-  --m: "Geist Mono", ui-monospace, monospace;
-}
-
+/* Workspace motion and layout. Shared palette and type live in globals.css. */
 @keyframes blink {
   0%, 100% { opacity: 0.25; }
   50%       { opacity: 1;    }
@@ -30,4 +11,88 @@
 
 @keyframes marvin-spin {
   to { transform: rotate(360deg); }
+}
+
+.marvin-workspace {
+  color: var(--ink);
+  font-family: var(--g);
+  grid-template-columns: 256px minmax(0, 1fr) 310px;
+  height: 100svh;
+}
+.marvin-workspace > * { min-width: 0; }
+.marvin-workspace button:focus-visible,
+.marvin-workspace a:focus-visible,
+.marvin-workspace textarea:focus-visible {
+  outline: 2px solid var(--ink3);
+  outline-offset: 3px;
+}
+.marvin-workspace textarea::placeholder { color: var(--muted); }
+.marvin-data-panel { color: var(--ink2); background: var(--bone); }
+.marvin-data-panel input,
+.marvin-data-panel textarea {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ruleh);
+  border-radius: 5px;
+  box-sizing: border-box;
+  min-width: 0;
+  font-family: var(--g);
+}
+.marvin-data-panel input::placeholder,
+.marvin-data-panel textarea::placeholder { color: var(--muted); }
+.marvin-data-panel input[type="file"] { max-width: 100%; padding: 8px; }
+.marvin-data-panel input::file-selector-button {
+  background: var(--bone2);
+  color: var(--ink);
+  border: 1px solid var(--ruleh);
+  border-radius: 3px;
+  margin-right: 10px;
+  padding: 6px 10px;
+}
+.marvin-data-panel table { min-width: 520px; }
+.marvin-data-panel th,
+.marvin-data-panel td { padding: 8px; text-align: left; }
+.marvin-data-panel > button,
+.marvin-data-panel section > button {
+  background: var(--action-bg);
+  color: var(--action-text);
+  border: 1px solid transparent;
+  border-radius: 5px;
+}
+.marvin-deal-columns > section { min-width: 0; overflow-x: auto; }
+@media (max-width: 1100px) {
+  .marvin-workspace { grid-template-columns: 210px minmax(0, 1fr) 280px !important; }
+}
+@media (max-width: 950px) {
+  .marvin-workspace {
+    grid-template-columns: 210px minmax(0, 1fr) !important;
+    height: auto !important;
+    min-height: 100svh;
+    overflow: visible !important;
+  }
+  .marvin-context { max-height: 85svh; }
+  .marvin-main { height: 85svh; min-height: 480px; }
+  .marvin-chat { grid-column: 1 / -1; height: 420px; border-top: 1px solid var(--ruleh); }
+}
+@media (max-width: 620px) {
+  .marvin-workspace { display: flex !important; flex-direction: column; }
+  .marvin-main { order: 0; height: 80svh; min-height: 420px; }
+  .marvin-chat { order: 1; height: 65svh; min-height: 360px; border-left: none !important; }
+  .marvin-context { order: 2; max-height: none; border-right: none !important; border-top: 1px solid var(--ruleh); }
+  .marvin-gate-banner { flex-wrap: wrap; }
+  .marvin-gate-banner > div:last-child { flex-wrap: wrap; }
+  .marvin-preview-overlay { padding: 12px !important; }
+  .marvin-preview { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: auto minmax(240px, 1fr) auto !important; height: 94svh !important; }
+  .marvin-preview > header { flex-wrap: wrap; padding: 12px !important; }
+  .marvin-preview > header > div:first-child { min-width: 0; flex-wrap: wrap; }
+  .marvin-preview > main { border-right: none !important; padding: 16px !important; }
+  .marvin-preview > aside { max-height: 22svh; border-top: 1px solid var(--ruleh); }
+  .marvin-deal-columns { grid-template-columns: minmax(0, 1fr) !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marvin-workspace *, .marvin-workspace *::before, .marvin-workspace *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }

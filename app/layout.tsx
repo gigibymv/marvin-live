@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "MARVIN",
-  description: "Mission workspace shell for MARVIN",
+  description: "Your consulting operating system. AI agents coordinate mission research and analysis for your review.",
 };
 
 export default function RootLayout({

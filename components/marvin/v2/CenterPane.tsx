@@ -8,11 +8,11 @@ import { Mono, Badge, StatusDot, PulsingM } from "./Primitives";
 // ─── Agent colors (mirrors LeftRail AGENT_ACTIVE_COLORS) ──────────────────────
 
 const AGENT_COLORS: Record<string, string> = {
-  dora: "#3B7FE0",
-  merlin: "#7C5CBF",
-  adversus: "#C0614A",
-  papyrus: "#B07D1A",
-  calculus: "#2D8A5A",
+  dora: "#85B3ED",
+  merlin: "#B8A0E1",
+  adversus: "#E6A18F",
+  papyrus: "var(--amber)",
+  calculus: "var(--green)",
 };
 
 function agentColor(agent: string | undefined, fallback = "var(--ink3)"): string {
@@ -107,7 +107,7 @@ function FindingRow({ f, isHighlighted }: { f: CenterFinding; isHighlighted?: bo
   const cleanSource = humanizeText(f.source ?? "");
   const hasSource = !!cleanSource;
   const isKey = f.impact === "load_bearing";
-  const highlightBg = isHighlighted ? "rgba(26,24,20,.04)" : "white";
+  const highlightBg = isHighlighted ? "var(--bone2)" : "var(--bone)";
 
   return (
     <div
@@ -117,10 +117,10 @@ function FindingRow({ f, isHighlighted }: { f: CenterFinding; isHighlighted?: bo
         cursor: "pointer",
         background: highlightBg,
         borderBottom: "1px solid var(--rule)",
-        borderLeft: isHighlighted ? "2px solid var(--ink)" : "2px solid transparent",
+        borderLeft: "none",
         transition: "background .15s cubic-bezier(0.16,1,0.3,1)",
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "rgba(26,24,20,.028)"; }}
+      onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = "var(--bone2)"; }}
       onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = highlightBg; }}
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
@@ -245,33 +245,33 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
     const c = (f.confidence ?? "").toLowerCase();
     if (c === "high" || c === "sourced") return "var(--green)";
     if (c === "reasoned" || c === "inferred") return "var(--amber)";
-    if (c === "low_confidence") return "rgba(200,80,80,.85)";
+    if (c === "low_confidence") return "var(--red)";
     if (c === "ready" || c === "done") return "var(--green)";
-    return "rgba(244,240,234,.35)";
+    return "var(--muted)";
   })();
 
   return (
     <div style={{
       padding: "14px 24px",
-      background: "var(--ink)",
-      color: "var(--paper)",
-      borderBottom: "1px solid rgba(244,240,234,.06)",
+      background: "var(--bone2)",
+      color: "var(--ink)",
+      borderBottom: "1px solid var(--rule)",
       display: "flex",
       flexDirection: "column",
       gap: 10,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <Mono size={9} weight={700} color={agentColor(f.agent ?? "MARVIN", "rgba(244,240,234,.82)")} spacing=".06em" style={{ minWidth: 52 }}>
+        <Mono size={9} weight={700} color={agentColor(f.agent ?? "MARVIN", "var(--ink2)")} spacing=".06em" style={{ minWidth: 52 }}>
           {f.agent ?? "MARVIN"}
         </Mono>
-        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--paper)", lineHeight: 1.6 }}>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--ink)", lineHeight: 1.6 }}>
           {cleanText}
         </span>
         {/* P8: READY badge */}
         <span style={{
           fontFamily: "var(--m)", fontSize: 8, fontWeight: 700, letterSpacing: ".1em",
           textTransform: "uppercase", color: "var(--green)",
-          border: "1px solid rgba(74,222,128,.35)", borderRadius: 3, padding: "2px 7px",
+          border: "1px solid color-mix(in srgb, var(--green) 35%, transparent)", borderRadius: 3, padding: "2px 7px",
           flexShrink: 0,
         }}>
           READY
@@ -280,11 +280,11 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
           <button
             style={{
               fontFamily: "var(--m)", fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase",
-              color: "var(--paper)", background: "transparent", border: "1px solid rgba(244,240,234,.30)",
+              color: "var(--ink)", background: "transparent", border: "1px solid var(--ruleh)",
               padding: "5px 14px", cursor: "pointer", borderRadius: 4,
               transition: "background .15s cubic-bezier(0.16,1,0.3,1)",
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(244,240,234,.08)"; }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bone2)"; }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
             onClick={f.onOpen}
           >
@@ -310,7 +310,7 @@ function DeliverableRow({ f }: { f: CenterFinding }): React.ReactElement {
           marginRight: 24,
           fontSize: 13,
           lineHeight: 1.6,
-          color: "rgba(244,240,234,.78)",
+          color: "var(--ink2)",
           whiteSpace: "pre-wrap",
         }}>
           {body}
@@ -410,7 +410,7 @@ function ActivityItem({ e, isLast }: { e: CenterActivityItem; isLast: boolean })
       display: "flex", alignItems: "baseline", gap: 10,
       paddingBottom: isLast ? 0 : 5,
       marginBottom: isLast ? 0 : 5,
-      borderBottom: isLast ? "none" : "1px solid rgba(26,24,20,.04)",
+      borderBottom: isLast ? "none" : "1px solid var(--rule)",
       opacity: isTool ? 0.55 : 0.85,
     }}>
       <Mono size={9} weight={700} color={agentColor(e.agent)} spacing=".06em" style={{ minWidth: 48, flexShrink: 0 }}>
@@ -553,7 +553,7 @@ export function CenterPane({
             outputs and activity. */}
         <section
           aria-label="Outputs"
-          style={{ flex: "1 1 50%", overflowY: "auto", minHeight: 0, background: "white" }}
+          style={{ flex: "1 1 50%", overflowY: "auto", minHeight: 0, background: "var(--bone2)" }}
         >
           <div style={{ padding: "10px 24px 6px", display: "flex", alignItems: "baseline", gap: 8 }}>
             <Mono size={9} weight={700} spacing=".14em" color="var(--ink)">Outputs</Mono>
@@ -676,7 +676,7 @@ export function CenterPane({
                   padding: "6px 10px",
                   marginBottom: activity.length > 0 ? 6 : 0,
                   borderRadius: 4,
-                  background: "#0f0f0f",
+                  background: "var(--paper)",
                   overflow: "hidden",
                   whiteSpace: "nowrap",
                 }}
@@ -691,14 +691,14 @@ export function CenterPane({
                     flexShrink: 0,
                   }}
                 />
-                <Mono size={9} weight={700} spacing=".10em" color={agentColor(latestTrace.agent || "MARVIN", "rgba(244,240,234,.65)")}>
+                <Mono size={9} weight={700} spacing=".10em" color={agentColor(latestTrace.agent || "MARVIN", "var(--ink3)")}>
                   {latestTrace.agent || "MARVIN"}
                 </Mono>
                 <span
                   style={{
                     fontFamily: "var(--m)",
                     fontSize: 10,
-                    color: "rgba(244,240,234,.50)",
+                    color: "var(--ink3)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     flex: 1,

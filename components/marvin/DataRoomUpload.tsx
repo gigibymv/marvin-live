@@ -78,9 +78,9 @@ export default function DataRoomUpload({ missionId }: { missionId: string }) {
   }
 
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
+    <div className="marvin-data-panel" style={{ padding: 16, fontFamily: "var(--g)", overflowX: "auto" }}>
       <h2 style={{ marginTop: 0 }}>Data Room</h2>
-      {error && <div style={{ color: "#b00", marginBottom: 8 }}>error: {error}</div>}
+      {error && <div style={{ color: "var(--red)", marginBottom: 8 }}>error: {error}</div>}
 
       <div style={{ marginBottom: 16 }}>
         <input
@@ -91,14 +91,14 @@ export default function DataRoomUpload({ missionId }: { missionId: string }) {
           disabled={busy}
         />
         {busy && <span style={{ marginLeft: 8 }}>Uploading…</span>}
-        <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 4 }}>
           PDF / XLSX / DOCX / TXT / CSV — max 25 MB
         </div>
       </div>
 
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead>
-          <tr style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
+          <tr style={{ borderBottom: "1px solid var(--ruleh)", textAlign: "left" }}>
             <th>Filename</th>
             <th>Size</th>
             <th>Parsed chars</th>
@@ -108,25 +108,25 @@ export default function DataRoomUpload({ missionId }: { missionId: string }) {
         </thead>
         <tbody>
           {files.map((f) => (
-            <tr key={f.id} style={{ borderBottom: "1px solid #eee" }}>
+            <tr key={f.id} style={{ borderBottom: "1px solid var(--rule)" }}>
               <td style={{ padding: "6px 0" }}>{f.filename}</td>
               <td>{fmtBytes(f.size_bytes)}</td>
               <td>
                 {f.parse_error ? (
-                  <span style={{ color: "#b00" }} title={f.parse_error}>
+                  <span style={{ color: "var(--red)" }} title={f.parse_error}>
                     parse error
                   </span>
                 ) : (
                   f.parsed_chars.toLocaleString()
                 )}
               </td>
-              <td style={{ fontSize: 12, color: "#666" }}>
+              <td style={{ fontSize: 12, color: "var(--ink3)" }}>
                 {f.uploaded_at?.replace("T", " ").slice(0, 19) || ""}
               </td>
               <td>
                 <button
                   onClick={() => void remove(f.id)}
-                  style={{ fontSize: 12, color: "#b00", background: "none", border: "none", cursor: "pointer" }}
+                  style={{ fontSize: 12, color: "var(--red)", background: "none", border: "none", cursor: "pointer" }}
                 >
                   delete
                 </button>
@@ -135,7 +135,7 @@ export default function DataRoomUpload({ missionId }: { missionId: string }) {
           ))}
           {files.length === 0 && (
             <tr>
-              <td colSpan={5} style={{ padding: 12, color: "#888" }}>
+              <td colSpan={5} style={{ padding: 12, color: "var(--muted)" }}>
                 No files uploaded yet.
               </td>
             </tr>

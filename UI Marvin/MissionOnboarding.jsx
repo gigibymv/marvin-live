@@ -1,19 +1,26 @@
 import React, { useState } from "react";
 
+// Shared application tokens keep onboarding aligned with the workspace.
 const T = {
-  paper:   "#F4F0EA",
-  bone:    "#EEE9DD",
-  bone2:   "#E8E2D4",
-  ink:     "#1A1814",
-  ink2:    "#3D3A35",
-  ink3:    "#78716A",
-  muted:   "#A09890",
-  rule:    "rgba(26,24,20,.1)",
-  ruleM:   "rgba(26,24,20,.18)",
-  display: "'Bricolage Grotesque', sans-serif",
-  mono:    "'Geist Mono', monospace",
-  sans:    "'Geist', sans-serif",
+  paper: "var(--paper)", bone: "var(--bone)", bone2: "var(--bone2)",
+  ink: "var(--ink)", ink2: "var(--ink2)", ink3: "var(--ink3)", muted: "var(--muted)",
+  rule: "var(--rule)", ruleM: "var(--ruleh)",
+  display: "var(--d)", mono: "var(--m)", sans: "var(--g)",
 };
+const CSS = `
+.mission-onboarding { color:var(--ink); }
+.mission-onboarding *, .mission-onboarding *::before { box-sizing:border-box; }
+.mission-onboarding button:focus-visible, .mission-onboarding input:focus-visible, .mission-onboarding a:focus-visible { outline:2px solid var(--ink3); outline-offset:4px; }
+.mission-onboarding .onboarding-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; }
+.mission-onboarding .onboarding-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+.mission-onboarding .template-tile { font-family:var(--g); text-align:left; }
+@media(max-width:600px) {
+  .mission-onboarding { padding:12px!important; }
+  .mission-onboarding .onboarding-modal { max-height:calc(100svh - 24px)!important; }
+  .mission-onboarding .onboarding-grid, .mission-onboarding .onboarding-fields { grid-template-columns:minmax(0,1fr); }
+}
+@media(prefers-reduced-motion:reduce) { .mission-onboarding * { transition:none!important; } }
+`;
 
 const TEMPLATES = [
   {
@@ -62,19 +69,20 @@ const MORE_TILE = {
 const s = {
   overlay: {
     position: "fixed", inset: 0,
-    background: "rgba(26,24,20,.48)",
+    background: "rgba(0,0,0,.7)",
     backdropFilter: "blur(4px)",
     display: "flex", alignItems: "center", justifyContent: "center",
     zIndex: 1000, padding: "24px",
   },
   modal: {
-    background: T.paper,
+    background: T.bone,
+    color: T.ink,
     border: "1px solid " + T.ruleM,
     borderRadius: "14px",
     width: "100%", maxWidth: "640px",
-    maxHeight: "96vh",
+    maxHeight: "calc(100svh - 48px)",
     overflowY: "auto",
-    boxShadow: "0 24px 64px rgba(26,24,20,.18), 0 4px 12px rgba(26,24,20,.08)",
+    boxShadow: "0 24px 64px rgba(0,0,0,.35)",
     fontFamily: T.sans,
   },
   header: {
@@ -85,18 +93,12 @@ const s = {
   footer: {
     padding: "12px 24px",
     borderTop: "1px solid " + T.rule,
-    display: "flex", alignItems: "center", justifyContent: "space-between",
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap",
     background: T.bone,
     borderRadius: "0 0 14px 14px",
   },
-  eyebrow: {
-    fontFamily: T.mono, fontSize: "9.5px", fontWeight: 600,
-    letterSpacing: ".12em", textTransform: "uppercase",
-    color: T.muted, marginBottom: "6px",
-  },
   label: {
-    fontFamily: T.mono, fontSize: "9px", fontWeight: 600,
-    letterSpacing: ".1em", textTransform: "uppercase",
+    fontFamily: T.sans, fontSize: "13px", fontWeight: 500,
     color: T.ink3, display: "block", marginBottom: "6px",
   },
   input: {
@@ -104,12 +106,12 @@ const s = {
     border: "1px solid " + T.rule,
     borderRadius: "7px",
     background: T.bone,
-    fontFamily: T.sans, fontSize: "14px", color: T.ink,
+    fontFamily: T.sans, fontSize: "16px", color: T.ink,
     outline: "none", boxSizing: "border-box",
   },
   btnPrimary: {
     display: "inline-flex", alignItems: "center", gap: "7px",
-    padding: "11px 20px",
+    padding: "11px 20px", minHeight: "44px",
     background: T.ink, color: T.paper,
     border: "none", borderRadius: "8px",
     fontFamily: T.sans, fontSize: "13.5px", fontWeight: 600,
@@ -117,7 +119,7 @@ const s = {
   },
   btnGhost: {
     display: "inline-flex", alignItems: "center", gap: "7px",
-    padding: "11px 20px",
+    padding: "11px 20px", minHeight: "44px",
     background: "transparent", color: T.ink2,
     border: "1px solid " + T.ruleM, borderRadius: "8px",
     fontFamily: T.sans, fontSize: "13.5px", fontWeight: 500,
@@ -128,7 +130,7 @@ const s = {
 // Step indicator dots
 function StepDots({ current, total }) {
   return (
-    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+    <div role="img" aria-label={`Step ${current + 1} of ${total}`} style={{ display: "flex", gap: "6px", alignItems: "center" }}>
       {Array.from({ length: total }, (_, i) => (
         <div key={i} style={{
           width: i === current ? "20px" : "6px",
@@ -147,8 +149,7 @@ function Step1({ value, onChange }) {
   return (
     <div>
       <div style={{ marginBottom: "16px" }}>
-        <div style={s.eyebrow}>Step 1 of 2</div>
-        <h2 style={{ fontFamily: T.display, fontSize: "22px", fontWeight: 700, letterSpacing: "-.025em", color: T.ink, margin: "0 0 4px" }}>
+        <h2 style={{ fontFamily: T.display, fontSize: "28px", fontWeight: 400, letterSpacing: "-.025em", color: T.ink, margin: "0 0 4px" }}>
           What kind of mission?
         </h2>
         <p style={{ fontSize: "13.5px", color: T.ink3, margin: 0, lineHeight: 1.5 }}>
@@ -156,7 +157,7 @@ function Step1({ value, onChange }) {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+      <div className="onboarding-grid">
         {tiles.map((t) => {
           if (t.isSuggest) return (
             <div key={t.id} style={{
@@ -182,22 +183,22 @@ function Step1({ value, onChange }) {
 
           const selected = value === t.id;
           return (
-            <div key={t.id}
+            <button type="button" className="template-tile" key={t.id} disabled={!t.active} aria-pressed={selected}
               onClick={() => t.active && onChange(t.id)}
               style={{
                 padding: "14px",
                 border: "1.5px solid " + (selected ? T.ink : T.rule),
                 borderRadius: "10px",
-                background: selected ? T.ink : T.bone,
+                background: selected ? T.bone2 : T.bone,
                 cursor: t.active ? "pointer" : "default",
-                opacity: !t.active ? 0.42 : 1,
+                opacity: 1,
                 transition: "all .15s",
                 position: "relative",
               }}
             >
               {!t.active && (
                 <div style={{
-                  position: "absolute", top: "10px", right: "10px",
+                  display: "inline-block", marginBottom: "10px",
                   fontFamily: T.mono, fontSize: "8px", fontWeight: 600,
                   letterSpacing: ".08em", textTransform: "uppercase",
                   color: T.muted, background: T.bone2,
@@ -208,21 +209,21 @@ function Step1({ value, onChange }) {
                 </div>
               )}
               <div style={{
-                fontFamily: T.display, fontSize: "15px", fontWeight: 700,
-                color: selected ? T.paper : T.ink,
+                fontFamily: T.display, fontSize: "20px", fontWeight: 400,
+                color: T.ink,
                 marginBottom: "6px", letterSpacing: "-.01em",
               }}>
                 {t.name}
               </div>
               <div style={{
                 fontSize: "12px", lineHeight: 1.5,
-                color: selected ? "rgba(244,240,234,.65)" : T.ink3,
+                color: T.ink3,
                 marginBottom: "0",
               }}>
                 {t.desc}
               </div>
 
-            </div>
+            </button>
           );
         })}
       </div>
@@ -239,8 +240,7 @@ function Step2({ value, onChange, templateId }) {
   return (
     <div>
       <div style={{ marginBottom: "28px" }}>
-        <div style={s.eyebrow}>Step 2 of 2</div>
-        <h2 style={{ fontFamily: T.display, fontSize: "22px", fontWeight: 700, letterSpacing: "-.025em", color: T.ink, margin: "0 0 6px" }}>
+        <h2 style={{ fontFamily: T.display, fontSize: "28px", fontWeight: 400, letterSpacing: "-.025em", color: T.ink, margin: "0 0 6px" }}>
           Name the mission
         </h2>
         <p style={{ fontSize: "13.5px", color: T.ink3, margin: 0, lineHeight: 1.55 }}>
@@ -252,11 +252,12 @@ function Step2({ value, onChange, templateId }) {
       <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
 
         {/* Client + Target */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+        <div className="onboarding-fields">
           <div>
-            <label style={s.label}>Client</label>
+            <label htmlFor="onboarding-client" style={s.label}>Client</label>
             <input
               style={s.input}
+              id="onboarding-client"
               placeholder="e.g. Meridian Capital"
               value={value.client}
               onChange={set("client")}
@@ -264,9 +265,10 @@ function Step2({ value, onChange, templateId }) {
             />
           </div>
           <div>
-            <label style={s.label}>Target / company</label>
+            <label htmlFor="onboarding-target" style={s.label}>Target / company</label>
             <input
               style={s.input}
+              id="onboarding-target"
               placeholder="e.g. NovaSec"
               value={value.target}
               onChange={set("target")}
@@ -278,7 +280,7 @@ function Step2({ value, onChange, templateId }) {
         <div>
           <label style={{ ...s.label, display: "flex", alignItems: "center", gap: "6px" }}>
             Starting material
-            <span style={{ fontFamily: T.mono, fontSize: "8.5px", fontWeight: 400, color: T.muted, letterSpacing: ".06em", textTransform: "none" }}>
+            <span style={{ fontFamily: T.mono, fontSize: "12px", fontWeight: 400, color: T.muted, letterSpacing: ".06em", textTransform: "none" }}>
               — optional
             </span>
           </label>
@@ -299,7 +301,7 @@ function Step2({ value, onChange, templateId }) {
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, color: T.ink3 }}>
               <path d="M4 12.5h8M8 2.5v7M5.5 5L8 2.5 10.5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
               <div style={{ fontSize: "13px", fontWeight: 500, color: value.file ? T.ink : T.ink3 }}>
                 {value.file ? value.file.name : "Teaser, CIM, data room index, or notes"}
               </div>
@@ -310,7 +312,7 @@ function Step2({ value, onChange, templateId }) {
               )}
             </div>
             {value.file && (
-              <button
+              <button aria-label="Remove attachment"
                 onClick={(e) => { e.preventDefault(); onChange({ ...value, file: null }); }}
                 style={{ background: "none", border: "none", cursor: "pointer", color: T.muted, padding: "2px", display: "flex", flexShrink: 0 }}
               >
@@ -326,22 +328,20 @@ function Step2({ value, onChange, templateId }) {
         {canCreate && tmpl && (
           <div style={{
             padding: "12px 14px",
-            background: T.ink,
+            background: T.bone2,
+            gap: "16px", overflowWrap: "anywhere",
             borderRadius: "8px",
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
             <div>
-              <div style={{ fontFamily: T.mono, fontSize: "9px", fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(244,240,234,.45)", marginBottom: "4px" }}>
-                Mission
-              </div>
-              <div style={{ fontFamily: T.display, fontSize: "15px", fontWeight: 600, color: T.paper, letterSpacing: "-.01em" }}>
+              <div style={{ fontFamily: T.display, fontSize: "19px", fontWeight: 400, color: T.ink, letterSpacing: "-.01em" }}>
                 {value.target} — {tmpl.name.replace("Commercial ", "")}
               </div>
-              <div style={{ fontFamily: T.mono, fontSize: "10px", color: "rgba(244,240,234,.5)", marginTop: "3px" }}>
+              <div style={{ fontFamily: T.mono, fontSize: "10px", color: T.ink3, marginTop: "3px" }}>
                 {value.client}
               </div>
             </div>
-            <div style={{ fontFamily: T.mono, fontSize: "9px", fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(244,240,234,.4)" }}>
+            <div style={{ fontFamily: T.mono, fontSize: "9px", fontWeight: 600, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>
               {tmpl.modules.length} agents
             </div>
           </div>
@@ -370,19 +370,20 @@ export default function MissionOnboarding({ onClose, onLaunch }) {
   };
 
   return (
-    <div style={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose && onClose()}>
-      <div style={s.modal}>
+    <div className="mission-onboarding" style={s.overlay} onClick={(e) => e.target === e.currentTarget && onClose && onClose()}>
+      <style>{CSS}</style>
+      <div className="onboarding-modal" role="dialog" aria-modal="true" aria-label="New mission" style={s.modal}>
 
         {/* Header */}
         <div style={s.header}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <span style={{ fontFamily: T.display, fontSize: "16px", fontWeight: 700, letterSpacing: "-.02em", color: T.ink }}>
+              <span style={{ fontFamily: T.display, fontSize: "22px", fontWeight: 400, letterSpacing: "-.02em", color: T.ink }}>
                 New mission
               </span>
               <StepDots current={step} total={2}/>
             </div>
-            <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.ink3, padding: "4px", display: "flex", alignItems: "center" }}>
+            <button aria-label="Close new mission" onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: T.ink3, padding: "4px", minWidth:"44px", minHeight:"44px", justifyContent:"center", display: "flex", alignItems: "center" }}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
               </svg>

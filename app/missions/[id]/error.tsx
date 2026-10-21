@@ -32,18 +32,18 @@ export default function MissionError({
         minHeight: "100vh",
         display: "grid",
         placeItems: "center",
-        background: "#f4f0ea",
+        background: "var(--paper)",
         padding: "24px",
-        fontFamily: "system-ui, sans-serif",
+        fontFamily: "var(--g)",
       }}
     >
       <div style={{ maxWidth: "420px", textAlign: "center" }}>
         <h1 style={{ margin: "0 0 12px", fontSize: "28px" }}>Something went wrong</h1>
-        <p style={{ margin: "0 0 8px", lineHeight: 1.6, color: "#666" }}>
+        <p style={{ margin: "0 0 8px", lineHeight: 1.6, color: "var(--ink2)" }}>
           The mission page encountered an error. This may be a temporary issue.
         </p>
         {error?.message && (
-          <p style={{ margin: "0 0 24px", fontSize: "12px", color: "#999", fontFamily: "monospace", wordBreak: "break-word" }}>
+          <p style={{ margin: "0 0 24px", fontSize: "12px", color: "var(--muted)", fontFamily: "monospace", wordBreak: "break-word" }}>
             {error.message}
           </p>
         )}
@@ -52,8 +52,8 @@ export default function MissionError({
             onClick={reset}
             style={{
               padding: "10px 20px",
-              background: "#1a1814",
-              color: "#fff",
+              background: "var(--action-bg)",
+              color: "var(--action-text)",
               border: "none",
               borderRadius: "6px",
               cursor: "pointer",
@@ -67,8 +67,8 @@ export default function MissionError({
             style={{
               padding: "10px 20px",
               background: "transparent",
-              color: "#1a1814",
-              border: "1px solid rgba(26,24,20,.2)",
+              color: "var(--ink)",
+              border: "1px solid var(--ruleh)",
               borderRadius: "6px",
               fontSize: "14px",
               textDecoration: "none",

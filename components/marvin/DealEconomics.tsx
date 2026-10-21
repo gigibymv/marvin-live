@@ -121,20 +121,20 @@ export default function DealEconomics({ missionId }: { missionId: string }) {
   }
 
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
+    <div className="marvin-data-panel" style={{ padding: 16, fontFamily: "var(--g)", overflowX: "auto" }}>
       <h2 style={{ margin: "0 0 12px" }}>Deal Economics</h2>
 
       {error && (
-        <div style={{ color: "#b00", marginBottom: 8 }}>error: {error}</div>
+        <div style={{ color: "var(--red)", marginBottom: 8 }}>error: {error}</div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div className="marvin-deal-columns" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
         <section>
           <h3 style={{ marginTop: 0 }}>Inputs</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {FIELDS.map((f) => (
               <label key={f.key} style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: 12, color: "#555" }}>
+                <span style={{ fontSize: 12, color: "var(--ink3)" }}>
                   {f.label} {f.suffix ? <em>({f.suffix})</em> : null}
                 </span>
                 <input
@@ -173,7 +173,7 @@ export default function DealEconomics({ missionId }: { missionId: string }) {
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #ccc", textAlign: "left" }}>
+                  <tr style={{ borderBottom: "1px solid var(--ruleh)", textAlign: "left" }}>
                     <th>Scenario</th>
                     <th>EBITDA growth</th>
                     <th>Exit multiple</th>
@@ -187,7 +187,7 @@ export default function DealEconomics({ missionId }: { missionId: string }) {
                   {(["bear", "base", "bull"] as const).map((name) => {
                     const s = math.scenarios[name];
                     return (
-                      <tr key={name} style={{ borderBottom: "1px solid #eee" }}>
+                      <tr key={name} style={{ borderBottom: "1px solid var(--rule)" }}>
                         <td style={{ textTransform: "capitalize", padding: "6px 0" }}>
                           {name}
                         </td>
@@ -203,7 +203,7 @@ export default function DealEconomics({ missionId }: { missionId: string }) {
                 </tbody>
               </table>
               {math.missing_inputs.length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#888" }}>
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
                   Missing: {math.missing_inputs.join(", ")}
                 </div>
               )}
