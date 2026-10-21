@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 
 // Adapted for Next navigation, keyboard focus and reduced motion from Magic UI's
