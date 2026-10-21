@@ -16,6 +16,39 @@ vi.mock("next/navigation", () => ({
 describe("mission creation flow", () => {
   beforeEach(() => {
     pushMock.mockReset();
+    localStorage.clear();
+    localStorage.setItem("marvin.viewer-name", "Alex");
+  });
+
+  it("asks for a name before showing the dashboard, saves it, and allows changing it", async () => {
+    localStorage.removeItem("marvin.viewer-name");
+    const repository = {
+      kind: "local" as const,
+      listMissions: vi.fn(async () => []),
+      createMission: vi.fn(), getMission: vi.fn(), deleteMission: vi.fn(),
+    };
+    const view = render(React.createElement(MissionDashboard, { repository }));
+    const input = await screen.findByRole("textbox", { name: "Your name" });
+    expect(screen.queryByRole("button", { name: /new mission/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /continue/i })).toBeDisabled();
+    const user = userEvent.setup();
+    await user.type(input, "  Élodie  ");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("heading", { name: "Good morning, Élodie" })).toBeInTheDocument();
+    expect(localStorage.getItem("marvin.viewer-name")).toBe("Élodie");
+    expect(screen.getByRole("button", { name: "Change name" })).toHaveTextContent("É");
+
+    view.unmount();
+    render(React.createElement(MissionDashboard, { repository }));
+    expect(await screen.findByRole("heading", { name: "Good morning, Élodie" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Your name" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Change name" }));
+    expect(localStorage.getItem("marvin.viewer-name")).toBeNull();
+    const edit = await screen.findByRole("textbox", { name: "Your name" });
+    await user.clear(edit);
+    await user.type(edit, "Sam");
+    await user.click(screen.getByRole("button", { name: /continue/i }));
+    expect(await screen.findByRole("heading", { name: "Good morning, Sam" })).toBeInTheDocument();
   });
 
   it("submits a new mission, shows it in the list, preserves required fields, and navigates to the route id", async () => {

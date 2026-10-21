@@ -57,6 +57,8 @@ html, body, #root { height: 100%; background: var(--paper); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 `;
 
+const VIEWER_NAME_KEY = "marvin.viewer-name";
+
 function ProgressBar({ value }) {
   return (
     <div style={{ position:"relative", height:"3px", background:"var(--ruleh)", borderRadius:"0" }}>
@@ -384,12 +386,69 @@ export default function MissionDashboard({
   backendNotice,
 }) {
   const [showNew, setShowNew] = useState(false);
+  const [viewerName, setViewerName] = useState("");
+  const [nameDraft, setNameDraft] = useState("");
+  const [profileReady, setProfileReady] = useState(false);
+  useEffect(() => {
+    try {
+      setViewerName((localStorage.getItem(VIEWER_NAME_KEY) || "").trim().slice(0, 80));
+    } catch {
+      // The name still works for this visit when browser storage is unavailable.
+    }
+    setProfileReady(true);
+  }, []);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("new") === "1") {
       setShowNew(true);
     }
   }, []);
   const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+  function saveName(event) {
+    event.preventDefault();
+    const name = nameDraft.trim().replace(/\s+/g, " ").slice(0, 80);
+    if (!name) return;
+    try {
+      localStorage.setItem(VIEWER_NAME_KEY, name);
+    } catch {
+      // Do not block access when browser storage is unavailable.
+    }
+    setViewerName(name);
+  }
+
+  function changeName() {
+    try {
+      localStorage.removeItem(VIEWER_NAME_KEY);
+    } catch {
+      // Editing remains available when browser storage is unavailable.
+    }
+    setNameDraft(viewerName);
+    setViewerName("");
+  }
+
+  if (!profileReady || !viewerName) {
+    return (
+      <>
+        <style>{CSS}</style>
+        <div style={{ minHeight:"100svh", background:"var(--paper)", color:"var(--ink)", fontFamily:"var(--g)" }}>
+          <nav style={{ height:"52px", borderBottom:"1px solid var(--ruleh)", display:"flex", alignItems:"center", padding:"0 28px" }}>
+            <a href="/" style={{ fontFamily:"var(--d)", fontSize:"16px", fontWeight:700, letterSpacing:"-.02em" }}>MARVIN <span style={{ fontFamily:"var(--g)", fontSize:"12px", fontWeight:400 }}>by H&amp;ai</span></a>
+          </nav>
+          {profileReady && (
+            <main style={{ maxWidth:"480px", margin:"0 auto", padding:"clamp(48px, 14vh, 140px) 28px 48px" }}>
+              <h1 style={{ fontFamily:"var(--d)", fontSize:"clamp(30px, 6vw, 40px)", fontWeight:700, letterSpacing:"-.035em", lineHeight:1.1 }}>What should we call you?</h1>
+              <p style={{ marginTop:"16px", color:"var(--ink3)", fontSize:"15px", lineHeight:1.6 }}>Enter your name to personalise your workspace.</p>
+              <form onSubmit={saveName} style={{ marginTop:"32px" }}>
+                <label htmlFor="viewer-name" style={{ display:"block", fontSize:"14px", fontWeight:500, marginBottom:"10px" }}>Your name</label>
+                <input id="viewer-name" name="given-name" autoComplete="given-name" autoFocus required maxLength={80} value={nameDraft} onChange={event => setNameDraft(event.target.value)} style={{ display:"block", width:"100%", minHeight:"48px", padding:"12px 14px", border:"1px solid var(--ruleh)", background:"var(--bone)", color:"var(--ink)", fontFamily:"var(--g)", fontSize:"16px" }}/>
+                <button type="submit" className="new-btn" disabled={!nameDraft.trim()} style={{ minHeight:"44px", marginTop:"20px", opacity:nameDraft.trim() ? 1 : .4 }}>Continue →</button>
+              </form>
+            </main>
+          )}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -406,9 +465,9 @@ export default function MissionDashboard({
             </a>
           <div style={{ display:"flex", alignItems:"center", gap:"20px" }}>
             <span style={{ fontFamily:"var(--m)", fontSize:"9.5px", color:"var(--muted)" }}>{today}</span>
-            <div style={{ width:"28px", height:"28px", borderRadius:"50%", background:"var(--ink)", display:"grid", placeItems:"center" }}>
-              <span style={{ fontFamily:"var(--m)", fontSize:"9px", fontWeight:700, color:"var(--paper)" }}>K</span>
-            </div>
+            <button type="button" aria-label="Change name" onClick={changeName} style={{ width:"44px", height:"44px", border:0, cursor:"pointer", background:"transparent", display:"grid", placeItems:"center" }}>
+              <span style={{ width:"28px", height:"28px", borderRadius:"50%", background:"var(--ink)", display:"grid", placeItems:"center", fontFamily:"var(--m)", fontSize:"10px", fontWeight:700, color:"var(--paper)" }}>{Array.from(viewerName)[0].toLocaleUpperCase()}</span>
+            </button>
           </div>
         </div>
 
@@ -416,13 +475,13 @@ export default function MissionDashboard({
         <div style={{ maxWidth:"900px", margin:"0 auto", padding:"48px 28px 80px" }}>
 
           {/* Page header */}
-          <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", marginBottom:"48px" }}>
-            <div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:"24px", alignItems:"flex-end", justifyContent:"space-between", marginBottom:"48px" }}>
+            <div style={{ flex:"1 1 250px", minWidth:0 }}>
               <div style={{ fontFamily:"var(--m)", fontSize:"10px", fontWeight:500, letterSpacing:".16em", textTransform:"uppercase", color:"var(--muted)", marginBottom:"8px" }}>
                 Missions
               </div>
-              <h1 style={{ fontFamily:"var(--d)", fontSize:"32px", fontWeight:700, letterSpacing:"-.035em", lineHeight:1, color:"var(--ink)" }}>
-                Good morning, Karim.
+              <h1 style={{ fontFamily:"var(--d)", fontSize:"32px", fontWeight:700, letterSpacing:"-.035em", lineHeight:1.1, overflowWrap:"anywhere", color:"var(--ink)" }}>
+                Good morning, {viewerName}
               </h1>
             </div>
             <button className="new-btn" onClick={() => setShowNew(true)}>
