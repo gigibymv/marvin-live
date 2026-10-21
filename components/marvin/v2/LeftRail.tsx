@@ -294,7 +294,6 @@ function AgentsRail({ agents }: { agents: AgentData[] }): React.ReactElement {
             style={{
               display: "flex", alignItems: "center", gap: 8,
               padding: "5px 0", borderBottom: "1px solid var(--rule)",
-              opacity: a.state === "idle" ? 0.25 : 1,
             }}
           >
             <Icon id={a.id} size={12} color={iconColor} />
