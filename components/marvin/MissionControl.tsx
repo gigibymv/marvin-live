@@ -2190,9 +2190,10 @@ export default function MissionControl({
   // `framing` (no brief yet), show "Framing" instead of the generic
   // "Mission running" that paired with 0% looked frozen. Same for
   // `synthesis_done` -> "Synthesis" until the next gate or agent fires.
+  const briefInputSubmitted = messages.some((message) => message.from === "u" && message.text.trim().length >= 50);
   const phaseStatusLabel: string | null = (() => {
     if (!progress?.framing && (currentPhase === "framing" || currentPhase === "setup")) {
-      return "Framing";
+      return briefInputSubmitted && runState.isStreaming ? "Preparing brief" : "Awaiting brief";
     }
     if (currentPhase === "synthesis_done" || currentPhase === "synthesis_retry") {
       return "Synthesis";
@@ -2220,7 +2221,9 @@ export default function MissionControl({
     const liveAgt = agentStatuses[agentKey] ?? "idle";
     return liveAgt === "active";
   });
-  const missionStatusLabel = resolvingGateIds.size > 0
+  const missionStatusLabel = mission.status === "completed"
+    ? "Complete"
+    : resolvingGateIds.size > 0
     ? currentPhaseLabel ? `M Running — ${currentPhaseLabel}` : "Mission running"
     : hasPendingGate
     ? `Gate pending · ${nextCheckpointLabel ?? "Review"}`
@@ -2625,10 +2628,9 @@ export default function MissionControl({
   // mis-fired because a freshly created mission lands on phase=framing
   // server-side, which would flip the tab to spinner ("now") before any
   // user input — confusing for the user.
-  const briefSubmitted = messages.some((m) => m.from === "u");
   const briefStatus: "pending" | "now" | "completed" = progress?.framing
     ? "completed"
-    : briefSubmitted
+    : briefInputSubmitted && (runState.isStreaming || Boolean(activeAgent))
       ? "now"
       : "pending";
   const workstreamStatus = (workstreamId: string): WorkstreamViewStatus =>

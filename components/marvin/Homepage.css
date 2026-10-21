@@ -19,3 +19,55 @@
 .marvin-landing .mission-cta:is(:hover,:focus-visible) .mission-cta-reveal{transform:translateX(0);opacity:1}
 .marvin-landing .mission-cta:active{transform:scale(.98)}
 @media(prefers-reduced-motion:reduce){.marvin-landing .mission-cta,.marvin-landing .mission-cta *{transition:none!important}.marvin-landing .mission-cta:active{transform:none}}
+
+.marvin-landing .product-hero{grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);align-items:start;gap:clamp(36px,5vw,80px);padding-top:38px;min-height:740px}
+.marvin-landing .product-hero .statement{align-self:start;padding-top:52px;padding-bottom:0}
+.marvin-landing .team-trace{margin-top:42px;display:grid;gap:17px}
+.marvin-landing .team-trace>div{display:flex;align-items:center;gap:14px}
+.marvin-landing .team-symbol{width:28px;height:28px;display:grid;place-items:center;border:1px solid #394047;border-radius:50%;font-size:20px;color:#c4cdd4}
+.marvin-landing .team-trace strong{display:block;font-size:12px;font-weight:500;color:#e4e9ed}
+.marvin-landing .team-trace small{display:block;font-size:11px;color:#9ba8b2;margin-top:2px}
+.marvin-landing .mission-example{min-width:0;border:1px solid #32383e;border-radius:12px;background:#141719;overflow:hidden}
+.marvin-landing .example-header{display:flex;align-items:center;gap:10px;padding:20px;border-bottom:1px solid #30353a}
+.marvin-landing .example-header strong{font-size:13px;font-weight:500;flex:1}
+.marvin-landing .example-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid #30353a}
+.marvin-landing .example-tabs button{min-height:62px;padding:10px 6px;background:none;border:0;border-bottom:2px solid transparent;color:#a5afb8;font-size:11px;text-align:center}
+.marvin-landing .example-tabs button span{display:block;color:#7f8a94;font-family:var(--m);font-size:9px;margin-bottom:4px}
+.marvin-landing .example-tabs button[aria-selected=true]{background:#1e2429;color:#f4f5f6;border-bottom-color:#dce5ec}
+.marvin-landing .example-body{padding:26px 24px 12px;min-height:430px}
+.marvin-landing .example-body [hidden]{display:none}
+.marvin-landing .example-body h2{font:400 28px/1.12 var(--serif);letter-spacing:-.02em;margin:0 0 22px}
+.marvin-landing .example-body p{font-size:12px;line-height:1.6;color:#b8c2ca}
+.marvin-landing .analysis-finding{display:grid;grid-template-columns:22px minmax(0,1fr);gap:12px;padding:18px 0;border-top:1px solid #30363c}
+.marvin-landing .finding-mark{font-size:20px;color:#b5cbbf;line-height:1.2}
+.marvin-landing .finding-heading{display:flex;align-items:baseline;gap:8px;justify-content:space-between}
+.marvin-landing .finding-heading h3{font-size:13px;font-weight:500;margin:0;color:#edf1f4}
+.marvin-landing .finding-heading>span{font-size:9px;color:#9ca9b4;white-space:nowrap}
+.marvin-landing .analysis-finding p{margin:5px 0 6px;font-size:11px}
+.marvin-landing .source-link{background:none;border:0;padding:5px 0;color:#afc6d7;font-size:10px;text-align:left;text-decoration:underline;text-underline-offset:3px;min-height:30px}
+.marvin-landing .evidence-gap{color:#d6bd89;font-size:10px}
+.marvin-landing .missing-data{color:#d6bd89}
+.marvin-landing .example-next{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;border:0;border-top:1px solid #37414a;background:none;min-height:52px;padding:12px 0;color:#e3eaf0;font-size:12px;text-align:left;text-decoration:none;margin-top:12px}
+.marvin-landing .example-next:hover{color:white}
+.marvin-landing .sample-question{margin:0 0 20px}
+.marvin-landing .sample-sheet{border:1px solid #394047;border-radius:6px;overflow:hidden}
+.marvin-landing .sheet-title{background:#232a2f;padding:12px 14px;font-size:11px;display:flex;justify-content:space-between}
+.marvin-landing .sheet-title span{color:#a5b4c0}
+.marvin-landing .sample-sheet dl{margin:0}
+.marvin-landing .sample-sheet dl>div{display:flex;gap:16px;justify-content:space-between;padding:12px 14px;border-top:1px solid #30363c;font-size:11px}
+.marvin-landing .sample-sheet dt{color:#aab5be}.marvin-landing .sample-sheet dd{margin:0}
+.marvin-landing .review-conversation{display:grid;grid-template-columns:27px minmax(0,1fr);gap:12px}
+.marvin-landing .review-conversation p{margin:0;padding:14px;background:#22282d;border-radius:6px}
+.marvin-landing .example-choices{display:grid;gap:10px;margin:24px 0}
+.marvin-landing .example-choices button{display:flex;justify-content:space-between;gap:14px;min-height:48px;padding:12px 14px;border:1px solid #48535c;background:#1a2025;border-radius:5px;text-align:left;font-size:12px}
+.marvin-landing .example-choices button:hover,.marvin-landing .example-choices button[aria-pressed=true]{background:#2b353e;border-color:#c0cbd4}
+.marvin-landing .example-feedback{color:#b7d4c2!important}
+.marvin-landing .example-disclaimer{font-size:10px!important;color:#9ca9b3!important}
+.marvin-landing .report-preview{background:#20262b;border:1px solid #3b454d;border-radius:3px;padding:20px 22px}
+.marvin-landing .report-meta{font:400 15px var(--serif);display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;color:#e5eaf0}
+.marvin-landing .report-meta span{font:9px var(--sans);color:#a5b2bd}
+.marvin-landing .report-preview h2{font-size:30px;margin-bottom:15px}.marvin-landing .report-preview h3{font-size:11px;margin:18px 0 7px;font-weight:600;color:#e4eaf0}.marvin-landing .report-preview p{font-size:11px;margin:0}.marvin-landing .report-lead{color:#d3dce3!important}.marvin-landing .report-footnote{border-top:1px solid #3b454d;padding-top:12px;margin-top:20px;font-size:9px;color:#a6b4bf}
+.marvin-landing .example-caption{border-top:1px solid #30363c;padding:14px 20px;margin:0;font-size:10px;color:#a2adb7}
+@media(max-width:1050px){.marvin-landing .product-hero{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:30px}.marvin-landing .example-body{padding:22px 18px 10px}.marvin-landing .finding-heading{display:block}.marvin-landing .finding-heading>span{display:inline-block;margin-top:3px}}
+@media(max-width:700px){.marvin-landing .product-hero{display:block;padding-top:24px}.marvin-landing .product-hero .statement{padding-top:0;margin-bottom:28px}.marvin-landing .team-trace{display:flex;gap:14px;margin-top:28px;overflow-x:auto;padding-bottom:8px}.marvin-landing .team-trace>div{gap:8px;flex:0 0 145px;align-items:start}.marvin-landing .team-symbol{width:22px;height:22px;flex:none;font-size:17px}.marvin-landing .team-trace strong{font-size:10px}.marvin-landing .team-trace small{font-size:10px;line-height:1.4}.marvin-landing .example-header{padding:15px 12px;gap:8px}.marvin-landing .example-header strong{font-size:11px}.marvin-landing .example-header .preview-label{font-size:9px}.marvin-landing .example-tabs button{font-size:10px;min-height:58px}.marvin-landing .example-body{padding:21px 16px 8px;min-height:440px}.marvin-landing .example-body h2{font-size:26px}.marvin-landing .example-caption{padding:12px 14px;font-size:10px}.marvin-landing .report-preview{padding:17px 15px}}
+@media(max-width:700px){.marvin-landing .team-trace{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));overflow:visible;gap:12px}.marvin-landing .team-trace>div{flex-direction:column;gap:7px;min-width:0}.marvin-landing .team-trace strong{line-height:1.4}.marvin-landing .team-trace small{font-size:10px}}

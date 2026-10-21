@@ -8,10 +8,10 @@ unit tests miss. MUST pass before any commit touching:
   - any checkpointer code
 
 What it does:
-  1. Spawns uvicorn on a free port with a temp checkpoint DB
+  1. Spawns local uvicorn, or uses the explicitly selected resettable demo
   2. Creates a mission via POST /api/v1/missions
-  3. Sends a short brief via POST /api/v1/missions/{id}/chat
-  4. Reads first 8s of the SSE stream
+  3. Checks a greeting stays idle, then sends a substantive brief
+  4. Reads the first 25s of the substantive SSE stream
   5. Asserts: zero `error` events
   6. Asserts: at least one progress event beyond run_start
 
@@ -28,10 +28,13 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-SMOKE_DURATION = 25  # seconds of SSE we read after sending brief
+SMOKE_DURATION = int(os.environ.get("MARVIN_SMOKE_DURATION", "25"))  # allow slow free providers
+if not 1 <= SMOKE_DURATION <= 300:
+    raise ValueError("MARVIN_SMOKE_DURATION must be between 1 and 300 seconds")
 HEALTH_TIMEOUT = 30
 PROGRESS_EVENT_NAMES = {
     "agent_active", "agent_started", "agent_done",
@@ -83,7 +86,7 @@ def load_env() -> dict[str, str]:
 
 def http(method: str, url: str, body: dict | None = None, timeout: int = 10):
     data = None
-    headers = {}
+    headers = {"User-Agent": "MARVIN-Runtime-Smoke/1.0"}
     if body is not None:
         data = json.dumps(body).encode()
         headers["Content-Type"] = "application/json"
@@ -101,7 +104,7 @@ def stream_sse(url: str, body: dict, duration: float) -> tuple[list[tuple[str, o
     data = json.dumps(body).encode()
     req = urllib.request.Request(
         url, data=data, method="POST",
-        headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+        headers={"Content-Type": "application/json", "Accept": "text/event-stream", "User-Agent": "MARVIN-Runtime-Smoke/1.0"},
     )
     events: list[tuple[str, object]] = []
     err: str | None = None
@@ -138,27 +141,34 @@ def stream_sse(url: str, body: dict, duration: float) -> tuple[list[tuple[str, o
 
 
 def main() -> int:
-    port = find_free_port()
-    base = f"http://127.0.0.1:{port}"
-    print(f"[smoke] port={port}")
-
-    tmp_db = Path(tempfile.mkdtemp(prefix="marvin-smoke-")) / "checkpoints.db"
-    tmp_marvin_db = Path(tempfile.mkdtemp(prefix="marvin-smoke-mdb-")) / "marvin.db"
-
-    env = load_env()
-    env["MARVIN_CHECKPOINT_DB"] = str(tmp_db)
-    env["MARVIN_DB_PATH"] = str(tmp_marvin_db)
-
-    log_path = Path(tempfile.mkstemp(prefix="marvin-smoke-uvicorn-", suffix=".log")[1])
-    print(f"[smoke] uvicorn log: {log_path}")
-
-    proc = subprocess.Popen(
-        [str(REPO / ".venv/bin/python"), "-m", "uvicorn",
-         "marvin_ui.server:app", "--port", str(port)],
-        cwd=str(REPO), env=env,
-        stdout=open(log_path, "ab"),
-        stderr=subprocess.STDOUT,
-    )
+    # Optional deployed target keeps provider secrets on the configured host.
+    # The same assertions run in both modes; local remains the default.
+    remote_base = os.environ.get("MARVIN_SMOKE_BASE_URL", "").rstrip("/")
+    proc = None
+    log_path = None
+    if remote_base:
+        if remote_base != "https://marvin-demo-api.fastapicloud.dev":
+            print("[smoke] FAIL — remote mode is restricted to the configured resettable demo")
+            return 1
+        base = remote_base
+        print(f"[smoke] deployed target={base}")
+    else:
+        port = find_free_port()
+        base = f"http://127.0.0.1:{port}"
+        print(f"[smoke] port={port}")
+        tmp_db = Path(tempfile.mkdtemp(prefix="marvin-smoke-")) / "checkpoints.db"
+        tmp_marvin_db = Path(tempfile.mkdtemp(prefix="marvin-smoke-mdb-")) / "marvin.db"
+        env = load_env()
+        env["MARVIN_CHECKPOINT_DB"] = str(tmp_db)
+        env["MARVIN_DB_PATH"] = str(tmp_marvin_db)
+        log_path = Path(tempfile.mkstemp(prefix="marvin-smoke-uvicorn-", suffix=".log")[1])
+        print(f"[smoke] uvicorn log: {log_path}")
+        proc = subprocess.Popen(
+            [str(REPO / ".venv/bin/python"), "-m", "uvicorn",
+             "marvin_ui.server:app", "--port", str(port)],
+            cwd=str(REPO), env=env,
+            stdout=open(log_path, "ab"), stderr=subprocess.STDOUT,
+        )
 
     try:
         # Wait for health
@@ -170,18 +180,18 @@ def main() -> int:
             if s == 200:
                 ready = True
                 break
-            if proc.poll() is not None:
+            if proc is not None and proc.poll() is not None:
                 print(f"[smoke] FAIL — uvicorn died during startup (exit={proc.returncode})")
                 print(f"[smoke] last 20 lines of uvicorn log:")
                 print("\n".join(log_path.read_text(errors="replace").splitlines()[-20:]))
                 return 1
         if not ready:
-            print(f"[smoke] FAIL — uvicorn never reached /health within {HEALTH_TIMEOUT}s")
+            print(f"[smoke] FAIL — target never reached /health within {HEALTH_TIMEOUT}s")
             return 1
 
         # Create mission
         s, b = http("POST", f"{base}/api/v1/missions", body={
-            "client": "Smoke", "target": "smoke-target",
+            "client": "Runtime smoke — demo", "target": f"smoke-target-{uuid.uuid4().hex[:8]}",
             "ic_question": "smoke", "mission_type": "cdd",
         })
         if s != 200:
@@ -189,6 +199,32 @@ def main() -> int:
             return 1
         mid = json.loads(b)["mission_id"]
         print(f"[smoke] mission_id={mid}")
+
+        # A greeting must end normally without starting framing or research.
+        greeting_events, greeting_error = stream_sse(
+            f"{base}/api/v1/missions/{mid}/chat",
+            body={"text": "hi"}, duration=SMOKE_DURATION,
+        )
+        greeting_text = " ".join(
+            str(payload.get("text", ""))
+            for name, payload in greeting_events
+            if name == "text" and isinstance(payload, dict)
+        )
+        status, raw_progress = http("GET", f"{base}/api/v1/missions/{mid}/progress")
+        progress = json.loads(raw_progress) if status == 200 else {}
+        if (
+            greeting_error
+            or any(name in {"error", "agent_active", "agent_started"} for name, _ in greeting_events)
+            or not any(name == "run_end" for name, _ in greeting_events)
+            or "has not started" not in greeting_text.lower()
+            or status != 200
+            or progress.get("framing")
+            or progress.get("runtime_snapshot", {}).get("active_agents")
+        ):
+            print("[smoke] FAIL — greeting did not remain in awaiting-brief state")
+            print(f"[smoke] greeting reply={greeting_text[:300]}")
+            return 1
+        print("[smoke] greeting PASS — onboarding reply, no framing, no active agents")
 
         # Stream chat
         events, err = stream_sse(
@@ -213,7 +249,7 @@ def main() -> int:
             and any(pattern in json.dumps(p) for pattern in FORBIDDEN_USER_STREAM_PATTERNS)
         ]
 
-        passed = True
+        passed = not bool(err)
         if error_events:
             passed = False
             print(f"[smoke] FAIL — saw {len(error_events)} `error` event(s):")
@@ -233,18 +269,20 @@ def main() -> int:
             print(f"[smoke] PASS — {len(progress_events)} progress event(s), 0 errors")
             return 0
         else:
-            print(f"[smoke] last 30 lines of uvicorn log:")
-            print("\n".join(log_path.read_text(errors="replace").splitlines()[-30:]))
+            if log_path is not None:
+                print(f"[smoke] last 30 lines of uvicorn log:")
+                print("\n".join(log_path.read_text(errors="replace").splitlines()[-30:]))
             return 1
     finally:
-        try:
-            proc.terminate()
-            proc.wait(timeout=5)
-        except Exception:
+        if proc is not None:
             try:
-                proc.kill()
+                proc.terminate()
+                proc.wait(timeout=5)
             except Exception:
-                pass
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

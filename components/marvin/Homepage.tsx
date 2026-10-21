@@ -5,50 +5,88 @@ import Link from "next/link";
 import InteractiveMissionLink from "./InteractiveMissionLink";
 import "./Homepage.css";
 
-type PreviewView = "framing" | "review" | "brief";
-const VIEWS: PreviewView[] = ["framing", "review", "brief"];
+type Stage = "brief" | "research" | "review" | "report";
+const STAGES: { id: Stage; label: string }[] = [
+  { id: "brief", label: "The brief" },
+  { id: "research", label: "The analysis" },
+  { id: "review", label: "Your review" },
+  { id: "report", label: "The report" },
+];
 
 export default function Homepage() {
-  const [view, setView] = useState<PreviewView>("framing");
+  const [stage, setStage] = useState<Stage>("research");
+  const [requested, setRequested] = useState(false);
 
-  function selectView(next: PreviewView, focus = false) {
-    setView(next);
-    if (focus) document.getElementById(`tab-${next}`)?.focus();
+  function select(next: Stage, focus = false) {
+    setStage(next);
+    if (focus) document.getElementById(`stage-${next}`)?.focus();
   }
 
-  function handleTabKey(event: KeyboardEvent<HTMLButtonElement>, current: PreviewView) {
-    const index = VIEWS.indexOf(current);
-    let next: PreviewView;
-    if (event.key === "ArrowRight") next = VIEWS[(index + 1) % VIEWS.length];
-    else if (event.key === "ArrowLeft") next = VIEWS[(index + VIEWS.length - 1) % VIEWS.length];
-    else if (event.key === "Home") next = VIEWS[0];
-    else if (event.key === "End") next = VIEWS[VIEWS.length - 1];
+  function handleKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let next: number;
+    if (event.key === "ArrowRight") next = (index + 1) % STAGES.length;
+    else if (event.key === "ArrowLeft") next = (index + STAGES.length - 1) % STAGES.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = STAGES.length - 1;
     else return;
     event.preventDefault();
-    selectView(next, true);
+    select(STAGES[next].id, true);
   }
-
 
   return (
     <div className="marvin-landing">
-<div className="wrap">
-<header className="nav"><Link className="brand" href="#"><strong>MARVIN</strong><span>by H&ai</span></Link><nav aria-label="Main navigation"><Link className="open-link" href="/missions?welcome=1">Open Marvin</Link></nav></header>
-<main className="hero">
-<div className="statement"><h1><span>Your consulting</span><span>operating system</span></h1><p>MARVIN assigns the research and analysis for your mission to AI agents, then brings their work back for your review.</p><div className="hero-actions"><InteractiveMissionLink /></div></div>
-<div className="conversation" id="mission">
-<div className="conversation-top"><span className="conversation-title">Example mission</span><span className="preview-label">Illustrative</span></div>
-<div className="exchange"><span className="avatar" aria-hidden="true">You</span><div className="user-content"><strong>You</strong><div className="user-prompt">Should we invest in this software company?</div></div></div>
-<div className="agent"><span className="logo-tile" aria-hidden="true">M</span><div><div className="agent-name">MARVIN</div>
-<div className="bubble panel" id="panel-framing" role="tabpanel" aria-labelledby="tab-framing" tabIndex={0} hidden={view !== "framing"}><h2>Here is the proposed research plan</h2><p>I'll start with these questions. Check the scope before I begin researching.</p><ul className="hypotheses"><li><span>1</span>Where does revenue growth come from?</li><li><span>2</span>Are customers staying?</li><li><span>3</span>How dependent is revenue on a few customers?</li><li><span>4</span>Can the company sustain its margins?</li><li><span>5</span>What could prevent the investment?</li></ul><div className="review-summary"><span>Research has not started</span><button className="review-link" id="show-review" onClick={() => selectView("review", true)}>Review this plan<svg className="arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button></div></div>
-<div className="bubble panel" id="panel-review" role="tabpanel" aria-labelledby="tab-review" tabIndex={0} hidden={view !== "review"}><h2>Does this cover the assignment?</h2><div className="phase"><span className="phase-dot" aria-hidden="true"></span>Your decision</div><p>You can approve the plan or ask MARVIN to change it. Research starts after your approval.</p><div className="decision-paths"><div className="decision-path"><strong>Approve the plan</strong><span>Start research</span></div><div className="decision-path"><strong>Request changes</strong><span>Revise the plan</span></div></div><div className="file"><svg viewBox="0 0 24 30" fill="none" aria-hidden="true"><path d="M4 2h10l6 6v20H4V2Zm10 0v7h6M8 15h8m-8 5h8" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg><div><strong>Mission brief</strong><span>The question and scope in one document</span></div></div><div className="review-summary"><span>Try a mission in Marvin</span><Link className="review-link" href="/missions?welcome=1">Open Marvin<svg className="arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></Link></div></div>
-<div className="bubble panel" id="panel-brief" role="tabpanel" aria-labelledby="tab-brief" tabIndex={0} hidden={view !== "brief"}><h2>Mission brief</h2><p>The brief records the question being investigated and the agreed research scope.</p><ul className="brief-list"><li>Investment question</li><li>Research questions</li><li>Available evidence</li><li>Scope and constraints</li></ul><div className="review-summary"><span>Available for review</span><button className="review-link" id="back-to-review" onClick={() => selectView("review", true)}>See the review<svg className="arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button></div></div>
-</div></div>
-<p className="note">Explore the example using the views below.</p>
-<div className="views" role="tablist" aria-label="Mission preview"><button className="view" id="tab-framing" role="tab" aria-selected={view === "framing"} aria-controls="panel-framing" tabIndex={view === "framing" ? 0 : -1} onClick={() => selectView("framing")} onKeyDown={(event) => handleTabKey(event, "framing")}>Research plan</button><button className="view" id="tab-review" role="tab" aria-selected={view === "review"} aria-controls="panel-review" tabIndex={view === "review" ? 0 : -1} onClick={() => selectView("review")} onKeyDown={(event) => handleTabKey(event, "review")}>Your decision</button><button className="view" id="tab-brief" role="tab" aria-selected={view === "brief"} aria-controls="panel-brief" tabIndex={view === "brief" ? 0 : -1} onClick={() => selectView("brief")} onKeyDown={(event) => handleTabKey(event, "brief")}>Mission brief</button></div>
-</div>
-</main>
-<footer className="bottom"><span className="footer-brand">MARVIN</span><p>The demo can reset. Save any work you need.</p><p><Link href="/missions?welcome=1">Open workspace</Link></p></footer>
-</div>
+      <div className="wrap">
+        <header className="nav">
+          <Link className="brand" href="/"><strong>MARVIN</strong><span>by H&ai</span></Link>
+          <nav aria-label="Main navigation"><Link className="open-link" href="/missions?welcome=1">Open Marvin</Link></nav>
+        </header>
+        <main className="hero product-hero">
+          <div className="statement">
+            <h1><span>Your consulting</span><span>operating system</span></h1>
+            <p>MARVIN assigns the research and analysis for your mission to AI agents, then brings their work back for your review.</p>
+            <div className="hero-actions"><InteractiveMissionLink /></div>
+            <div className="team-trace" aria-label="The team behind a mission">
+              <div><span className="team-symbol" aria-hidden="true">⌕</span><span><strong>Dora & Calculus</strong><small>Research and financial analysis</small></span></div>
+              <div><span className="team-symbol" aria-hidden="true">×</span><span><strong>Adversus</strong><small>Challenges the conclusions</small></span></div>
+              <div><span className="team-symbol" aria-hidden="true">▤</span><span><strong>Papyrus</strong><small>Turns the work into a report</small></span></div>
+            </div>
+          </div>
+          <div className="mission-example">
+            <div className="example-header"><span className="logo-tile" aria-hidden="true">M</span><strong>A software investment review</strong><span className="preview-label">Illustrative</span></div>
+            <div className="example-tabs" role="tablist" aria-label="Explore an example mission">
+              {STAGES.map((item, index) => <button key={item.id} id={`stage-${item.id}`} role="tab" aria-selected={stage === item.id} aria-controls={`example-${item.id}`} tabIndex={stage === item.id ? 0 : -1} onClick={() => select(item.id)} onKeyDown={event => handleKey(event, index)}><span aria-hidden="true">0{index + 1}</span>{item.label}</button>)}
+            </div>
+            <div className="example-body">
+              <div id="example-brief" role="tabpanel" aria-labelledby="stage-brief" hidden={stage !== "brief"} tabIndex={0}>
+                <h2>Should we invest in this company?</h2>
+                <p className="sample-question">Assess revenue resilience. Check growth, customer concentration and retention before making a recommendation.</p>
+                <div className="sample-sheet"><div className="sheet-title">Sample financial brief <span>.xlsx</span></div><dl><div><dt>2024 revenue</dt><dd>€8.0m</dd></div><div><dt>2025 revenue</dt><dd>€10.0m</dd></div><div><dt>Largest customer</dt><dd>45% of revenue</dd></div><div><dt>Customer retention</dt><dd className="missing-data">Not supplied</dd></div></dl></div>
+                <button className="example-next" onClick={() => select("research", true)}>See what MARVIN finds <span aria-hidden="true">→</span></button>
+              </div>
+              <div id="example-research" role="tabpanel" aria-labelledby="stage-research" hidden={stage !== "research"} tabIndex={0}>
+                <h2>Revenue growth and customer risk</h2>
+                <div className="analysis-finding"><span className="finding-mark" aria-hidden="true">↗</span><div><div className="finding-heading"><h3>Revenue grew 25%</h3><span>Calculus</span></div><p>€10.0m ÷ €8.0m − 1</p><button className="source-link" onClick={() => select("brief", true)}>Source: sample financial brief ↗</button></div></div>
+                <div className="analysis-finding"><span className="finding-mark" aria-hidden="true">◐</span><div><div className="finding-heading"><h3>One customer accounts for 45%</h3><span>Calculus</span></div><p>The investment depends heavily on one relationship.</p><button className="source-link" onClick={() => select("brief", true)}>Source: sample financial brief ↗</button></div></div>
+                <div className="analysis-finding"><span className="finding-mark missing-data" aria-hidden="true">?</span><div><div className="finding-heading"><h3>Retention remains unverified</h3><span>Adversus</span></div><p>Growth alone does not establish that customers stay.</p><span className="evidence-gap">Missing evidence · customer retention data</span></div></div>
+                <button className="example-next" onClick={() => select("review", true)}>Review the open question <span aria-hidden="true">→</span></button>
+              </div>
+              <div id="example-review" role="tabpanel" aria-labelledby="stage-review" hidden={stage !== "review"} tabIndex={0}>
+                <h2>You decide what needs more work</h2>
+                <div className="review-conversation"><span className="logo-tile" aria-hidden="true">M</span><p>We have revenue growth and concentration figures, but no retention data. Should the report leave this question open, or should we request the figures first?</p></div>
+                <div className="example-choices"><button aria-pressed={requested} onClick={() => setRequested(true)}>Request retention data <span aria-hidden="true">↗</span></button><button onClick={() => select("report", true)}>Preview the report with this gap <span aria-hidden="true">→</span></button></div>
+                {requested && <p className="example-feedback" role="status">Example updated: request customer retention figures before concluding on revenue resilience.</p>}
+                <p className="example-disclaimer">These controls explore the example. They do not start a live mission.</p>
+              </div>
+              <div id="example-report" role="tabpanel" aria-labelledby="stage-report" hidden={stage !== "report"} tabIndex={0}>
+                <div className="report-preview"><div className="report-meta">MARVIN <span>Illustrative report · 01</span></div><h2>Revenue resilience</h2><p className="report-lead">Growth is supported by the supplied figures. Customer durability is still an open question.</p><h3>What the figures show</h3><p>Revenue increased from €8.0m to €10.0m, a 25% increase. The largest customer represents 45% of revenue.</p><h3>What needs to be checked</h3><p>Customer retention data was not supplied. Obtain it before concluding that growth is durable.</p><div className="report-footnote">Source: sample financial brief · All figures are illustrative</div></div>
+                <a className="example-next" href="/examples/marvin-illustrative-report.md" download>Download this example <span aria-hidden="true">↓</span></a>
+              </div>
+            </div>
+            <p className="example-caption">Explore the same mission from input to report. All figures are sample data.</p>
+          </div>
+        </main>
+        <footer className="bottom"><span className="footer-brand">MARVIN</span><p>The demo can reset. Save any work you need.</p><p><Link href="/missions?welcome=1">Open workspace</Link></p></footer>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ Returns a short string. Never modifies mission state. Never triggers agents.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from marvin.mission.store import MissionStore
@@ -67,6 +68,7 @@ def _summarize_state(
     verdict = store.get_latest_merlin_verdict(mission_id)
     deliverables = store.list_deliverables(mission_id)
     milestones = store.list_milestones(mission_id)
+    brief = store.get_mission_brief(mission_id)
 
     # Bug 5 (chantier 2.6): Q&A must read findings, not just count them.
     # Surface claim_text + correct agent attribution so MARVIN never says
@@ -89,7 +91,12 @@ def _summarize_state(
             "client": mission.client,
             "target": mission.target,
             "status": mission.status,
+            "active_agents": list(dict.fromkeys(
+                ([mission.active_agent] if mission.active_agent else [])
+                + mission.active_phase_agents
+            )),
         },
+        "has_brief": bool(brief and (brief.raw_brief or "").strip()),
         "findings_count": len(findings),
         "findings": finding_details,
         "findings_by_agent": by_agent,
@@ -141,9 +148,12 @@ def _deterministic_response(state: dict, user_text: str) -> str:
     text_lower = (user_text or "").lower().strip()
     pending = state.get("pending_gate")
 
+    if _awaiting_brief(state) and _is_greeting(user_text):
+        return "Hi. Share your brief or the question you want this mission to investigate. Research has not started."
+
     # User trying to advance without using gate UI
     advance_words = ("approve", "approved", "go", "ship", "proceed", "next", "ok")
-    if pending and any(word in text_lower for word in advance_words):
+    if pending and not _awaiting_brief(state) and any(word in text_lower for word in advance_words):
         return f"{_gate_label(pending['type'])} is pending. Click 'Review now' to advance."
 
     # Verdict question
@@ -205,13 +215,31 @@ def _deterministic_response(state: dict, user_text: str) -> str:
             return f"{len(ready)} deliverable(s) ready."
         return "No deliverables generated yet."
 
-    # Default
+    # Default: seeded future gates do not override fresh onboarding.
+    if _awaiting_brief(state):
+        return "Share your brief or the question you want this mission to investigate. Research has not started."
     if pending:
         return f"{_gate_label(pending['type'])} is pending. Click 'Review now' to advance."
+    if state.get("mission", {}).get("status") in {"complete", "completed"}:
+        return "This mission is complete. What would you like to know about the results?"
+    agents = state.get("mission", {}).get("active_agents") or []
+    if agents:
+        return f"Work is in progress with {', '.join(agents)}. No review is open right now."
+    return "No agent is currently marked as working, and no review is open. What would you like to check?"
+
+
+def _awaiting_brief(state: dict) -> bool:
     return (
-        "No gate is open right now — the workflow is still running. "
-        "You'll see a Review now button when the next gate is ready."
+        state.get("has_brief") is False
+        and state.get("mission", {}).get("status") == "active"
+        and not state.get("mission", {}).get("active_agents")
+        and not state.get("hypotheses_count")
+        and not state.get("findings_count")
     )
+
+
+def _is_greeting(text: str) -> bool:
+    return bool(re.fullmatch(r"(?:hi|hello|hey|bonjour|salut|bonsoir)(?:\s+there)?[\s!?.]*", text.strip(), re.IGNORECASE))
 
 
 async def respond_qa(
@@ -234,6 +262,11 @@ async def respond_qa(
         interrupted_gate_id=interrupted_gate_id,
         interrupt_known=interrupt_known,
     )
+
+    # Fresh onboarding needs no model call and must not report seeded future
+    # gates as open or claim that research has started.
+    if _awaiting_brief(state):
+        return _deterministic_response(state, user_text)
 
     try:
         from marvin.llm_factory import get_chat_llm
@@ -287,6 +320,9 @@ async def respond_qa(
 
     context = (
         f"Mission: {state['mission'].get('client', '')} - {state['mission'].get('target', '')}\n"
+        f"Mission status: {state['mission'].get('status', 'unknown')}\n"
+        f"Brief received: {state['has_brief']}\n"
+        f"Active agents: {', '.join(state['mission'].get('active_agents') or []) or 'none recorded'}\n"
         f"Pending gate: {pending_label}\n"
         f"Verdict: {verdict_str}\n"
         f"Deliverables ready: {sum(1 for d in state['deliverables'] if d['status'] == 'ready')}\n"

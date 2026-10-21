@@ -15,7 +15,7 @@ import { RightRail } from "./RightRail";
 
 // Match the prop contract of the legacy `MissionControlView` (UI Marvin/MissionControl.jsx).
 export interface MissionControlV2ViewProps {
-  mission: Mission;
+  mission: Mission & { statusLabel?: string };
   messages: MissionChatMessage[];
   initialMessages: MissionChatMessage[];
   chatDraft: string;
@@ -315,7 +315,7 @@ export function MissionControlV2View(props: MissionControlV2ViewProps): React.Re
 
   const banner = pendingGateBanner && !pendingGateBanner.actionInFlight ? pendingGateBanner : null;
 
-  const missionStatusLabel = mission.status === "active" ? "Running" : "Completed";
+  const missionStatusLabel = mission.statusLabel ?? (mission.status === "active" ? "Ready" : "Completed");
 
   return (
     <div

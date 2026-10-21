@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 import pytest
 
 from marvin.graph.subgraphs import orchestrator_qa
-from marvin.mission.schema import Hypothesis, MerlinVerdict, Mission, MissionBrief
+from marvin.mission.schema import Gate, Hypothesis, MerlinVerdict, Mission, MissionBrief
 from marvin.mission.store import MissionStore, _seed_standard_workplan
 from marvin_ui import server as srv
 
@@ -195,8 +195,61 @@ def test_short_message_without_brief_routes_to_qa(mission_store, monkeypatch):
     monkeypatch.setattr(srv, "get_graph", _fake_get_graph)
 
     async def _drain():
-        async for _event in srv._stream_chat(mid, "hi"):
-            pass
+        return [event async for event in srv._stream_chat(mid, "hi")]
 
-    asyncio.run(_drain())
+    events = asyncio.run(_drain())
     assert astream_calls == [], "Short messages must not start the mission flow"
+    replies = " ".join(event for event in events if "event: text" in event)
+    assert "brief" in replies.lower()
+    assert "has not started" in replies.lower()
+    assert "still running" not in replies.lower()
+    assert any("event: run_end" in event for event in events)
+
+
+def test_fresh_greeting_requests_brief_without_model(mission_store, monkeypatch):
+    mid, store = mission_store
+
+    def unexpected_model(*args, **kwargs):
+        raise AssertionError("Fresh onboarding must not call the model")
+
+    monkeypatch.setattr("marvin.llm_factory.get_chat_llm", unexpected_model)
+    reply = asyncio.run(orchestrator_qa.respond_qa(mid, "hi"))
+    assert reply.startswith("Hi.")
+    assert "brief" in reply.lower()
+    assert "has not started" in reply.lower()
+    assert "still running" not in reply.lower()
+    assert "pending" not in reply.lower()  # seeded future gates are not open
+    assert store.get_mission_brief(mid) is None
+    assert store.list_hypotheses(mid) == []
+
+
+@pytest.mark.parametrize("status, agents, expected", [
+    ("active", [], "No agent is currently marked as working"),
+    ("active", ["dora"], "Work is in progress with dora"),
+    ("complete", [], "This mission is complete"),
+])
+def test_no_open_gate_does_not_imply_running(status, agents, expected):
+    state = {
+        "mission": {"status": status, "active_agents": agents},
+        "has_brief": True,
+        "pending_gate": None,
+    }
+    reply = orchestrator_qa._deterministic_response(state, "hello")
+    assert expected in reply
+
+
+def test_real_clarification_gate_is_not_fresh_onboarding(mission_store, monkeypatch):
+    mid, store = mission_store
+    _persist_brief(store, mid, "Assess TargetCo, but the investment question needs clarification.")
+    store.save_gate(Gate(id="g-clarify", mission_id=mid, gate_type="clarification_request", scheduled_day=0))
+
+    def no_model(*args, **kwargs):
+        raise RuntimeError("OPENROUTER_API_KEY is not set")
+
+    monkeypatch.setattr("marvin.llm_factory.get_chat_llm", no_model)
+    reply = asyncio.run(orchestrator_qa.respond_qa(
+        mid, "hi", interrupted_gate_id="g-clarify", interrupt_known=True,
+    ))
+    assert "Clarification" in reply
+    assert "pending" in reply
+    assert "has not started" not in reply

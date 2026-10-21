@@ -45,7 +45,7 @@ export interface LeftRailDeliverable {
 }
 
 export interface LeftRailProps {
-  mission: Mission;
+  mission: Mission & { statusLabel?: string };
   agents: LeftRailAgent[];
   hypotheses: LeftRailHypothesis[];
   deliverables: LeftRailDeliverable[];
@@ -324,7 +324,7 @@ export function LeftRail({ mission, agents, hypotheses, deliverables, selectedHy
   const missionData: MissionCardData = {
     name: mission.name,
     client: mission.client,
-    statusLabel: mission.status === "active" ? "Running" : "Completed",
+    statusLabel: mission.statusLabel ?? (mission.status === "active" ? "Ready" : "Completed"),
     progress: mission.progress,
   };
 

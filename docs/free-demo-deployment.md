@@ -66,3 +66,17 @@ authentication path; the existing frontend does not send `X-API-Key`.
 Check `/health`, the mission list, the demo notice, creation of a clearly named
 test mission, and SSE progress. Live AI verification requires explicit use of
 the configured provider credentials. Inspect the final service plan and URL.
+
+When provider keys exist only on the deployed demo, run the same runtime smoke
+without copying them locally:
+
+```bash
+MARVIN_SMOKE_BASE_URL=https://marvin-demo-api.fastapicloud.dev MARVIN_SMOKE_DURATION=120 make smoke
+```
+
+This mode is restricted to that exact resettable demo. It creates a uniquely
+named smoke mission, checks that `hi` returns an onboarding reply without
+starting agents or creating a brief, then checks up to 120 seconds of a
+substantive brief (25 seconds by default without the duration override) for SSE progress and errors. It does not verify an entire
+research mission. Without this variable, the smoke still uses a local server
+and temporary databases; the full local run requires a configured provider key.
