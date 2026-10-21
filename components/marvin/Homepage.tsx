@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import Link from "next/link";
 import InteractiveMissionLink from "./InteractiveMissionLink";
+import MissionArrow from "./MissionArrow";
 import "./Homepage.css";
 
 type Stage = "brief" | "research" | "review" | "report";
@@ -73,15 +74,15 @@ export default function Homepage() {
       <div className="wrap">
         <header className="nav">
           <Link className="brand" href="/"><strong>MARVIN</strong><span>by H&ai</span></Link>
-          <nav aria-label="Main navigation"><Link className="open-link" href="/missions?welcome=1">Open Marvin</Link></nav>
+          <nav aria-label="Main navigation"><Link className="open-link" href="/missions?welcome=1">Open Marvin <MissionArrow direction="up-right" /></Link></nav>
         </header>
         <main className="hero product-hero">
           <div className="statement">
             <h1><span>Your consulting</span><span>operating system</span></h1>
-            <div className="statement-aside"><p>AI agents work on your mission. You review the evidence and decide what comes next.</p><div className="hero-actions"><InteractiveMissionLink /></div></div>
+            <div className="statement-aside"><p>AI agents work on your mission. You review the evidence and decide what comes next.</p><div className="hero-actions"><InteractiveMissionLink /><a className="example-jump" href="#mission-example" onClick={event => { event.preventDefault(); setStage("brief"); setPlaying(true); exampleRef.current?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" }); }}>See an example <MissionArrow direction="down" /></a></div></div>
 
           </div>
-          <div className="mission-example" data-ui="illustrative-mission" ref={exampleRef} onMouseLeave={() => setPlaying(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPlaying(true); }} data-auto-playing={autoPlaying} style={{ "--stage-duration": `${STAGE_DURATION[stage]}ms` } as CSSProperties}>
+          <div className="mission-example" id="mission-example" data-ui="illustrative-mission" ref={exampleRef} onMouseLeave={() => setPlaying(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPlaying(true); }} data-auto-playing={autoPlaying} style={{ "--stage-duration": `${STAGE_DURATION[stage]}ms` } as CSSProperties}>
             <div className="example-header"><div className="example-intro"><strong>Interactive example: <span className="stage-name" key={stage}>{STAGES.find(item => item.id === stage)?.label.toLowerCase()}</span></strong><p>A software investment review, using fictional data.</p></div></div>
             <div className="dossier-layout"><aside className="dossier-margin"><div className="example-tabs" onFocus={() => setPlaying(false)} role="tablist" aria-label="Explore an example mission">
               {STAGES.map((item, index) => <button key={item.id} id={`stage-${item.id}`} role="tab" aria-selected={stage === item.id} aria-controls={`example-${item.id}`} tabIndex={stage === item.id ? 0 : -1} onClick={() => select(item.id)} onKeyDown={event => handleKey(event, index)}><span className="tab-dot" aria-hidden="true" />{item.label}</button>)}
@@ -118,7 +119,7 @@ export default function Homepage() {
             </div>
           </div>
         </main>
-        <footer className="bottom"><Link className="footer-brand" href="/">MARVIN</Link><p>A resettable demo. Save the work you want to keep.</p><Link href="/missions?welcome=1">Open workspace ↗</Link></footer>
+        <footer className="bottom"><Link className="footer-brand" href="/">MARVIN</Link><p>A resettable demo. Save the work you want to keep.</p><Link href="/missions?welcome=1">Open workspace <MissionArrow direction="up-right" /></Link></footer>
       </div>
     </div>
   );

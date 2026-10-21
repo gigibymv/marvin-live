@@ -45,6 +45,20 @@ describe("Landing example playback", () => {
     advance(6000); selected("The analysis");
   });
 
+  it.each([false, true])("opens the brief from the hero with reduced motion=%s", (reduce) => {
+    reducedMotion = reduce;
+    const scrollIntoView = vi.fn();
+    const previous = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      render(<Homepage />);
+      fireEvent.click(screen.getByRole("tab", { name: "The report" }));
+      fireEvent.click(screen.getByRole("link", { name: "See an example" }));
+      selected("The brief");
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: reduce ? "instant" : "smooth", block: "start" });
+    } finally { Element.prototype.scrollIntoView = previous; }
+  });
+
   it("stops while offscreen or in a hidden document", () => {
     render(<Homepage />);
     intersect(0.1);

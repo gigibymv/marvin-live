@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import MissionArrow from "./MissionArrow";
 
 // Adapted for Next navigation, keyboard focus and reduced motion from Magic UI's
 // Interactive Hover Button, discovered on 21st.dev:
@@ -12,9 +13,7 @@ export default function InteractiveMissionLink() {
       <span className="mission-cta-label" aria-hidden="true">Start a mission</span>
       <span className="mission-cta-reveal" aria-hidden="true">
         Start a mission
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <MissionArrow />
       </span>
     </Link>
   );
