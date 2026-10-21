@@ -26,3 +26,5 @@
 @media(max-width:650px){.marvin-landing .statement{padding-bottom:22px}.marvin-landing .hero-actions{gap:8px}.marvin-landing .mission-example{scroll-margin-top:18px}}
 
 html:has(.marvin-landing){scroll-behavior:smooth}@media(prefers-reduced-motion:reduce){html:has(.marvin-landing){scroll-behavior:auto}}
+
+.marvin-landing .finding-mark{display:flex;align-items:flex-start;padding-top:1px}.marvin-landing .source-link .mission-arrow{width:14px;height:14px;margin-left:4px}.marvin-landing .example-next>.mission-arrow{width:24px;height:24px;transition:translate .2s}.marvin-landing .example-next:hover>.mission-arrow{translate:4px 0}.marvin-landing .example-next:hover>.mission-arrow-down{translate:0 3px}
