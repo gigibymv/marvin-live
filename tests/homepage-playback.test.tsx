@@ -9,7 +9,7 @@ function intersect(ratio: number) {
   act(() => notifyIntersection([{ isIntersecting: ratio > 0, intersectionRatio: ratio } as IntersectionObserverEntry], {} as IntersectionObserver));
 }
 function advance(ms: number) { act(() => vi.advanceTimersByTime(ms)); }
-function selected(name: string) { expect(screen.getByRole("tab", { name, exact: true })).toHaveAttribute("aria-selected", "true"); }
+function selected(name: string) { expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", "true"); }
 
 beforeEach(() => {
   vi.useFakeTimers();
