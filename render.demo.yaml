@@ -1,0 +1,25 @@
+# Resettable demo: keep the existing Vercel frontend; create one Free API.
+# Use this file as the Blueprint Path. No persistent disk is provisioned.
+services:
+  - type: web
+    name: marvin-demo-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: MARVIN_DB_PATH
+        value: /data/marvin.db
+      - key: MARVIN_CHECKPOINT_DB
+        value: /data/checkpoints.db
+      - key: MARVIN_HOST
+        value: 0.0.0.0
+      - key: ALLOW_LOCALHOST_ANY_PORT
+        value: "0"
+      - key: CORS_ORIGINS
+        value: https://marvin-zeta.vercel.app

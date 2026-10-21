@@ -21,6 +21,9 @@ import type {
 } from "@/lib/missions/types";
 
 const STORAGE_VERSION = "marvin-v2";
+const DEMO_NOTICE = process.env.NEXT_PUBLIC_DEMO_MODE === "1"
+  ? "Demo: missions, uploaded files and reports can reset after inactivity or a server restart. Download reports you want to keep."
+  : undefined;
 
 const MissionDashboardView = RawMissionDashboardView as unknown as ComponentType<{
   activeMissions: DashboardActiveMission[];
@@ -135,7 +138,7 @@ export default function MissionDashboard({
       onOpenMission={handleOpenMission}
       onCreateMission={handleCreateMission}
       onDeleteMission={handleDeleteMission}
-      backendNotice={backendState === "offline" ? backendNotice : undefined}
+      backendNotice={backendState === "offline" ? backendNotice : DEMO_NOTICE}
     />
   );
 }
